@@ -425,7 +425,13 @@ host 端（`lib/index.js`）是纯 ESM，无需构建。client 端（`lib/client
 npm run build                  # 从 src/client.js 重新生成 lib/client.js
 npm run verify                 # 物化生成的 bundle 并断言其导出
 node scripts/verify-scene.mjs  # 场景静态帧提取 / scene-frame 路由自检（含合成 fixture）
+node scripts/verify-static-frame-fixes.mjs  # PNG 载荷解码 (ct=2/ct=6) + 木偶图集可拼合性 + 拼合策略
 ```
+
+`verify-static-frame-fixes.mjs` 是静态帧两处根因的回归测试：RGB（PNG color-type 2）
+载荷解码、`lib/we-renderer/puppet-atlas.js` 的图集可平铺性分类、以及拼合路径的
+「全有或全无」木偶策略。库内真实壁纸存在时（`~/Pictures/WallpaperEngine`）会追加
+3022080536 / 3784528825 的只读探测，不存在则自动跳过（脚本始终自包含可跑）。
 
 编辑 `src/client.js` 后运行 `npm run build`，不要手改 `lib/client.js`。`npm install`/`pnpm install` 会自动触发 `prepare` → `build`，因此全新 checkout 总是带最新的 `lib/client.js`。
 

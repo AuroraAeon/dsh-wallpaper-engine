@@ -18,6 +18,10 @@ scene-diagnosis.tsv
 scene-layers-out/
 # 视觉工具工件
 .dsh-vision-router/
+.dsh-vision-toolkit/
+
+# 静态帧排查期临时脚本与产物 (可再生; 见 docs/diag-3022080536-static-frame.md)
+.scratch/
 
 /_refs/
 
