@@ -560,6 +560,14 @@
         {
           "kind": "guard",
           "npm": null,
+          "file": "test/verify-subpackage-manifests.mjs",
+          "args": [],
+          "tier": "soft",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
           "file": "test/verify-guard-map.mjs",
           "args": [],
           "tier": "soft",
@@ -1183,6 +1191,14 @@
           "kind": "guard",
           "npm": null,
           "file": "test/verify-undefined-refs.mjs",
+          "args": [],
+          "tier": "soft",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-subpackage-manifests.mjs",
           "args": [],
           "tier": "soft",
           "probe": false

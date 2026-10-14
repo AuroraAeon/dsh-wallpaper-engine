@@ -182,6 +182,9 @@ const DOCS_STEPS = [
   // 未定义引用普查（"用了但没 import/声明"）：先按软档出声若干轮，再有据可依地议升 hard
   // （这一类；`node --check` 与聚焦判据都照不到它）。
   step('test/verify-undefined-refs.mjs', [], 'soft'),
+  // P2-5：三份子包清单的「包面」（version 与根同号 / 入口落点 ⇄ 根 exports 三连 / peer 范围
+  // 逐字对齐 / 无 BOM·LF）。组件清单从 patch 行 + 根 exports **数据驱动**派生，不写死组件名。
+  step('test/verify-subpackage-manifests.mjs', [], 'soft'),
   step('test/verify-guard-map.mjs', [], 'soft'),
   step('test/verify-guard-chain.mjs', [], 'soft'),
 ];

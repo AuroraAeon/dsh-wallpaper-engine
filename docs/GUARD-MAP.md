@@ -5,7 +5,7 @@
 > 口径：只统计守卫**代码**里真正碰到的模块（先剥注释），并区分"直接读源文件"与"隔着产物 `lib/client.js`"。
 > 写法：字面量路径 / `join(...)` 拼接 / 唯一 basename / 产物配方 / **前缀族读法** `scopeFiles|scopeText(<前缀>)` / **经共享族助手读**（`import { panelText } from './tools/src-scope.mjs'` + 真调用；族口径封在那个库里，见 DEV-GUIDE §4.6「同时是守卫的库」）/ **真源定位读**（`locate('符号')` / `locateFile('文件名')`，`test/tools/source-locator.mjs`：符号唯一声明在哪就是读了哪个模块）。
 
-模块面 147 个 · 守卫 81 个
+模块面 147 个 · 守卫 82 个
 
 ## 守卫 → 模块
 
@@ -54,7 +54,7 @@
 | `verify-media-bridge.mjs` | `lib/components/media-bridge/backend.js` `lib/components/media-bridge/provision.js` `lib/components/media-bridge/supervisor.js` |  |
 | `verify-media-probe.mjs` | `lib/media/mp4-probe.js` |  |
 | `verify-module-layout.mjs` | `lib/index.js` `lib/settings-schema.js` `src/client.js` | ✅ |
-| `verify-mp4-vfs.mjs` | `lib/faststart.js` `lib/mp4-vfs.js` |  |
+| `verify-mp4-vfs.mjs` | `lib/faststart.js` `lib/host-boot.js` `lib/kernel/host-session.js` `lib/mp4-vfs.js` |  |
 | `verify-occlusion-client.mjs` | `src/api-client.js` `src/live-layer-diag.js` `src/live-layer-gate.js` `src/live-layer-pointer.js` `src/live-layer-underlay.js` `src/live-layer-watch.js` `src/live-layer.js` `src/occlusion.js` | ✅ |
 | `verify-occlusion-hub.mjs` | `lib/index.js` `lib/json-response.js` `lib/occlusion/index.js` `lib/occlusion/rects.js` `lib/occlusion/x11.js` `lib/routes/occlusion.js` |  |
 | `verify-package-files.mjs` | `lib/http-body.js` `lib/index.js` `lib/pkg-read.js` `lib/routes/upload.js` | ✅ |
@@ -80,12 +80,13 @@
 | `verify-softrender.mjs` | — | ✅ |
 | `verify-static.mjs` | — |  |
 | `verify-steam-discovery.mjs` | `lib/index.js` `lib/steam-discovery.js` |  |
+| `verify-subpackage-manifests.mjs` | — |  |
 | `verify-system-fonts.mjs` | `lib/routes/system-fonts.js` `lib/settings-schema.js` `src/client.js` `src/font/typography.js` `src/panel-tabs-advanced.js` `src/panel-tabs-appearance.js` `src/panel-tabs-effects.js` `src/panel-tabs-mascot.js` `src/panel-tabs-wallpaper.js` `src/panel-tabs.js` `src/quick-panel.js` `src/system-fonts.js` | ✅ |
 | `verify-theme-follow.mjs` | `lib/settings-schema.js` `src/client.js` `src/live-layer-diag.js` `src/live-layer-gate.js` `src/live-layer-pointer.js` `src/live-layer-underlay.js` `src/live-layer-watch.js` `src/live-layer.js` `src/media-prep.js` `src/panel-tabs-advanced.js` `src/panel-tabs-appearance.js` `src/panel-tabs-effects.js` `src/panel-tabs-mascot.js` `src/panel-tabs-wallpaper.js` `src/panel-tabs.js` `src/theme-follow.js` | ✅ |
 | `verify-theme-layer.mjs` | `lib/settings-schema.js` `src/client.js` `src/effects.js` `src/font/apply.js` `src/font/color-roles.js` `src/font/typography.js` `src/panel-tabs-advanced.js` `src/panel-tabs-appearance.js` `src/panel-tabs-effects.js` `src/panel-tabs-mascot.js` `src/panel-tabs-wallpaper.js` `src/panel-tabs.js` | ✅ |
 | `verify-token-contract.mjs` | `src/styles-base.js` `src/styles-chrome.js` `src/styles-ext.js` `src/styles-panel.js` `src/styles-quick.js` `src/styles-settings.js` `src/styles-shell.js` `src/styles-sidebar.js` `src/styles.js` |  |
 | `verify-transcode-state.mjs` | `lib/index.js` `lib/media/transcode.js` `lib/routes/media-derived.js` `src/client.js` `src/media-prep.js` `src/video-layer.js` | ✅ |
-| `verify-types.mjs` | `lib/inventory.js` `src/client.js` | ✅ |
+| `verify-types.mjs` | `lib/index.js` `lib/inventory.js` `src/client.js` | ✅ |
 | `verify-undefined-refs.mjs` | — |  |
 | `verify-upload-store.mjs` | `lib/index.js` `lib/kernel/config.js` `lib/kernel/data-dir.js` `lib/upload-dir.js` `lib/upload-store.js` |  |
 | `verify-video-preview.mjs` | `lib/media/video-preview.js` |  |
@@ -115,17 +116,17 @@
 | `lib/diag-trace.js` | 2 | `verify-host-diag` `verify-scene-live` |
 | `lib/faststart.js` | 3 | `verify-cache-dir` `verify-mp4-vfs` `verify-scene-live` |
 | `lib/fs-paths.js` | 2 | `verify-scene-live` `verify-wallpaper-scan` |
-| `lib/host-boot.js` | 5 | `verify-about` `verify-bundle-rows` `verify-component-face` `verify-contracts` `verify-logging` |
+| `lib/host-boot.js` | 6 | `verify-about` `verify-bundle-rows` `verify-component-face` `verify-contracts` `verify-logging` `verify-mp4-vfs` |
 | `lib/http-body.js` | 2 | `verify-body-caps` `verify-package-files` |
 | `lib/http-lifecycle.js` | 1 | `verify-scene-live` |
-| `lib/index.js` | 25 | `e2e-web-media-origin` `verify-about` `verify-adapter` `verify-bundle-rows` `verify-cache-dir` `verify-client` `verify-contracts` `verify-fontset` `verify-logging` `verify-module-layout` `verify-occlusion-hub` `verify-package-files` `verify-package-publish` `verify-presets` `verify-reachability` `verify-route-index` `verify-scene-frame-master` `verify-scene-live` `verify-scene` `verify-settings-namespaces` `verify-settings-schema-exports` `verify-steam-discovery` `verify-transcode-state` `verify-upload-store` `verify-we-install-probe` |
+| `lib/index.js` | 26 | `e2e-web-media-origin` `verify-about` `verify-adapter` `verify-bundle-rows` `verify-cache-dir` `verify-client` `verify-contracts` `verify-fontset` `verify-logging` `verify-module-layout` `verify-occlusion-hub` `verify-package-files` `verify-package-publish` `verify-presets` `verify-reachability` `verify-route-index` `verify-scene-frame-master` `verify-scene-live` `verify-scene` `verify-settings-namespaces` `verify-settings-schema-exports` `verify-steam-discovery` `verify-transcode-state` `verify-types` `verify-upload-store` `verify-we-install-probe` |
 | `lib/inventory.js` | 4 | `verify-inventory-index` `verify-scene-live` `verify-types` `verify-we-install-probe` |
 | `lib/json-response.js` | 2 | `verify-json-response` `verify-occlusion-hub` |
 | `lib/kernel/component-session.js` | 1 | `verify-component-face` |
 | `lib/kernel/config.js` | 2 | `verify-config-store` `verify-upload-store` |
 | `lib/kernel/data-dir.js` | 4 | `verify-cache-dir` `verify-client` `verify-settings-namespaces` `verify-upload-store` |
 | `lib/kernel/host-kernel.js` | 5 | `verify-bundle-rows` `verify-component-face` `verify-contracts` `verify-logging` `verify-scene` |
-| `lib/kernel/host-session.js` | 2 | `verify-logging` `verify-scene` |
+| `lib/kernel/host-session.js` | 3 | `verify-logging` `verify-mp4-vfs` `verify-scene` |
 | `lib/log.js` | 1 | `verify-logging` |
 | `lib/media-origin.js` | 1 | `verify-scene-live` |
 | `lib/media/frame-store.js` | 2 | `verify-cache-dir` `verify-scene` |

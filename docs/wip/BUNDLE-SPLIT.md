@@ -598,6 +598,28 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 | 13 | **把"开关"当"更新"用**（开关只改配置与在场性，不重读源码、不换依赖版本 ⇒ "开关能开、功能还是旧的"被读成修复无效） | §1.1 的两条档位边界 + **§11 的边界表**（用户文档以此为准）；验收里用 §7.6 第 4 条把"开关生效"与"已重启"分开 |
 | 14 | **子包只有宿主半边、UI 留在主包** ⇒ 关掉该行只撤路由、**界面还在**（`C1` 子路径行不参与客户端扫描） | §2.4 的粒度事实 + §5.3 的表态：带 UI 的功能族要么自带客户端半边，要么明说它不可单独开关 |
 
+### 13.1 拆包整线（`6385b62e`）审查的**未完成项**
+
+来源：拆包提交 `6385b62e` 的一次全量审查（内核/子包/路由媒体/网络面/打包判据五路 + 逐条复核）。
+该轮**已修**的实害与本节的复算入口不重复记录；下表只列**尚未修**的项，供后续分批收口。
+
+| # | 未完成项 | 位置 | 为什么留到现在 |
+|---|---|---|---|
+| R-1 | **注册记账缺口**：`disposers.push(webServer.register({…}))` 是**一个表达式** ⇒ `register()` 抛错时 `push` 未执行，那条**已进宿主路由表**的路由没有任何 disposer 记录它，之后谁调 `teardown()` 都撤不掉（下次启用撞 `duplicate … route`）。组件层的 `try/catch` 只兜住"后续族抛错"，兜不住"本族这一条抛错" | 22 个族共 42 处（`git grep -c "disposers.push(webServer.register" -- lib`） | 试过用叶子模块 `registerRoute(webServer, row)` 统一包一层，但有的族**完全不写 import**（`lib/routes/media-bytes.js`、`lib/routes/inventory.js`）⇒ 要么改 22 处 `c` 契约、要么撞"解构须在函数体首部"的判据；收益/风险比不划算，已完整回退 |
+| R-2 | `components` 字段把组件 `apply` 抛错**原文**回给客户端（可能含绝对路径） | `lib/routes/diag.js`、`lib/routes/inventory.js`（经 `lib/host-boot.js` 的 `markComponentFailed`） | 本提交新增的唯一暴露面，属低危信息暴露 |
+| R-3 | 提交信息声称"跨包只走 Cordis 服务，**禁模块级单例与直接 import**"与实现不符：组件入口直取 `../../host-boot.js`、`../../kernel/*`、`../../http-body.js`、`../../json-response.js`，并复用模块级 `hostKernel` 单例与三本模块级可变账本 | `lib/components/*/index.js` | 与 §5.1 的决策（先走叶子 import）**一致**、与 §5.2 禁止清单和提交信息**冲突** ⇒ 是口径问题，需要一次表态（改实现还是改口径） |
+| R-4 | 链的顺序/档位只在**软档** `verify-guard-chain` 钉，而 CI 该步 `continue-on-error` ⇒ 交换前两步时硬档全绿 | `test/run-guards.mjs`、`.github/workflows/verify.yml` | §10.2 顺序纪律目前靠注释与软档，不靠硬档 |
+| R-5 | 新建判据**未挂链**时无硬档拦得住（只有软档 `verify-guard-map` 会红）；`OFF_CHAIN_WHY` 只存在于文档、代码里没有 | `test/run-guards.mjs`、`test/verify-guard-map.mjs` | §7.6 第 4 条的同族缺口 |
+| R-6 | `verify-route-ownership` 的"孤儿"面曾漏组件目录（本轮已补），但"认不出入口"的候选面仍只在 `lib/routes/` | `test/verify-route-ownership.mjs` | 有意保留（组件里的 `index.js`/`supervisor.js` 不是路由族，扩过去会误报），留作记录 |
+| R-7 | CI 步骤表**自身无判据**：删掉 `verify:static` 或 `verify:bridge` 步不会让任何判据变红 | `.github/workflows/verify.yml` | 与 R-4 同族（"门禁的接线"没有门禁） |
+| R-8 | 三条[既有]暴露面（**早于本提交**，未被本提交放大）：① `GET /cache-dir/browse?path=<任意绝对路径>` 无目录围栏、无参时回 `homedir()`；② `/api/local-assets` 注册在 harness `/api` 命名空间内，因"最长 prefix 胜"绕过 harness 的 `isTrustedApiRequest`+BrowserAuth，并回 WE 安装绝对路径；③ 围栏 403 把请求路径**原文反射**进 body 且无 `Content-Type`/`nosniff` | `lib/routes/cache-dir.js`、`lib/routes/we-assets.js`、`lib/routes/scene-serve.js`、`lib/serve.js` | 不属于"拆包引入的回归"，但建议单独立项（①②的处置优先级高于③） |
+| R-9 | 升级回归已修但**判据面**仍薄：旧版 faststart 副本的第二清扫根靠 `test/verify-mp4-vfs.mjs` 的 G 节（真跑 `createHostSession`）钉住；同类"从内核对象解构出 `undefined`"的形态**没有通用判据**（`verify-undefined-refs` 只认 node 内置/宿主 API 名） | `lib/kernel/host-session.js`、`test/verify-undefined-refs.mjs` | G 节只覆盖这一条接线；通用形态需要另一个判据（"内核键面 ↔ 解构面双向对账"） |
+
+> **复算入口**：`node test/run-guards.mjs all`（现为 78/78）·`node test/verify-inject-contracts.mjs`·
+> `node test/verify-route-ownership.mjs`·`node test/verify-mp4-vfs.mjs`（G 节）·`node test/verify-types.mjs`（P6b）。
+> **注意**：R-1 与 R-8 的复现需要真跑（前者构造一次 `register()` 抛错，后者构造一条带 `..`/盘符的请求），
+> 不能只看 `git grep` 就下结论。
+
 ---
 
 ## 14. 待决策清单（**2026-10-14 复核：开工闸门项已定案，其余标了阶段前置**）

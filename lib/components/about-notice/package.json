@@ -1,6 +1,21 @@
 {
   "name": "dsh-plugin-wallpaper-engine-about-notice",
+  "version": "1.3.2",
   "description": "About tab host half: repo star count (/star-count) and the two contact QR images (/about-qr).",
   "icon": "./icon.png",
-  "type": "module"
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-host-webserver": ">=0.1.5-rc.1"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-host-webserver": {
+      "optional": true
+    }
+  }
 }

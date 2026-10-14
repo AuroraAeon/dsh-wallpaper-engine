@@ -49,10 +49,12 @@ const specRoot = (spec) => (spec.startsWith('@')
  *  （说明"夹具长什么样"的注释）会被当成真的裸包依赖，把守卫自己判红。 */
 
 /** 源码里的**裸包** import 说明符：跳过相对路径 / 绝对路径 / 内置模块。
+ *  形态覆盖 `from '…'` / 动态 `import('…')` / `require('…')` / **副作用导入 `import '…'`**
+ *  —— 最后一种原先漏判（链上插一句 `import 'pkg';` 仍是绿的），现在与其余三种同一条判据。
  *  P5 的主扫描与负对照共用这一条判据。 */
 function bareImportSpecs(src) {
   const out = [];
-  for (const m of stripComments(src).matchAll(/(?:from\s+|import\s*\(\s*|require\s*\(\s*)[\'"]([^\'"]+)[\'"]/g)) {
+  for (const m of stripComments(src).matchAll(/(?:from\s+|import\s*\(\s*|import\s+|require\s*\(\s*)[\'"]([^\'"]+)[\'"]/g)) {
     const spec = m[1];
     if (spec.startsWith('.') || spec.startsWith('node:') || spec.startsWith('/')) continue;
     if (BUILTIN_ROOTS.has(specRoot(spec))) continue;
@@ -285,8 +287,9 @@ async function main() {
     // "整组被删空"会和"设计如此"无法区分，所以按实测收紧。
     //  收紧：verify 58→63（重新挂回 inject-contracts / component-face /
     // route-ownership / settings-namespaces / js-text selftest 这 5 条，见 run-guards.mjs 的清单注释）、
-    // docs 1→7、smoke 5→6、all 29→77。收紧后"删一步即红"由下面的负对照钉住。
-    const CHAIN_FLOOR = { verify: 63, docs: 7, smoke: 6, all: 77 };
+    // docs 1→7（再 7→8：新增 `verify-subpackage-manifests` —— 子包包面不得漂回极简形态）、
+    // smoke 5→6、all 29→77（再 77→78，随 docs 那条）。收紧后"删一步即红"由下面的负对照钉住。
+    const CHAIN_FLOOR = { verify: 63, docs: 8, smoke: 6, all: 78 };
     /** 地板表与 GROUPS 的对齐体检：键名必须与**组名**逐一对齐（纯函数 ⇒ 负对照可直接喂）。 */
     const floorGaps = (groups, floors) => groups.map(([, g]) => g).filter((g) => !Number.isInteger(floors[g]));
     const problems = floorGaps(GROUPS, CHAIN_FLOOR).map((g) => '地板表缺组 ' + g
@@ -351,6 +354,21 @@ async function main() {
           && bareImportSpecs("import q from './local.mjs'").length === 0
           // 注释里的引号说明符**不得**被算成依赖（本仓纪律：判据先剥注释再判）
           && bareImportSpecs("// 夹具形如 from '" + fake + "'\nconst ok = 1;").length === 0;
+      })());
+    check('P5 negative control: 副作用导入形态（import 后直接跟引号）被同一条 bareImportSpecs 判出，相对路径 / 内置模块不误伤',
+      (() => {
+        // 与上一条同一手法：假包名在运行时拼出来 —— 本文件也是被扫的链成员，字符串字面量里
+        // 不许出现 `import '真包名'` 那种形状，否则守卫扫自己时会把字面量当成真裸依赖（自伤）。
+        const fakeSide = ['left', 'pad'].join('-');
+        return bareImportSpecs("import '" + fakeSide + "';").length === 1
+          && bareImportSpecs("import '" + fakeSide + "'").length === 1
+          // 副作用导入与 `from` 形态混排：两条都要算（漏一边或重复计数都会被这条钉住）
+          && bareImportSpecs("import '" + fakeSide + "';\nimport x from '" + fakeSide + "';").length === 2
+          && bareImportSpecs("import './local.mjs';").length === 0
+          && bareImportSpecs("import 'node:fs';").length === 0
+          && bareImportSpecs("import 'fs';").length === 0
+          // 注释里的副作用导入同样**不得**算（先剥注释再判，与上一条同一纪律）
+          && bareImportSpecs("// import '" + fakeSide + "'\nconst ok = 1;").length === 0;
       })());
     check('P5 negative control: the script-shape predicate rejects a wrong group, an extra step and the old inline chain',
       shapeError('node test/run-guards.mjs verify', 'verify', 'verify') === null

@@ -15,15 +15,19 @@
  *   ② 组件目录下的**每一个文件**都必须被 `package.json` 的 `files` 覆盖（否则打包时静默漏发，
  *      装到用户机器上才炸成 `ERR_MODULE_NOT_FOUND`）。口径与 `verify-package-files.mjs` 的
  *      `coveredBy` 一致（目录条目 / 精确路径 / glob 三类）。
- *   ③ `lib/routes/` 下每个文件仍必须**是**可解析的路由族模块、且**被某个行模块调用** ——
+ *   ③ 每个**路由族文件**都必须**被某个行模块调用** —— 面由 `routeModuleFiles()` 现算，=
+ *      `lib/routes/*.js` ∪ `lib/components/<c>/*.js`（组件目录里的族同样参与；修复前面只有
+ *      `lib/routes/`，于是"把组件里的调用点摘掉"这种残渣判不出来）；其中 `lib/routes/` 下每个
+ *      文件还**必须**是可解析的路由族模块 ——
  *      搬家最容易留下的两种残渣都在这里现形：①复制而不是删除（旧文件成了没人调用的孤儿）；
- *      ②文件没了注册入口（认不出来 ⇒ 从路由索引里静默消失）。
+ *      ②`lib/routes/` 里的文件没了注册入口（认不出来 ⇒ 从路由索引里静默消失）。
  *
  * ── 判据必须有牙 ───────────────────────────────────────────────────────────────
  * 只断言"今天干净"不够：解析器一旦静默返回空表，①的"零违规"会变成空对空。因此：
  *   · 覆盖面地板（≥2 个组件行、每行都解析到 ≥1 个实现模块、`lib/routes/` 非空）；
  *   · 负对照喂**同一条判据函数**：合成一个"实现留在 `lib/routes/`"的组件 ⇒ 必须判红；
- *     把真实组件行的第一个实现文件改写成 `lib/routes/` 下的同名文件 ⇒ 同样判红。
+ *     把真实组件行的第一个实现文件改写成 `lib/routes/` 下的同名文件 ⇒ 同样判红；
+ *     一个合成**组件族**（在磁盘上、导出注册入口、零调用点）⇒ 必须被判成孤儿。
  * 真实世界的负对照（报告里复算）：把某个已出户组件的实现文件**临时复制回** `lib/routes/`
  * ⇒ 本守卫判红（③ 的孤儿 + ① 的归属违规），删除临时文件 ⇒ 复绿。
  *
@@ -33,7 +37,7 @@ import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  buildIndex, routeModuleCandidates, COMPONENT_MODULES, rowRegistrationCounts, patchRowNames,
+  buildIndex, routeModuleCandidates, routeModuleFiles, COMPONENT_MODULES, rowRegistrationCounts, patchRowNames,
 } from './tools/host-route-index.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -236,29 +240,53 @@ console.log('\n② 组件目录下的文件逐条进 `package.json` 的 `files`'
     bare.join(', ') || '（没判出来）');
 }
 
-// ═══ ③ lib/routes/ 下每个文件仍必须被某个行模块调用 ═════════════════════════════
-console.log('\n③ `lib/routes/` 下每个文件仍必须被某个行模块调用（没有孤儿 / 没有认不出的文件）');
+// ═══ ③ 每个路由族文件仍必须被某个行模块调用（面 = lib/routes/ ∪ 组件目录） ══════
+console.log('\n③ 每个路由族文件（`lib/routes/` 与组件目录里的实现）仍必须被某个行模块调用');
 {
-  const routeFiles = routeModuleCandidates().filter((rel) => rel.startsWith('lib/routes/'));
+  // 两个文件面都取自 `host-route-index.mjs` 的现算真源（不另抄一份组件名单）：
+  //   · `routeModuleFiles()` = **真路由族**（含 `export function register…Routes(webServer` 入口），
+  //     面 = `lib/routes/*.js` ∪ `lib/components/<c>/*.js` ⇒ **孤儿判据用这一面**（组件族必须在内：
+  //     修复前这里只取 `lib/routes/`，组件目录里的族被摘掉调用点也判不出来）；
+  //   · `routeModuleCandidates()` 的 `lib/routes/` 那一份 = "可能住着族"的文件面 ⇒ 只有它参与
+  //     "认不出入口"判据（组件目录里的 `index.js` / `supervisor.js` 之类本就不是族，扩到那里是误报）。
+  const routeFiles = routeModuleFiles();
+  const libRouteCandidates = routeModuleCandidates().filter((rel) => rel.startsWith('lib/routes/'));
   const moduleRels = new Set(modules.map((m) => m.rel));
-  const unrecognized = unrecognizedRouteFiles(routeFiles, moduleRels);
+  const unrecognized = unrecognizedRouteFiles(libRouteCandidates, moduleRels);
   const orphans = orphanRouteFiles(routeFiles, orphanRels);
   // ⚠️ 原先这里是 `routeFiles.length >= 15`（快照：上游合并路由族 ⇒ 无判别力的红）。
   //    改成**跨列举面覆盖对账**：`lib/routes/` 下每个 `buildIndex()` 认作路由族的文件都必须在
   //    本守卫的候选文件面里（两个列举面互相兜底；面塌陷 / 过滤条件写错都会点名）。
-  const builtRouteRels = built.modules.filter((m) => m.rel.startsWith('lib/routes/')).map((m) => m.rel);
-  const notScanned = uncoveredMembers(routeFiles, builtRouteRels);
-  check('覆盖面：`buildIndex()` 的路由族文件面 ⊆ 本守卫的 `lib/routes/` 候选面（不写死文件数，防空集恒真）',
-    builtRouteRels.length > 0 && notScanned.length === 0,
-    '候选 ' + routeFiles.length + ' 个 · 索引认作路由族 ' + builtRouteRels.length + ' 个'
-      + (notScanned.length ? ' · 漏扫 ' + notScanned.join(' ') : ''));
+  const builtLibRoutes = modules.filter((m) => m.rel.startsWith('lib/routes/')).map((m) => m.rel);
+  const notScannedLib = uncoveredMembers(libRouteCandidates, builtLibRoutes);
+  check('覆盖面：`buildIndex()` 的 `lib/routes/` 族文件面 ⊆ 本守卫的候选面（不写死文件数，防空集恒真）',
+    builtLibRoutes.length > 0 && notScannedLib.length === 0,
+    '候选 ' + libRouteCandidates.length + ' 个 · 索引认作路由族 ' + builtLibRoutes.length + ' 个'
+      + (notScannedLib.length ? ' · 漏扫 ' + notScannedLib.join(' ') : ''));
   check('negative control：索引认得、本守卫候选面里没有的文件 ⇒ 同一条 uncoveredMembers 判出',
-    uncoveredMembers(routeFiles, [...builtRouteRels, 'lib/routes/zzz-not-scanned.js']).length === 1
-    && uncoveredMembers(routeFiles, builtRouteRels).length === 0);
+    uncoveredMembers(libRouteCandidates, [...builtLibRoutes, 'lib/routes/zzz-not-scanned.js']).length === 1
+    && uncoveredMembers(libRouteCandidates, builtLibRoutes).length === 0);
+  // ⚠️ 孤儿面的地板（这一条就是修复缺口的判据）：**组件行拥有的实现必须落在孤儿面里**。组件清单与
+  //    "谁拥有哪个实现"都现算（`COMPONENT_MODULES` + `ownedRouteModules()`，后者内部走
+  //    `rowRegistrationCounts`）—— 面塌回 `lib/routes/`-only 时这些文件**不在面内**，这里点名。
+  const builtRouteRels = modules.map((m) => m.rel);
+  const componentOwned = [...new Set(COMPONENT_MODULES.flatMap((rel) => ownedRouteModules(rel, modules).owned))];
+  const notScannedComponents = uncoveredMembers(routeFiles, componentOwned);
+  check('覆盖面：组件行拥有的实现模块 ⊆ 孤儿扫描面（组件族不参与 ⇒ 从这里点名）',
+    componentOwned.length > 0 && notScannedComponents.length === 0,
+    '组件实现 ' + componentOwned.length + ' 个'
+      + (notScannedComponents.length ? ' · 不在面内 ' + notScannedComponents.join(' ') : ''));
+  check('negative control：把孤儿面塌回 `lib/routes/`-only（修复前的形态）⇒ 组件实现被同一条 uncoveredMembers 判出不在面内',
+    componentOwned.length > 0
+      && uncoveredMembers(routeFiles.filter((rel) => rel.startsWith('lib/routes/')), componentOwned).length === componentOwned.length
+      && uncoveredMembers(routeFiles, componentOwned).length === 0);
+  check('覆盖面：索引认作路由族的文件面 ⊆ 孤儿扫描面（面塌陷 ⇒ 红）',
+    builtRouteRels.length > 0 && uncoveredMembers(routeFiles, builtRouteRels).length === 0,
+    '族文件 ' + routeFiles.length + ' 个 · 索引 ' + builtRouteRels.length + ' 个');
   check('`lib/routes/` 每个文件都是可解析的路由族模块（文件在、入口认不出来 ⇒ 从索引静默消失）',
     unrecognized.length === 0, unrecognized.join(', ') || '全部有注册入口');
-  check('`lib/routes/` 每个文件都被某个行模块调用（复制而非搬移会在此处现形）',
-    orphans.length === 0, orphans.join(', ') || '零孤儿（行模块 ' + moduleRels.size + ' 个）');
+  check('每个路由族文件都被某个行模块调用（`lib/routes/` 里的残渣 / 组件目录里被摘掉调用点的族都在此现形）',
+    orphans.length === 0, orphans.join(', ') || '零孤儿（行模块 ' + moduleRels.size + ' 个 · 族文件 ' + routeFiles.length + ' 个）');
   // 负对照（同一条判据函数）：喂合成输入 —— 无入口 / 孤儿都必须被判出，干净输入不报。
   const fakeOrphans = new Set(['lib/routes/probe.js']);
   check('负对照：无注册入口的文件与孤儿文件都被同一条判据判出（干净输入不报）',
@@ -266,6 +294,13 @@ console.log('\n③ `lib/routes/` 下每个文件仍必须被某个行模块调�
     && orphanRouteFiles(['lib/routes/probe.js', 'lib/routes/ok.js'], fakeOrphans).join() === 'lib/routes/probe.js'
     && unrecognizedRouteFiles(['lib/routes/ok.js'], new Set(['lib/routes/ok.js'])).length === 0
     && orphanRouteFiles(['lib/routes/ok.js'], new Set()).length === 0);
+  // 负对照（同一条 orphanRouteFiles）：**合成组件族** —— 文件在磁盘上、导出注册入口、但没有任何调用点
+  // ⇒ 必须判成孤儿（修复前面里没有组件目录，这种族一律判不出来）；有调用点时不报（否则只会"一律红"）。
+  const fakeComponentFamily = 'lib/components/probe/probe.js';
+  check('负对照：磁盘上、导出注册入口、但零调用点的合成组件族被同一条 orphanRouteFiles 判成孤儿',
+    orphanRouteFiles([fakeComponentFamily], new Set([fakeComponentFamily])).join() === fakeComponentFamily
+    && orphanRouteFiles([fakeComponentFamily], new Set()).length === 0,
+    orphanRouteFiles([fakeComponentFamily], new Set([fakeComponentFamily])).join() || '（没判出来）');
 }
 
 console.log('');

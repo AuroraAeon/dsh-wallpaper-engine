@@ -177,6 +177,9 @@ const clientDts = readFileSync(join(ROOT, 'lib', 'types', 'client.d.ts'), 'utf8'
 //    不再是 `lib/index.js`。`sceneFieldsFor`/`webFieldsFor`/`buildInventory` 三个函数都在这里。
 const inventorySrc = readFileSync(join(ROOT, 'lib', 'inventory.js'), 'utf8');
 const clientCode = readFileSync(join(ROOT, 'src', 'client.js'), 'utf8');
+// 宿主半的**导出面真源**：`package.json` 的 `main`（= `lib/index.js`）。P6b 按它的 `export`
+// 语句对账 `index.d.ts` —— 与 P6 对账 client 半是**同一件事的两半**。
+const hostCode = readFileSync(join(ROOT, 'lib', 'index.js'), 'utf8');
 
 const inventoryCode = INVENTORY_FUNCS.map((n) => functionBody(inventorySrc, n)).join('\n');
 const sourcesOk = INVENTORY_FUNCS.every((n) => {
@@ -252,6 +255,40 @@ console.log('\nP6  client 半：运行时导出的值都有类型声明');
   check('解析到 ≥2 个运行时导出（解析器没有空转）', runtime.length >= 2, 'runtime=[' + runtime.join(', ') + ']');
   check('每个 `exports.X =` 都有对应的值导出声明', missing.length === 0,
     runtime.length + ' 个导出；missing=[' + missing.join(', ') + ']');
+}
+
+console.log('\nP6b host 半：`lib/index.js` 的每个运行时导出都有类型声明');
+{
+  // P6 只对账 client 半（`exports.X =` 形态）。宿主半走的是 ESM `export` 语句，形态不同 ⇒
+  // 下面这个解析器是**那一面的同一判据**：少对账一边，宿主新增导出就能悄悄没有类型声明
+  //（提交 6385b62e 新增 extOf / COMPONENT_VISIBILITY / COMPONENT_GATE / applyComponent 四个
+  //  运行时导出、index.d.ts 一个都没加，而 verify-types 照样 exit 0 —— 本节的由来）。
+  // 解析面覆盖本文件真实使用的四种形态：`export const/function X`、`export { A, B }`、
+  // `export { A as B } from '…'`、`export default`（default 不参与对账，类型面自有默认导出）。
+  function runtimeEsmExports(src) {
+    const out = new Set();
+    for (const m of src.matchAll(/^[ \t]*export[ \t]+(?:async[ \t]+)?(?:const|let|var|function|class)[ \t]+([A-Za-z_$][\w$]*)/gm)) out.add(m[1]);
+    for (const m of src.matchAll(/^[ \t]*export[ \t]*\{([^}]*)\}/gm)) {
+      for (const part of m[1].split(',')) {
+        const n = part.trim().split(/[ \t]+as[ \t]+/).pop().trim();
+        if (/^[A-Za-z_$][\w$]*$/.test(n)) out.add(n);
+      }
+    }
+    return [...out];
+  }
+  const runtime = runtimeEsmExports(hostCode);
+  const declared = declaredValueExports(hostDts);
+  const missing = runtime.filter((n) => !declared.includes(n));
+  check('解析到 ≥3 个宿主运行时导出（解析器没有空转；本半边今天有 inject/apply/applyComponent/extOf/两个常量）',
+    runtime.length >= 3, 'runtime=[' + runtime.join(', ') + ']');
+  check('每个宿主运行时导出都有对应的值导出声明（新增导出漏声明 ⇒ 判红）', missing.length === 0,
+    runtime.length + ' 个导出；missing=[' + missing.join(', ') + ']');
+  // 负对照：把声明里的 applyComponent 整行删掉 ⇒ 同一判据必须只报这一个名字（不是恒真/恒假）。
+  const mutated = hostDts.split('\n').filter((l) => !/\bapplyComponent\b/.test(l)).join('\n');
+  const mutatedMissing = runtime.filter((n) => !declaredValueExports(mutated).includes(n));
+  check('负对照：删掉 applyComponent 声明后只报缺 applyComponent',
+    mutated !== hostDts && missing.length === 0 && mutatedMissing.join(',') === 'applyComponent',
+    'control missing=[' + mutatedMissing.join(', ') + '] baseline missing=[' + missing.join(', ') + ']');
 }
 
 console.log('\nP7  负对照：删掉 apply 声明的 client.d.ts 必须被判缺');
