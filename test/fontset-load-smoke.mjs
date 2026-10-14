@@ -115,7 +115,7 @@ function mount({ fetchImpl, store }) {
   };
   const code = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8');
   const cap = { handoff: null };
-  // 2026-10-09 字体节迁侧栏：这台的面板渲染器必须把**官方侧栏 body** 也注册出来（字体 UI
+  //  字体节迁侧栏：这台的面板渲染器必须把**官方侧栏 body** 也注册出来（字体 UI
   // 现在只画在侧栏外观页），且要把「外观页 + 字体节展开」的 UI 状态播进 store ——
   // 与 verify-client / verify-system-fonts 同一套手法（qp-* 键仅 UI 状态，不进 config.json）。
   store['dsh-wallpaper-engine:qp-tab'] = 'appearance';
@@ -382,7 +382,7 @@ const waitBoot = () => new Promise((r) => { setTimeout(r, 50); });
     //    `/fontsets/import` 永远收不到 POST，而失败**看起来像"导入功能坏了"**。
     //    本档原文就想避开这个陷阱，但"取第一个"恰好**没有**避开它（第一个 = 根）。
     //
-    //    2026-10-11 实测暴露：把设置页的字体节改成**默认展开**之后，设置页树里也出现了那枚
+    //     实测暴露：把设置页的字体节改成**默认展开**之后，设置页树里也出现了那枚
     //    按钮，"第一个"由**侧栏树**变成**设置页树的根** ⇒ 这个潜伏的定位错误当场现形
     //    （4 条判据红：POST 没发出、版本不符没文案）。**产品是好的，坏的是这个定位器。**
     //    ⇒ 取**最小**的候选容器：在"子树里既有那枚按钮、又有 .json input"的节点中，取子树
@@ -412,7 +412,7 @@ const waitBoot = () => new Promise((r) => { setTimeout(r, 50); });
   //    （玻璃预设那一枚 accept 逐字相同）。判据：它所在那一行里同时有「新建（以当前外观）」——
   //    那是字体集编辑器独有的按钮，预设行没有。缺了这条，"拿错了 input"会伪装成功能故障
   //    （喂进去的是预设导入 ⇒ `/fontsets/import` 收不到 POST ⇒ 看起来像"导入坏了"，
-  //    2026-10-11 实测就这么红过 4 条）。
+  //     实测就这么红过 4 条）。
   if (opened.fileInput) {
     // ⚠️ 必须**同时**要求"含这枚 input"**且**"含至少一个按钮" —— 只要求含 input 的话，
     //    最小的那个节点就是 **input 自己**（它的子树当然含它），于是同行按钮恒为空

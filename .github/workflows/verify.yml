@@ -137,8 +137,8 @@ jobs:
       #     实测 `git grep -c -I -E ' +$' HEAD -- 'assets/**'` ⇒ **1821 行**，全部在
       #     `assets/mascot/vector-960x1024.svg`（该文件每行路径数据都以空格结尾）。
       #     不豁免就等于让一条格式门去审查一份导出文件。
-      # 本机复算入口（CI 有 bash、本机没有 ⇒ 逐条 git 命令可直接跑）见
-      # `docs/wip/TEST-ANCHORING.md` §13；那里同时留着"HEAD 树曾有 2 命中 ⇒ 这一步会红"的负对照记录。
+      # 本机复算入口：CI 有 bash、本机没有 ⇒ 下面这几条 git 命令可直接照跑。
+      # 负对照：在树上临时造 2 处尾随空白 ⇒ 这一步必须红（否则它就是恒真的摆设）。
       - name: 无尾随空白（扫被跟踪文件；`git diff --check` 在 CI 恒空，不是同一条判据）
         shell: bash
         run: |

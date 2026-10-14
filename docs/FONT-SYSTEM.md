@@ -8,8 +8,7 @@
 > 决策与取舍见 [`adr/0002`](./adr/0002-settings-schema-single-source.md)（值的单一真源）。
 > 官方令牌层约束（原 `V1–V10`）**由守卫执行，不靠散文**：白字保护与对比度见
 > `test/verify-readability.mjs`，玻璃合成与令牌落点见 `test/verify-glass-compositing.mjs`。
-> 那条约束的实测结论（F0 真机确认）作为历史记录留在
-> [`archive/wip/OPEN-ITEMS.md`](./archive/wip/OPEN-ITEMS.md) §9.1。
+> 那条约束的实测结论（F0 真机确认）由上面那些守卫的断言持有；历史记录见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
 这个目录是**字体系统的全部实现**。之所以单独成目录：字体有三个**互不相同的作用通道**，
 如果不放在一起，改动时很容易用错通道（症状是"改了没反应"，且在真机上才看得出来）。

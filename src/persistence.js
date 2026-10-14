@@ -12,7 +12,7 @@
  *   SETTINGS_KEY     ← localStorage 键（client.js 顶层 const）
  *   SETTINGS_URL     ← 宿主设置路由（client.js 顶层 const）
  *   sanitizeSettings / serializeSettings / DEFAULTS ← lib/settings-schema.js（消毒 / 白名单 / 默认值）
- *   settingsNamespaceOf / KINDS / SETTINGS_META_NAMESPACE ← 同文件（P1-S2：差分按组件簇分组）
+ *   settingsNamespaceOf / KINDS / SETTINGS_META_NAMESPACE ← 同文件（差分按组件簇分组）
  *   emit             ← 单向重渲染（启动加载完成后通知一次）
  *   applyEffects     ← src/effects.js（设置落地到 DOM）
  *   setAdapterFromHost ← src/adapter.js（宿主上报的适配目标观测值）
@@ -31,7 +31,7 @@
  *     的路径都必须有明确理由（目前只有一条：宿主还没有任何存档时做一次性迁移）。
  *   · **写必须 debounce 且可重试**：滑块每格都 JSON.stringify + 同步写 localStorage 会拖垮拖动；
  *     非 2xx 要留下脏标记（否则宿主文件变旧，下次加载会把用户的设置**回滚**）。
- *   · **只发改动键**（P1-S2）：宿主侧 `PUT /settings/<ns>` 是**按键合并**的，所以客户端维护"上一次
+ *   · **只发改动键**：宿主侧 `PUT /settings/<ns>` 是**按键合并**的，所以客户端维护"上一次
  *     成功推送的快照"，把与它不同的键按组件簇分组、每簇一个请求发出去；无改动 ⇒ 一个请求都不发。
  *     不进任何簇的键（`CLIENT_ONLY` 只住 localStorage、`settingsVersion` 属 `meta`）与 `kind:'const'`
  *     的键（宿主侧改不动，发了只会被 ignored）一律不发。**唯一的整段路径**是首启迁移：宿主还没有
@@ -94,7 +94,7 @@ let persistDirty = false;
 // host→selection merge when the user edited settings while the GET was in
 // flight (the user's pending PUT is newer than the host's answer).
 let persistWrites = 0;
-// 差分基线（P1-S2）：宿主**已知持有**的那份快照（客户端形状，134 键）。`null` = 还不知道宿主
+// 差分基线：宿主**已知持有**的那份快照（客户端形状，134 键）。`null` = 还不知道宿主
 // 有什么（loadPersisted 未跑 / 宿主不可达 / 首启迁移）⇒ pushPersisted() 走老整段入口。
 // 只在"写入成功 / 宿主值真的被采纳"时推进，所以失败会自动重发同一批键（宿主侧按键合并 ⇒ 重发幂等）。
 let pushedSnapshot = null;

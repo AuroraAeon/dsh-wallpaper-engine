@@ -36,7 +36,7 @@
  *   ⑧c（P2-6）fiber 卸载必须真的撤路由：`apply` 交回的 teardown **也要**交给 fiber（`ctx.effect`）——
  *      cordis 对**有 `prototype`** 的插件回调（`export function apply(…)`）走 `new callback(ctx, config)`
  *      分支、**返回值被丢弃** ⇒ 只 `return dispose` 时 fiber 卸载不撤路由，关掉再打开撞
- *      `webserver: duplicate … route`（2026-10-14 真机故障）。判据 = 模拟构造分支（丢返回值）的
+ *      `webserver: duplicate … route`（真机故障）。判据 = 模拟构造分支（丢返回值）的
  *      「装载 → 卸载 → 再装载」往返 + 一条负对照 + 真 cordis 往返（缺 `node_modules` 依赖时**出声**跳过）。
  *   ⑨ `moduleScopeWithoutImports` 的 import 形态夹具（P2-4 O2）：跨行 import 与"import 行带尾注释"
  *      两种形态都必须只剥掉 import 自身、**不**连带吞掉后续真实引用（吞掉 = 判据静默变绿）。
@@ -780,11 +780,9 @@ section('⑥ 组件行（P2-1/P2-2，逐行数据驱动）：patch 子行 ⇄ ex
   // 期望值**现算**：每个 bundle 行（`MAIN_MODULES` = 门面 + 全部组件行，数据驱动）应当注册的条数 =
   // 它调用的路由族的条数之和（`rowRegistrationCounts`）。单点真源 = 这张行清单 × 那份族表。
   //
-  // 为什么写死的 42 会烂（实测）：它是 P2-1 那一刻的快照（当时只有 about-notice 一个组件行），
-  // 之后 `/occlusion` 这条**真**路由（`lib/routes/occlusion.js:52`，门面 `lib/index.js:302` 调用）
-  // 加进来 ⇒ 数字过期、判据恒红。取证见 `docs/wip/TEST-ANCHORING.md` §8：
-  //   行清单 × 族表算出的期望 = 门面 34 + about-notice 2 + mascot-avatar 2 + media-bridge 5 = 43；
-  //   实测并集 43、跨行零重复、无孤儿 ⇒ 快照过期，不是"多注册"。
+  // 写死的快照数字会烂：行清单或族表一变它就过期 ⇒ 判据恒红（且红得没有信息量）。
+  // 现算出来的期望 = 门面 34 + about-notice 2 + mascot-avatar 2 + media-bridge 5 = 43；
+  // 并集 43、跨行零重复、无孤儿 ⇒ 与"多注册"是两回事：真出事时并集会大于 Σ 行声明。
   // ⚠️ 这条对账同时覆盖**门面**的注册数（原先只有组件行逐行对账，门面的 34 条只被总数隐性约束）。
   const rowExpected = MAIN_MODULES.map((rel) => ({ rel, ...rowRegistrationCounts(rel, routeMods) }));
   const union = unionReconciliation(registered.length, rowExpected, dupes);
@@ -837,7 +835,7 @@ section('⑦ 判据自身有牙（正负对照调同一条 parseInsertRows / row
     kinds(good + '\n- insert:\n' + legalRow('c', BARE + '/c')).has('inserts'));
 }
 
-// ── ⑧ 组件行的「取服务」姿势 + 账本三态（2026-10-14 真机故障的回归判据）────────────────────────
+// ── ⑧ 组件行的「取服务」姿势 + 账本三态（真机故障的回归判据）────────────────────────
 // 故障原文（进注释便于日后 grep）：`Error: cannot get property "webServer" without inject at applyImpl`。
 // 形态：组件行**没有** `inject` 声明却直读 `ctx.webServer` ⇒ cordis 的 reflect `get` 陷阱当场抛错
 //（`ctx.<名>` 直读只对「inject 声明过」的服务、以及 reflect 混入的 `get`/`logger`/… 放行）⇒ 紧随其后的
@@ -967,7 +965,7 @@ section('⑧ 组件行取服务的 inject 姿势 + 装载账本三态（真机�
   bootMod.failedComponents.clear();
   bootMod.startedComponents.clear();
 
-  // ── ⑧c fiber 卸载必须真的撤路由（2026-10-14 真机故障：关掉再打开 ⇒ duplicate route）──────────────
+  // ── ⑧c fiber 卸载必须真的撤路由（真机故障：关掉再打开 ⇒ duplicate route）──────────────
   // 故障原文：`webserver: duplicate exact route "/wallpaper-engine/inventory"`（三行全中：裸行 + 两组件行）。
   // 根因（真 cordis 探针实证）：插件入口导出的是**函数声明** `apply`（有 `prototype`）⇒ cordis 的 loader
   // 走 `new callback(ctx, config)` 分支、**返回值被丢弃** ⇒ 我们 return 的 teardown 从未进 fiber 的

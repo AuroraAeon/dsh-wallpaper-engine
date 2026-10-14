@@ -49,7 +49,7 @@ const check = (name, ok, detail) => {
 // 对应命中就判红（清单过期 = 判据的牙被拔了，本仓对允许清单的既有口径）。
 
 /** 整块纯数据：样式族的 8 个域模块（其中文只出现在 CSS 注释里，不进界面）。
- *  2026-10-13（刀3）：原先登记的单文件 `src/styles.js` 已按视觉域拆成 8 个域模块 + 组装点
+ *  （刀3）：原先登记的单文件 `src/styles.js` 已按视觉域拆成 8 个域模块 + 组装点
  *  （组装点无 CSS）⇒ 逐域登记，判据（kind / minLength / 空转检查）一字未改。 */
 const DATA_BLOCKS = [
   { file: 'src/styles-base.js', kind: 'template', minLength: 10000, why: '样式域 base 是纯数据；其内的中文只出现在 CSS 注释（不渲染到界面）' },

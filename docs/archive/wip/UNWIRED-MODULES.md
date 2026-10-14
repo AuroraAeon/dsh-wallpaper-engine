@@ -1,5 +1,10 @@
 # 未接线域模块盘点（9 个"发布面孤儿"）
 
+<!-- status-banner: code-is-truth -->
+> **状态：历史记录（不反映现行实现）。** 第二期 task-9（「发布面孤儿」盘点）的交付物，已收口：
+> `node test/verify-reachability.mjs` 已由红转绿（0 不可达 / 0 行），九项裁定见本文 §14 / §16；
+> 复核口径见 [`./DOC-ROT-REPORT-2.md`](./DOC-ROT-REPORT-2.md)。
+
 > **哈希说明（squash 后）**：本文件中的短哈希是 **squash 前历史哈希**。追版本第二期收口已把
 > `c43a936..352467a` 的 **108 笔**压缩为一笔（父 = `c43a936`，树内容逐字未变），该提交以 tag `catchup-2nd` 标注。
 > 原文可由分支 `backup/pre-squash-20261014` 取得；逐条对应见该提交正文附录。
@@ -317,7 +322,7 @@ installDir 与 owningLibraries，本分支把它塞进合并版 `we-discovery`�
    **P1 断言 `files` 覆盖 `lib/` 下每一个文件**（`:118-122`）⇒ **只删条目不删文件必红**；
    反之文件删了条目留着无害但应在同一次提交里清掉。
 3. **代码与文档里的相对路径**：`lib/upload-dir.js:5,10,57` 与
-   `lib/kernel/host-kernel.js:204`（指向 `lib/asset-paths.js` 的注释，`docs/wip/DOC-DRIFT-REPORT.md:97-99`
+   `lib/kernel/host-kernel.js:204`（指向 `lib/asset-paths.js` 的注释，`docs/archive/wip/DOC-DRIFT-REPORT.md:97-99`
    已记为遗留缺口）；`lib/config-store.js` 的临时名契约注释（`DEV-GUIDE.md:465` 引用它）；
    `lib/media-probe.js` 的调用点说明等。
 4. **封装面登记表 / 派生映射**：`docs/GUARD-MAP.md` 是 `test/tools/guard-targets.mjs --write`

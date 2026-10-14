@@ -242,7 +242,7 @@ node test/tools/host-route-index.mjs --write   # 重算并写入 docs/ROUTE-INDE
 2. **不改判据内容** —— 要改判据是另一件事（改完走 `npm run verify:all`），不搭这条的车。
 3. **不动 harness-compat 工作流** —— `test/compat-*` 与 `harness-compat.yml` 保持原样：需网络与真浏览器，
    本来就不在 verify 链里，分档管不着它。
-4. **不给归档文档加新判据** —— `docs/archive/**` 只作记录、不反映现行实现，不为它新增守卫。
+4. **不给归档文档加新判据** —— 归档件只作记录、不反映现行实现，不为它新增守卫。
 
 **动机一句话**：根因是**所有判据共用同一种红** —— "用户会撞上"与"仓库内务失真"这两种失败长得一样，
 合规成本就被最贵的那条判据决定；分档拆开了"谁决定红绿"，而 ADR-0006 进一步把"守散文"的那几条
@@ -325,8 +325,7 @@ node test/tools/host-route-index.mjs --write   # 重算并写入 docs/ROUTE-INDE
 [`adr/0006`](./adr/0006-comment-discipline-as-written-convention.md) 定死，`CODE-STRUCTURE.md` §6
 还专门留了一张"已从本表撤除"的清单记载它。
 
-**⚠️ 判据会腐烂，而腐烂有三种形态**（都实测发生过 —— 详见
-[`archive/wip/GLASS-CONFIG-REFACTOR.md`](./archive/wip/GLASS-CONFIG-REFACTOR.md) §10.23）：
+**⚠️ 判据会腐烂，而腐烂有三种形态**（都实测发生过）：
 
 | 形态 | 表现 | 触发条件 |
 |---|---|---|

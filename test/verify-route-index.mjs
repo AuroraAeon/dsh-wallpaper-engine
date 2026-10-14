@@ -167,7 +167,7 @@ console.log('\n⑤ 索引 == 运行时真实注册的路由（唯一能发现"�
   const applyComponent = mod.applyComponent || host.applyComponent;
   const registered = [];
   const mock = {
-    // 组件行与主行同款取服务姿势：`inject = ['webServer']` + 直读 `ctx.webServer`（2026-10-14 真机
+    // 组件行与主行同款取服务姿势：`inject = ['webServer']` + 直读 `ctx.webServer`（真机
     // 故障：未声明 inject 就直读会被 cordis reflect 门禁抛错）⇒ mock 提供 `webServer` 即可。
     webServer: {
       register(route) { registered.push(route); return () => {}; },

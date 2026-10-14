@@ -1,5 +1,10 @@
 # 第二轮文档 / 注释腐化检查（task-11 · 基线 `5201451`）
 
+<!-- status-banner: code-is-truth -->
+> **状态：历史记录（不反映现行实现）。** 第二期第二轮文档 / 注释腐化复核的过程记录，已收口：
+> 上一轮见 [`./DOC-DRIFT-REPORT.md`](./DOC-DRIFT-REPORT.md)，九项裁定见
+> [`./UNWIRED-MODULES.md`](./UNWIRED-MODULES.md)，判据锚定见 [`./TEST-ANCHORING.md`](./TEST-ANCHORING.md)。
+
 > 第二期大改（删 8 个文件 / 提取 `createUploadDirResolution` / `createConfigKit` 注入缝 /
 > 发现族改上游两族拆分 / 新增 soft 档 `verify-undefined-refs` / reachability 转绿）之后的**复核**。
 > 本轮结论：**该轮暴露的框架类腐化绝大多数已被当期 owner 就地修好**；本轮再修 **8 处死路径 +
@@ -18,7 +23,7 @@
      是**历史对象**不是工作树路径 ⇒ 本轮**不许改**（`ARCHITECTURE-SPLIT.md` §4 左列就是它）。
   3. **生成物不算腐化**：`lib/client.js` 按需由 `npm run build` 产出；它"不在盘上"时
      docs 里的引用**不是**死路径 —— 扫描时整体排除。
-- **豁免面**：`docs/archive/**` 与历史 `CHANGELOG`（[`adr/0006`](../adr/0006-comment-discipline-as-written-convention.md)
+- **豁免面**：`docs/archive/**` 与历史 `CHANGELOG`（[`adr/0006`](../../adr/0006-comment-discipline-as-written-convention.md)
   「历史文档不追溯，改了是伪造记录」）；4 份 wip 报告头部刚加的「哈希说明」原样保留。
 
 ## 1. 已改：死路径（组件行 / 内核化之后指错落点）
@@ -47,7 +52,7 @@ git grep -nE 'lib/routes/(now-playing|avatar|mascot|about-qr|github-stars)\.js\b
 | `docs/CODE-STRUCTURE.md` §2.2 后的 ⚠️ 块 | "上游同名文件里有一批**已不在 import 图上**的副本…真源与孤儿由 `verify-reachability` 现算（棘轮：只许收紧）" —— 现在一个副本都不剩，且该守卫是 **0/0** | "曾有 9 个副本长期不在 import 图上却留在发布面；**已逐个删掉或移回真源**（现在一个都不剩）⇒ 0 不可达 / 0 行（棘轮基线未动，绿是清干净换来的）" |
 | `docs/ARCHITECTURE-SPLIT.md` §5「不属于差异的一件事」 | "未修：`lib/we-assets.js` 的注释" —— 该注释**已在上一轮修掉**（`773e9f1`） | "两处都已修：LINUX-OCCLUSION 与 `lib/we-assets.js` 的 `WEBWALLGL_DIR` 注释"（`git grep vendored lib/we-assets.js` = 0） |
 | `docs/ARCHITECTURE-SPLIT.md` §7「已知缺口」里的 `lib/we-assets.js` 条目 | 同上：作为"仍写 vendored 渲染页"的未收口项挂着 | 改成 ~~删除线~~ + "**已修**"（事实：注释现在写"本仓的渲染页适配层，引擎本体走 npm `webwallgl`"） |
-| `docs/wip/DOC-DRIFT-REPORT.md` §4 首条 | "**现在判红**（exit 1）" —— 现在是绿的 | 改成"**当时判红**（第二期已转绿 0/0，见 §7）"，并加一行"下表是当时的判读" |
+| `docs/archive/wip/DOC-DRIFT-REPORT.md` §4 首条 | "**现在判红**（exit 1）" —— 现在是绿的 | 改成"**当时判红**（第二期已转绿 0/0，见 §7）"，并加一行"下表是当时的判读" |
 | 同上 §4 表 `steam-discovery` / `wallpaper-scan` 两行 | "现在的真源 = `lib/we-discovery.js`" —— 方向反了：第二期按上游两族拆分**取回了这两个文件本身**，合并版 `we-discovery.js` 已删 | "**原样取回**（不再是上游副本）：真源就是 `lib/steam-discovery.js` + `lib/wallpaper-scan.js` 两族" |
 | 同上 §2 表首行 + 新增 §7 | 同上（"活的是 `lib/we-discovery.js`"） | 那句改成"当时活的是…"，并新增 §7「第二期收口后的状态」：reachability 转绿、新增 soft 档 `verify-undefined-refs`、例外表收到 1 条，逐项见 `UNWIRED-MODULES.md` §14/§16 |
 
@@ -60,7 +65,7 @@ git grep -nE 'lib/routes/(now-playing|avatar|mascot|about-qr|github-stars)\.js\b
 
 **关于守卫步数**：本轮**没有**把"71 → 72 步"写进任何常青文档 —— 步数与清单的真源是
 `test/run-guards.mjs`（`node test/run-guards.mjs all` 的收尾行实测报 **72 步**），
-照 [`adr/0006`](../adr/0006-comment-discipline-as-written-convention.md) D2 只给复算命令。
+照 [`adr/0006`](../../adr/0006-comment-discipline-as-written-convention.md) D2 只给复算命令。
 
 ## 4. 判据承诺核对（任务第 5 项：散文承诺了判据、判据不存在）
 
@@ -80,9 +85,9 @@ git grep -nE 'lib/routes/(now-playing|avatar|mascot|about-qr|github-stars)\.js\b
 
 | 未改的东西 | 为什么 |
 |---|---|
-| `docs/archive/**`、`docs/CHANGELOG.md`、`docs/en/CHANGELOG.md` 里的旧路径/旧数字 | [`adr/0006`](../adr/0006-comment-discipline-as-written-convention.md)：账本描述"当时如何"，改了是伪造记录 |
-| `docs/wip/UNWIRED-MODULES.md`（49 处旧文件路径） | 它是**九项裁定的证据底稿**：那些路径正是被审计对象（"孤儿 vs 活侧"），去掉就没法复核；头部「哈希说明」按纪律保留 |
-| `docs/wip/DOC-DRIFT-REPORT.md` 里的旧路径引用（除已改的判定句） | 同上：那是"引旧路径作证据"的一列，且文件头已加"读作第一轮判读"的指引 |
+| `docs/archive/**`、`docs/CHANGELOG.md`、`docs/en/CHANGELOG.md` 里的旧路径/旧数字 | [`adr/0006`](../../adr/0006-comment-discipline-as-written-convention.md)：账本描述"当时如何"，改了是伪造记录 |
+| `docs/archive/wip/UNWIRED-MODULES.md`（49 处旧文件路径） | 它是**九项裁定的证据底稿**：那些路径正是被审计对象（"孤儿 vs 活侧"），去掉就没法复核；头部「哈希说明」按纪律保留 |
+| `docs/archive/wip/DOC-DRIFT-REPORT.md` 里的旧路径引用（除已改的判定句） | 同上：那是"引旧路径作证据"的一列，且文件头已加"读作第一轮判读"的指引 |
 | `docs/wip/BUNDLE-SPLIT.md`（映射表里 `lib/we-discovery.js` / `lib/asset-paths.js` 等） | 归 Lead 维护的活手册；其内容是该轮**迁移计划**的当时快照 |
 | `docs/wip/{COEXISTENCE-AUDIT,ISSUE-AUDIT-148PLUS,LINUX-OCCLUSION}.md` 的命中 | **假阳性**：`scripts/tmp-token-gate-scope.mjs` 原是 `.integration-notes/scratch-scripts/…` 的子串；`lib/Modal.module.css` / `lib/markdown/*.module.css` / `lib/Tooltip.module.css` 是**宿主 harness 包内**路径；`src/first-run.js` / `src/main.js` / `scripts/prepare-dependencies.mjs` 是**父仓 `dsh-my-ui`** 的相对路径；`test/ar01s03.html` / `docs/doc-org…html` / `docs/book/Xwayland.html` 是 URL 片段 |
 | `lib/routes/we-assets.js:36,60` / `lib/we-assets.js:47` 的 `src/local-assets.ts` | 指**上游 WebWallGL 渲染器仓**的同名端点契约（原文写明"契约对齐上游 renderer/src/local-assets.ts"），不是本仓文件 |

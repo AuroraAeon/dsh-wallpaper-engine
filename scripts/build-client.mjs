@@ -244,7 +244,7 @@ const INLINE_MODULES = [
     markers: ['function deleteLabel(row)', 'function renderFontSetEditor(ctx)'],
   },
   {
-    // 面板各节的统一节头构件（2026-10-11 二次修订：**两档都支持隐藏**）。
+    // 面板各节的统一节头构件（二次修订：**两档都支持隐藏**）。
     // ⚠️ 必须排在 `src/glass-panel.js` 与 `src/panel-tabs.js` **之前**：那两个模块都按名字
     //    直接调它（内联后同作用域）。虽然函数声明有提升、顺序其实不致命，但排在调用方前面
     //    才读得出依赖方向 —— 与 `we-base.js` 排最前是同一条理由。

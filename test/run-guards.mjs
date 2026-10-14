@@ -92,25 +92,22 @@ const npmStep = (script) => ({ file: null, npm: script, args: [], tier: 'hard', 
 // `verify-client` 才读它），重排会改变结论。
 
 /**
- * `npm run verify` —— 硬档（挡 PR）。旧链 43 条，其中软档 1 条（媒体桥，探测式 SKIP）。
+ * `npm run verify` —— 硬档（挡 PR），本组的唯一真源。
  *
- * ⚠️ 为什么下面这 5 条是**重新挂回来**的（可信度审计 2026-10-14，`docs/wip/TEST-CREDIBILITY-AUDIT.md`）：
- * 本分支侧的旧 `verify` 链（`3ed09abb` 的 47 步）里有
- * `verify-inject-contracts` / `verify-component-face` / `verify-route-ownership` /
- * `verify-settings-namespaces` 与 `js-text selftest`；合并「追版本 轮1」(`c43a9361`) 时
- * **整条取了上游链** ⇒ 这 5 条静默脱链，CI 从不跑它们 —— 那正是本会话一直"必须单跑
- * `verify-inject-contracts`（M8）/ `verify-component-face`（98 键）/ 两条命名空间与归属判据"的原因，
- * 也是"契约类强判据没人守"的根因。此处按**旧链的相对次序**还原，并在干净检出（无 node_modules）
- * 实测 5 条全部 exit 0 ⇒ 全部挂 **hard**，不需要 SKIP。
+ * ⚠️ 这 5 条**必须在链上**：`verify-inject-contracts` / `verify-component-face` /
+ * `verify-route-ownership` / `verify-settings-namespaces` / `js-text selftest`。
+ * 它们是契约类强判据（注入面 M8、内核分级面、实现归属 M10、设置分区、文本工具自检）；
+ * 少了它们**不会有任何东西变红** —— 链的短路特性会让"链外的强判据"变成摆设。
+ * 它们零依赖、干净检出下全部 exit 0 ⇒ 全部挂 **hard**，不需要 SKIP。
  * 链成员一变，必须重算 `test/fixtures/verify-chain.json`（`node test/verify-guard-chain.mjs --write-fixture`）
  * 并把 `test/verify-package-files.mjs` 的 `CHAIN_FLOOR` 收紧到实测值（那里有"删一步即红"的负对照）。
  */
 const VERIFY_STEPS = [
   step('test/verify-client-sync.mjs'),
   step('test/verify-client.mjs'),
-  // ⚠️ 我们的 D3 可见面判据（本分支独有）—— 它此前**不在链里**，于是轮 4 取上游 panel-tabs.js
-  // 丢掉 D3 gate 之后，它红了近 30 轮却没人跑到（守卫链的短路特性会让"链外的强判据"变成摆设）。
-  // 归位后：只要 gate 落点与声明表对不上，链就在这里断。
+  // ⚠️ D3 可见面判据必须留在链上：它不在链里时，一次取上游 panel-tabs.js 就能把 D3 gate 丢掉
+  // 而长期没人跑到（链的短路特性会让"链外的强判据"变成摆设）。
+  // 在链上：只要 gate 落点与声明表对不上，链就在这里断。
   step('test/verify-component-visibility.mjs'),
   step('test/verify-windows-caption.mjs'),
   step('test/verify-transcode-state.mjs'),
@@ -183,7 +180,7 @@ const DOCS_STEPS = [
   step('test/verify-retired-lines.mjs', [], 'soft'),
   step('test/verify-dead-declarations.mjs', [], 'soft'),
   // 未定义引用普查（"用了但没 import/声明"）：先按软档出声若干轮，再有据可依地议升 hard
-  // （`da00a7b` 那一类；`node --check` 与聚焦判据都照不到它）。
+  // （这一类；`node --check` 与聚焦判据都照不到它）。
   step('test/verify-undefined-refs.mjs', [], 'soft'),
   step('test/verify-guard-map.mjs', [], 'soft'),
   step('test/verify-guard-chain.mjs', [], 'soft'),

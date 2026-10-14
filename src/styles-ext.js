@@ -83,7 +83,7 @@ const CSS_EXT = `  /* ── 软件渲染回退（upstream #95，运行时探测
   html[data-windows-titlebar] body[data-ds-dark-theme][data-we-glass-fallback][data-we-glass-page][data-we-titlebar-glass][data-we-adapter^="desktop-"] div[class*="pI_x6G_frame"]::before {
     background: color-mix(in srgb, var(--we-surface-tint-dark, #0d1524) 92%, transparent) !important;
   }
-  /* 内容面（编辑器/终端）本来就是近不透明底板（--we-content-surface-alpha，默认
+  /* 内容面（编辑器/终端）本来就是近不透明底板（--we-content-surface-alpha，兜底
      88%），这里把同一条声明再挂一遍，让软件渲染下三块侧栏区域落在同一个规则块里。 */
   body[data-we-glass-fallback][data-we-sidebar-glass] [data-dsh-better-sidebar] .cm-editor,
   body[data-we-glass-fallback][data-we-sidebar-glass] [data-dsh-better-sidebar] .xterm,
@@ -240,7 +240,7 @@ const CSS_EXT = `  /* ── 软件渲染回退（upstream #95，运行时探测
      margin-left: auto 把它推到行尾（两者都是 flex 行）。
      ⚠️ 与折叠三角同排时**必须让位**（见下面那条相邻选择器）：三角也靠 margin-left: auto
      推右，两个 auto 在同一 flex 行里会**均分**剩余空间 —— ↺ 于是停在行中间，而"主题"
-     （那个节头没有 caret）的 ↺ 贴在最右端，同一批模块两种位置（用户 2026-10-13 报的正是
+     （那个节头没有 caret）的 ↺ 贴在最右端，同一批模块两种位置（用户报的正是
      这个）。现在的次序是 标签 → 三角 → ↺，三角吃掉剩余空间、↺ 紧跟其后贴在最右一列。
      ⚠️ 本段注释不许出现反引号：整套样式文本是模板字符串，一个反引号就拼断 JS。 */
   .we-mod-reset {
@@ -336,7 +336,7 @@ const CSS_EXT = `  /* ── 软件渲染回退（upstream #95，运行时探测
   /* 上传裁切弹窗（issue #191 问题 1）：居中模态 + 方形取景框。
      取景框 overflow: hidden 是"框外不显示"的唯一手段；框内那张图由 client.js 现算的
      几何定位（left/top 负偏移），**不用 transform** —— transform 会建合成层，
-     而这里每拖一下都改值（见 styles.js 里"不常驻合成层"那条纪律）。 */
+     而这里每拖一下都改值（见 styles-base.js 里"不常驻合成层"那条纪律）。 */
   .we-crop {
     position: fixed; inset: 0; z-index: 40;
     display: flex; align-items: center; justify-content: center;

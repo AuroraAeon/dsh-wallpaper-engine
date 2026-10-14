@@ -1,5 +1,11 @@
 # 文档 / 注释漂移同步报告（task-7 · docs-comment-sync）
 
+<!-- status-banner: code-is-truth -->
+> **状态：历史记录（不反映现行实现）。** 第二期 task-7（文档 / 注释漂移同步）的过程记录，已收口：
+> 后续两轮见 [`./DOC-ROT-REPORT-2.md`](./DOC-ROT-REPORT-2.md)（§7 是本文的复核结论）与
+> [`./DOC-ROT-REPORT-3.md`](./DOC-ROT-REPORT-3.md)；判据锚定见 [`./TEST-ANCHORING.md`](./TEST-ANCHORING.md)。
+> 正文里的短哈希是**当时那条线**上的（哈希说明见手册 [`../wip/BUNDLE-SPLIT.md`](../../wip/BUNDLE-SPLIT.md) 头部）。
+
 > **哈希说明（squash 后）**：本文件中的短哈希是 **squash 前历史哈希**。追版本第二期收口已把
 > `c43a936..352467a` 的 **108 笔**压缩为一笔（父 = `c43a936`，树内容逐字未变），该提交以 tag `catchup-2nd` 标注。
 > 原文可由分支 `backup/pre-squash-20261014` 取得；逐条对应见该提交正文附录。
@@ -7,9 +13,9 @@
 
 
 > **这份报告是 work item 的过程记录，不是台账**（`docs/README.md` §目录的寿命规则：过程记录住 `wip/`，
-> 结论进它该住的地方）。本轮结论的落点：结构 → [`docs/ARCHITECTURE-SPLIT.md`](../ARCHITECTURE-SPLIT.md)
-> 与 [`CODE-STRUCTURE.md`](../CODE-STRUCTURE.md)；纪律 → 不新增散文判据
-> （[`adr/0007`](../adr/0007-machine-checks-target-code-not-prose.md)）。
+> 结论进它该住的地方）。本轮结论的落点：结构 → [`docs/ARCHITECTURE-SPLIT.md`](../../ARCHITECTURE-SPLIT.md)
+> 与 [`CODE-STRUCTURE.md`](../../CODE-STRUCTURE.md)；纪律 → 不新增散文判据
+> （[`adr/0007`](../../adr/0007-machine-checks-target-code-not-prose.md)）。
 
 ## 0. 范围与判据口径
 
@@ -26,8 +32,8 @@
   ② **`origin/main:<path>` / `d561f5f^:<path>` 这类 git 对象引用不计**（前一个字符就是 `:` 的 ref 前缀）
   —— 它们指向历史对象、`git show` 可解析，不是工作树上的现址
   （`ARCHITECTURE-SPLIT.md` 的「上游位置」一列正是这个形态）。
-- **改法优先级**（照 [`adr/0006`](../adr/0006-comment-discipline-as-written-convention.md) D2 与
-  [`adr/0007`](../adr/0007-machine-checks-target-code-not-prose.md)）：**能写成"由 X 定义 / 以现算为准"
+- **改法优先级**（照 [`adr/0006`](../../adr/0006-comment-discipline-as-written-convention.md) D2 与
+  [`adr/0007`](../../adr/0007-machine-checks-target-code-not-prose.md)）：**能写成"由 X 定义 / 以现算为准"
   就不写死路径**；必须写路径时，写**在 import 图上的真源**。
 
 ## 1. 代码注释：只改注释，零可执行语句
@@ -64,14 +70,14 @@
 | `docs/adr/0011-preset-full-snapshot.md` L134/136/214 | **死路径** ×4 | "复用 `lib/routes/mascot.js` / `lib/routes/avatar.js` 的落盘语义" —— 两条路由已随组件出户 | `lib/components/mascot-avatar/mascot.js` / `avatar.js`（ADR-0011 的 D4/D5 仍现行，指针必须解析得到） |
 | `docs/wip/LINUX-OCCLUSION.md` L119 | **死路径** | 引 `lib/routes/now-playing.js` 作同族先例 | `lib/components/media-bridge/now-playing.js` |
 | 同上 L53 | **死路径** | "上游同步后（`lib/webwallgl/.upstream.json` 变更）" —— 该文件已随 npm 化删除 | 版本真源 `package.json` 的 `dependencies.webwallgl`（`^3.0.0`，`d561f5f` 起） |
-| `docs/README.md` §规范与参考 | 缺登记 | 本分支的"门面重写"没有在索引里被点名（`docs/**` 无任何记录 —— 这正是 task-7 要补的缺口） | 新增 [`ARCHITECTURE-SPLIT.md`](../ARCHITECTURE-SPLIT.md) 一行 |
+| `docs/README.md` §规范与参考 | 缺登记 | 本分支的"门面重写"没有在索引里被点名（`docs/**` 无任何记录 —— 这正是 task-7 要补的缺口） | 新增 [`ARCHITECTURE-SPLIT.md`](../../ARCHITECTURE-SPLIT.md) 一行 |
 | `docs/ARCHITECTURE-SPLIT.md` | **新增**（补缺口） | — | 三段形态 / 门面剩什么 / 搬家账 / 与上游差异 / 迁移路径 / 已知缺口；左列的"上游位置"一律写成 **git 对象引用 `origin/main:<path>`**（`git show` 可解析），不冒充工作树上的现址 |
 
 ## 3. 未改（附原因）—— **不做无判别力的批量替换**
 
 | 未改的东西 | 条数 | 原因 |
 |---|---|---|
-| `docs/archive/**` | 62 | [`adr/0006`](../adr/0006-comment-discipline-as-written-convention.md) 的 Consequences 明写"**历史文档不追溯**：`archive/**` 与 `CHANGELOG.md` 里的数值保持原样。它们是账本，描述'当时如何'，改了反而是伪造记录"；`docs/archive/**` 顶部也带"不反映现行实现"的状态横幅 |
+| `docs/archive/**` | 62 | [`adr/0006`](../../adr/0006-comment-discipline-as-written-convention.md) 的 Consequences 明写"**历史文档不追溯**：`archive/**` 与 `CHANGELOG.md` 里的数值保持原样。它们是账本，描述'当时如何'，改了反而是伪造记录"；`docs/archive/**` 顶部也带"不反映现行实现"的状态横幅 |
 | `docs/CHANGELOG.md` + `docs/en/CHANGELOG.md` | 25 + 25 | 同上（账本）。其中多条**是搬家本身**的记录（例："`lib/components/media-bridge/` 收 `lib/routes/now-playing.js`（逐字）"）—— 那些旧路径是**搬运的源**，改掉就把记录改错了 |
 | `docs/wip/COEXISTENCE-AUDIT.md` L20/42/243 | 4 | 顶部已声明"本文件是审计记录…数字与行号以复算为准"；且这 4 处**不是入库路径** —— 原文是 `.integration-notes/scratch-scripts/tmp-token-gate-scope.mjs`，扫描器只从 `scratch-scripts/` 起匹配到子串。**假阳性，未改** |
 | `docs/wip/ISSUE-AUDIT-148PLUS.md` L115/141/288/211 | 4 | 前三处是**宿主 harness 包内**路径（`@deepseek-ai/dsh-client-ui-primitives/lib/{Modal,markdown/CodeBlock,Tooltip}.module.css`），不是本仓文件；末一处是被 npm 化替换掉的旧 vendored 产物名（历史取证）。**非本仓漂移，未改** |
@@ -81,7 +87,7 @@
 | `docs/ROUTE-INDEX.md` / `docs/GUARD-MAP.md` | — | 生成物。**需要重算**的情形已由 Lead / chain-runner 收口（`ROUTE-INDEX` 由 `c9bd23d` 重算） |
 | `docs/wip/BUNDLE-SPLIT.md` | — | 归 Lead（本任务明确排除） |
 
-| `docs/wip/DOC-DRIFT-REPORT.md` **本文** | 16 | 逐条**引用旧路径作为证据**（"旧陈述为何失真"一列）—— 那是本报告的本职，不是现状断言 |
+| `docs/archive/wip/DOC-DRIFT-REPORT.md` **本文** | 16 | 逐条**引用旧路径作为证据**（"旧陈述为何失真"一列）—— 那是本报告的本职，不是现状断言 |
 
 **残留死路径的机器口径合计 = 143**（`docs/**` + 三份 README，不含两个生成物与 `BUNDLE-SPLIT.md`；
 git 对象引用已按 §0 口径②从扫描里排除）：
@@ -131,7 +137,7 @@ vendored 产物名；LINUX-OCCLUSION 6 是父仓 `dsh-my-ui` 的相对路径与 
   文件头补 `**Renumbered**: 0012 → 0013` 并把 `Supersedes` 行的旧编号显式标成"旧 0013–0016"，避免与自身新号混淆。
 - 引用面（**只改散文/注释行**）：`docs/ARCHITECTURE-SPLIT.md` · `docs/CODE-STRUCTURE.md`（仅组件行那条；
   **同文件里 `adr/0012-artifact-untracking` 那条保持 0012**）· `docs/HOW-IT-WORKS.md` · `docs/README.md` ·
-  `docs/wip/COMPONENT-TOGGLE-REPORT.md` · `lib/{index.js,kernel/component-session.js,routes/*.js,components/**}` ·
+  `docs/archive/wip/COMPONENT-TOGGLE-REPORT.md` · `lib/{index.js,kernel/component-session.js,routes/*.js,components/**}` ·
   `src/{client.js,panel-tabs.js,avatar-layer.js}` · `test/{verify-component-visibility,verify-scene-live,verify-scene}.mjs`。
 - 两份索引：`docs/adr/README.md` §索引 新增 0013 行（0012 行保留）；`docs/README.md` 的 ADR 表
   原 `0012` 行改标 `0013`，并**补上原先漏掉的 `0012-artifact-untracking` 行**。
@@ -184,8 +190,8 @@ vendored 产物名；LINUX-OCCLUSION 6 是父仓 `dsh-my-ui` 的相对路径与 
 | `git grep 'ADR-0012'` 残留 | 只剩 4 类**合法**处：`0012-artifact-untracking` 自身 · `adr/0003` 的 `Amended by ADR-0012`（指产物出库那份）· `archive/**` 与两份 `CHANGELOG` 正文（当时编号）· Lead 维护的 `docs/wip/BUNDLE-SPLIT.md` |
 | `src/client.js` 的 `node --check` | **有意失败**（它是构建期内联的**工厂体片段**，顶层 `return` 本就非法）⇒ 该文件的证据取 `npm run build` exit 0 + `verify-client-sync` 5/5，而不是 `--check` |
 
-> 本报告**不新增**任何机器判据（散文类判据按 [`adr/0006`](../adr/0006-comment-discipline-as-written-convention.md) /
-> [`adr/0007`](../adr/0007-machine-checks-target-code-not-prose.md) 不设）；上面的扫描脚本是一次性工具，
+> 本报告**不新增**任何机器判据（散文类判据按 [`adr/0006`](../../adr/0006-comment-discipline-as-written-convention.md) /
+> [`adr/0007`](../../adr/0007-machine-checks-target-code-not-prose.md) 不设）；上面的扫描脚本是一次性工具，
 > **不入库、不留在 `scripts/` 或 `test/tools/`**（`CODE-STRUCTURE.md` §4 反例第 5 条）。
 
 ## 7. 第二期收口后的状态（本轮复核，基线 `5201451`）

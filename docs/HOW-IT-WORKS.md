@@ -138,8 +138,7 @@ HTML 里注入 WE API shim（运行期从 `webwallgl` 包的 `webwallgl.mjs` 中
 - **切换只有一条写原语**：`POST …/activate` 改指针，改完客户端**必须把它那份值读回来采用**（只挪指针
   界面不会变）。"使用中"的判据是**值仍与采纳时一致**，指针另作能力判定（活动集不可删）。
 - **导入导出**：导出走宿主响应头 + 普通链接（桌面端 = 系统「另存为」），导入前按文件里的 `$schema`
-  预检并给出具体原因。决策记录见 [`archive/REFACTOR-ASSESSMENT.md`](./archive/REFACTOR-ASSESSMENT.md)
-  §9.5（活账本里**没有**这一节），过程记录见 [`archive/audits/F3-PLAN.md`](./archive/audits/F3-PLAN.md)。
+  预检并给出具体原因。取舍记录见 [`adr/0011`](./adr/0011-preset-full-snapshot.md)（导入导出随「整机配置快照」引入）。
 
 ### 本机字体清单：问操作系统，然后缓存
 

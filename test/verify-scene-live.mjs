@@ -1567,10 +1567,10 @@ for (const [name, ok] of clientChecks) check(name, ok);
       CH.includes('function probeVideoPoster(') && CH.includes('img.onload'));
     check('视频通道有兜底预算（拿不到海报也要能换下去 —— ⑥ 后它与执行器一起在通道里）',
       CH.includes('VIDEO_POSTER_BUDGET_MS') && CH.includes('setTimeout(stallGuard, VIDEO_POSTER_BUDGET_MS)'));
-    // 真机取证（2026-10-02）：旧行为"预算到期就放行"会在 `<video>` rs=0 时把层放上屏，
+    // 真机取证：旧行为"预算到期就放行"会在 `<video>` rs=0 时把层放上屏，
     // 屏上只剩这一层底色（用户看到"纯色帧"，实测 1–2 秒起）。判据：预算这一路**只许在
     // 屏上真有画面时放行**，停滞到上限就停手留旧壁纸，绝不放行空层。
-    // 审计收口（2026-10-02，合并 PR #128 后）：自续期链的取消句柄必须是读最新 id 的
+    // 审计收口（合并 PR #128 后）：自续期链的取消句柄必须是读最新 id 的
     // cancelStall 闭包 —— 快照 id 清不掉在途下一跳，连切时遗留 tick 会把下一层的空层推上屏；
     // 且链上放行只许经 recheck（video 有画面 ≠ 层有画面，Edge canvas 还要等第一笔）。
     check('兜底预算不得放行空层（停滞只留旧壁纸，不铺底色）',
@@ -1582,7 +1582,7 @@ for (const [name, ok] of clientChecks) check(name, ok);
       && LIVE.includes('p.cancelStall')
       && !CH.includes('budget: posterGiveUp')
       && !LIVE.includes('clearTimeout(p.posterGiveUp)'));
-    // 真机取证（2026-10-02，第二轮）：**只有设了「帧率上限」时才会再看到纯色帧** —— 抽帧就绪
+    // 真机取证：**只有设了「帧率上限」时才会再看到纯色帧** —— 抽帧就绪
     // 那一刻在在屏元素上 `src=transcoded; load()` 会清掉当前帧。判据：自动升级不许在"已上屏"
     // 的层上换源（推到下一次建层直接用抽帧版），只有"层还被闸门押着"或"用户刚主动改过上限"
     // 才当场换。
@@ -1647,7 +1647,7 @@ const hostLib = hostLibComposed;
     check('① 视频字节布局：同一 token 钉住同一份布局，且"搬家"改为服务期合成（磁盘 0、不跑 ffmpeg）',
       faststartLib.includes('function pinnedFaststartVariant(')
       && faststartLib.includes('const MEDIA_CHOICE_PIN = new Map();')
-      // 钉子命中必须**续期**（审计 2026-10-02）：循环壁纸一次播放远超 TTL，固定窗口会在
+      // 钉子命中必须**续期**（审计）：循环壁纸一次播放远超 TTL，固定窗口会在
       // 会话中途（seek/重缓冲触发新 Range 请求时）换字节布局。
       && faststartLib.includes('pin.at = now;')
       && /pinnedFaststartVariant\(abs, token, log\)/.test(mediaBytesFam)
@@ -1741,7 +1741,7 @@ const hostLib = hostLibComposed;
     check('③ 视频档两条腿都挂了类名（we-media--canvas + fitClass / we-media + fitClass）',
       videoFn.includes('canvas.className = \"we-media we-media--canvas\" + fitClass;')
       && videoFn.includes('media.className = \"we-media\" + fitClass;'));
-    // ⚠️ 实测回归（2026-10-05，Edge 里「视频壁纸切换无反应」）：切层闸门的镜像画布分支被写成
+    // ⚠️ 实测回归（Edge 里「视频壁纸切换无反应」）：切层闸门的镜像画布分支被写成
     // "有画布 ⇒ 判否"，本意是"等 weDrawFrame 画上第一笔" —— 但画笔的留痕（canvas.dataset.weDrawn）
     // 从来没被读，首笔落下时回调的 recheck 又撞回同一条判据 ⇒ Edge 腿的放行条件**永远不成立**，
     // 15s 停滞上限一到旧壁纸永久留屏。两半必须同时在场且指向同一留痕。
@@ -1757,7 +1757,7 @@ const hostLib = hostLibComposed;
     // ── ② 帧率上限的判据是「上限能不能真的降帧」─────────────────────────────────
     // 设计口径：上限存在的唯一目的是压 GPU 解码占用（Video Decode 随帧率上升）。
     // 所以只有"源帧率高于上限"才值得整片重编码；源帧率 ≤ 上限时转码纯属白烧。
-    // ⚠️ 曾经把"原生可解"当免转条件（2026-10-02 修）：4K120 的 H.264 既原生可解、
+    // ⚠️ 曾经把"原生可解"当免转条件（修）：4K120 的 H.264 既原生可解、
     // 又远高于上限 ⇒ 帧率上限在实际在用的 mp4 上一律失效、只剩一句面板文案。
     // 判据（三态都钉住）：帧率已知且高于上限 ⇒ 转；已知且不高于 ⇒ skip；**未知**才轮到
     // "原生可解就别盲转"这条成本护栏。
@@ -1791,7 +1791,7 @@ const hostLib = hostLibComposed;
       && OLD_NATIVE_EXEMPT_RE.test(OLD_NATIVE_EXEMPT_SAMPLE)
       && !OLD_NATIVE_EXEMPT_RE.test(videoSrc));
     // 容器**必须**能拿到真实后缀：媒体 URL 是 `/media/<base64url>`，路径里没有扩展名 ——
-    // 只靠 URL 判会**恒为假**（2026-10-02 实测回归：设了帧率上限时每次切换仍跑整片重编码）。
+    // 只靠 URL 判会**恒为假**（实测回归：设了帧率上限时每次切换仍跑整片重编码）。
     // 两端各钉一条：宿主把 mediaExt 发出来、客户端把它接进 selection 再传进判据。
     // ⚠️ `mediaExt:` 的**产出点**已随清单构建族搬进 `lib/inventory.js`（§★ W-B B1）；
     //    `extOf` 的**真源**在本分支是叶子 `lib/fs-paths.js`（F 接线后扫描族改为**注入**它，
@@ -1890,7 +1890,7 @@ const hostLib = hostLibComposed;
   }
   check('每个页签首行都从 ctx 解构（不许再靠闭包捕获）', noCtxLine.length === 0,
     noCtxLine.join(' ') || TAB_FNS.length + ' 个页签都显式取外界');
-  // ── 外观页五节的**默认开合**（2026-10-11 二次修订的用户口径，**必须源码级判**）──────────
+  // ── 外观页五节的**默认开合**（二次修订的用户口径，**必须源码级判**）──────────
   //    用户口径：侧边栏「**后面三个默认隐藏**」、设置页「**全部开启**但也支持隐藏」。
   //    ⚠️ 为什么不能靠渲染用例：那些用例是**直接调渲染器**（隔离测试），默认值住在**面板组件**
   //    里（`readQpOpen` / `readSavedPickerOpen` 的default 参数）—— 隔离测试**看不见默认值**。
@@ -2495,7 +2495,7 @@ check('host 侧 /media-control 只收 POST + 动作走 mediaBackend.control（�
     leftoversIn('switchRow("在线歌词", v)').join(',') === '在线歌词'
       && leftoversIn('switchRow("媒体信息", v) && switchRow("系统音频反应", v)').length === 2);
 
-// 用户口径（2026-10-04 更新）：侧栏壁纸列表的类型档（全部 / 场景 / 网页 / 视频 / 图片）
+// 用户口径（更新）：侧栏壁纸列表的类型档（全部 / 场景 / 网页 / 视频 / 图片）
 // **与设置页是同一个键 `typeFilter`** —— 类型变动两处同步、不做单独的档（原「面板本地
 // 瞬态 qpType + 两层交集空态兜底」整套退役：不再 setTransient("qpType")、不再有默认档
 // 行、空态不再有"没有交集/完整操作链"提示）。「图片」是后补的一档（上传的单文件图片
@@ -2667,7 +2667,7 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
   // 渲染器的 surface 档：侧栏档与设置页共用渲染器，差异一律走 `surface` 门 ——
   // 行为级 golden 在 verify-client.mjs。
   const gated = (text, label) => new RegExp('!sidebarSurface &&[\\s\\S]{0,240}?weT\\("' + label + '"\\)').test(text);
-  // ⚠️ 分档（ADR-0008 D4 **三次修订**，2026-10-11 用户口径）：**「全局字体」两档都画**。
+  // ⚠️ 分档（ADR-0008 D4 **三次修订**，用户口径）：**「全局字体」两档都画**。
   //    二次修订曾把它单向迁进侧栏（门 `!sidebarSurface` 反转为 `sidebarSurface &&`），随后
   //    用户在设置页找不到该节、报"字体自定义被干掉了" —— 用户口径是"两边都有"。现在**两个
   //    方向都不带 surface 门**，折叠门（`fontOpen`，默认收起）保留；「输入光标」照旧两档都画。
@@ -2932,7 +2932,7 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
     check('negative control: 仍住在组件里的处理器会被同一条判据判出',
       strayProcessors(src.replace('function WallpaperPicker() {', '')).length === PROMOTED.length);
   }
-  // 另：字体 / 主题处理器与三个 ctx 构造器**同样**必须在模块级（2026-10-07 从 WallpaperPicker
+  // 另：字体 / 主题处理器与三个 ctx 构造器**同样**必须在模块级（从 WallpaperPicker
   //    体内提到模块级）：它们只读模块级单例 `selection`、只调模块级函数（setFontValues /
   //    applyEffects / emit / ensureSystemFonts / fontset-store 与 preset-store 一族），
   //    不需要组件作用域；住在组件里等于每次渲染重建一份（函数 / 对象身份全变）。
@@ -2964,7 +2964,7 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
     check('negative control: 把界线画到文件开头（等价于"全算组件内"）同一条判据会判出全部',
       PROMOTED_FONT.every((n) => posOf(n) > 0) && flagged(0).length === PROMOTED_FONT.length);
   }
-  // 另（2026-10-07 第三刀）：壁纸库 / 库视图的纯处理器与纯常量同样提到模块级 —— 判据同前
+  // 另（第三刀）：壁纸库 / 库视图的纯处理器与纯常量同样提到模块级 —— 判据同前
   //    （只读模块级单例 `selection` / 只调模块级函数 ⇒ 不需要组件作用域；住在组件里等于每次
   //    渲染重建一份，函数 / 对象身份全变）。
   // ⚠️ 例外（**必须留组件内**，故意不进名单）：`group` / `candidates` 是读**可变** store 算出的
@@ -3009,7 +3009,7 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
       && flagged(hoisted('candidates'), compStart, inComponent).length === 0
       && !flagged(hoisted('candidates'), compStart, inComponent).includes('candidates'));
   }
-  // 另（2026-10-07 B3-a）：syncLayers 的 6 个分段助手也已提到模块级 —— 判据=只读模块级单例
+  // 另（B3-a）：syncLayers 的 6 个分段助手也已提到模块级 —— 判据=只读模块级单例
   //    `selection` / 只调模块级函数（`selection` 与 `IS_EDGE` 在本模块内是自由变量）⇒
   //    syncLayers 只留编排（键计算 / 取层 / 旧层处置 / Scrim / 抓帧探测 / 槽位收尾各一行调用）。
   const SYNC_LAYER_HELPERS = ['layerWantKey', 'obtainLayerNode', 'disposeOutgoingLayer',
@@ -3031,7 +3031,7 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
     //    大多用 `\\s` 吃掉了那个 `\\r` —— 只有这条把换行写成了字面量 `\\n`，于是**候选恒为 0**：
     //    症状是 `候选 0 个` + 279 passed / 1 failed，本机（LF 检出）却全绿。
     //    实测复现：`git clone -c core.autocrlf=true` 的检出上 `node test/verify-scene-live.mjs`
-    //    得到与 CI 逐字相同的失败（2026-10-01，PR #125 首次推送）。
+    //    得到与 CI 逐字相同的失败（PR #125 首次推送）。
     const CTX_DESTRUCTURE = (fnName) =>
       new RegExp('function ' + fnName + '\\(ctx\\) \\{\\r?\\n\\s*const \\{([^}]*)\\} = ctx;');
     const ctxFieldsOf = (fnName, text = tabsSrc) => {
@@ -3090,7 +3090,7 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
       qpSrc + '\nreturn { sidebarRenderCtx, QP_CTX_SETTINGS_ONLY, QP_TABS };');
     const bag = factory((k) => k, { createElement: () => null }, { getItem: () => null, setItem() {} });
     const ctx = bag.sidebarRenderCtx({ sel: {}, onAccent: () => 'ok' });
-    // 牙改钉**仍在名单里**的字段（2026-10-09 迁移后字体与玻璃高级行已移出占位器、
+    // 牙改钉**仍在名单里**的字段（迁移后字体与玻璃高级行已移出占位器、
     // 改传真值 ⇒ 拿它们戳会得到 "not a function" 而不是 [we-sidebar]，那是**预期**）：
     // 播放页专属的 onFpsCap（调用）与预设 glassPresets（取属性，单独那条也判）。
     const called = (() => { try { ctx.onFpsCap(); return 'no-throw'; } catch (e) { return String(e.message); } })();
@@ -3188,7 +3188,7 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
   //    两个模块各有自己的作用域 ⇒ 必须自己把它挂成全局（与上面那批模块级助手同一条口径）。
   globalThis.renderAppearanceGlassSection =
     (await import(pathToFileURL(join(root, 'src', 'glass-panel.js')).href)).renderAppearanceGlassSection;
-  // 节头构件（2026-10-11：三节在侧边栏默认收敛）—— 同上一条口径，给**真实现**：
+  // 节头构件（三节在侧边栏默认收敛）—— 同上一条口径，给**真实现**：
   // 折叠逻辑（`collapsible` 短路 + aria-expanded + caret）正是本节新判据要验的东西，
   // 挂个替身等于"判据测替身"（比红更糟）。
   globalThis.sectionHead =
@@ -3255,7 +3255,7 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
     // 设置页专属的（如 onFpsCap —— 帧率上限那行带 `!sidebarSurface` 门）才进占位器名单。
     'onLeftSidebarGlass', 'onTitlebarGlass', 'onSidebarGlass',
     'onSidebarAllCorners', 'onSidebarCornerRadius', 'onSidebarCornerSquare', 'onSidebarFullClear',
-    // 2026-10-09（ADR-0008 D4 二次修订）：字体节与玻璃高级行**迁入侧栏**（折叠块）⇒ 它们
+    // （ADR-0008 D4 二次修订）：字体节与玻璃高级行**迁入侧栏**（折叠块）⇒ 它们
     // 从 QP_CTX_SETTINGS_ONLY 占位器名单移出、由 quick-panel 真值接线 ⇒ 这些名字现在是
     // **quick-panel 源码里的裸标识符** ⇒ 必须在这里当形参给（漏一个就是 vm 求值 ReferenceError）。
     'onCaretColor', 'onSidebarAlpha', 'onSidebarBlur', 'onSidebarColor',
@@ -3267,7 +3267,7 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
     // 「要不要玻璃」整层退役，已清掉（src 里零出现 = 死数据）。
     'onToggleChildIndependent',
     'onGlassChildParam', 'childIndependentOn',
-    // ── 全局字体节（2026-10-09 迁入侧栏）：渲染器与 ctx 构造器都是 quick-panel 的
+    // ── 全局字体节（迁入侧栏）：渲染器与 ctx 构造器都是 quick-panel 的
     //    自由变量 —— 与上面同一条纪律。`ensureSystemFonts` 是清单触发点随迁带来的
     //    （effect 在 QuickPanel 里调它）。
     'fontSetCtx', 'officialColorOf', 'ensureSystemFonts',
@@ -3275,7 +3275,7 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
     'onGlobalFamily', 'onRefreshSystemFonts', 'onToggleFontCustom',
     'onThemeColor', 'onThemeColorClear', 'onThemeDarkSeparate', 'onThemeFamily',
     'onThemeSize', 'onThemeTypeOnly', 'onThemeWeight',
-    // ── 全局 UI 配色节（2026-10-11）：同一纪律 —— 渲染器与 ctx 构造器都在 quick-panel 的
+    // ── 全局 UI 配色节：同一纪律 —— 渲染器与 ctx 构造器都在 quick-panel 的
     //    作用域里引用这两个名字，漏一个就是 vm 求值 ReferenceError（本判据已经抓到过一次）。
     'onToggleUiColorCustom', 'onUiColorElement',
     // 子 UI 登记表：renderAppearanceGlassSection 按它逐项渲染。替身必须给**与 schema 同源**
@@ -3329,7 +3329,7 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
       //（与 schema 同源，来自被内联的 panel 模块作用域）—— 手抄一份就会漂。
       onToggleChildIndependent: noop,
       onGlassChildParam: noop, childIndependentOn: () => false,
-      // 字体节（2026-10-09 迁入侧栏）：ctx 构造器给真形状的替身 —— `fontSetCtx()` 会被
+      // 字体节（迁入侧栏）：ctx 构造器给真形状的替身 —— `fontSetCtx` 会被
       // qpRenderAppearancePane 无条件调用（noop 返回 undefined 也不炸，但给真形状更接近
       // 运行期：`fontSet.open` 若被读到就是布尔而不是 undefined 属性错）。
       fontSetCtx: () => ({ open: false, fontSets: [], activeId: '', loading: false, error: '' }),
@@ -3365,7 +3365,7 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
     wp.shape.includes('we-qp__library') && wp.shape.includes('we-qp__list')
       && wp.shape.includes('we-qp__viewtabs') // 列表/卡片视图切换也只在壁纸档（标签式，非页签栏成员）
       && !ap.shape.includes('we-qp__library') && !pb.shape.includes('we-qp__library'));
-  // ── 外观档的字体节（2026-10-09 迁入侧栏，默认收起）────────────────────────────
+  // ── 外观档的字体节（迁入侧栏，默认收起）────────────────────────────
   //    ⚠️ 本台的 switchRow / ctlText 是 noop ⇒ 标签文字不进 text，行级判据用**类名锚**
   //    （字体表 `we-picker__font-table` 是直接 createElement，收起/展开两态都看得见）。
   //    收起态：节头「全局字体」在、字体表不在；展开态（extraState 第三位 = true）+ 总开关开
@@ -4265,7 +4265,7 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
     rmSync(mdatMutDir, { recursive: true, force: true });
   }
   {
-    // ── 头像导入的两道闸 + 「自动压缩后导入」（#185 后续，用户口径 2026-10-13）──────────
+    // ── 头像导入的两道闸 + 「自动压缩后导入」（#185 后续，用户口径）──────────
     // 这道闸之前**根本不存在**：选什么图都直接 decodeImageFile，再缩到 512px 上传。
     // 危险在"解码炸弹"—— 一个 20000×20000 的 PNG 只有几百 KB，解码却要 1.6 GB 像素内存；
     // 而"这图多大"**不用解码就能从文件头读出来**。判据因此盯五件事：
@@ -4327,7 +4327,7 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
       gateBeforeDecode(gsrc) === true && gateBeforeDecode(reversed) === false);
   }
   {
-    // ── 模块级 ↺ 的视觉对齐（#192 的回归，用户口径 2026-10-13）────────────────────────
+    // ── 模块级 ↺ 的视觉对齐（#192 的回归，用户口径）────────────────────────
     // 根因：`.we-picker__section-caret` 与 `.we-mod-reset` **都写了 margin-left: auto**，
     // 同一 flex 行里两个 auto 会把剩余空间**均分** ⇒ ↺ 停在行中间；而「主题」节头没有
     // 折叠三角、只剩一个 auto ⇒ 它贴在最右端。用户要的是**所有模块都长成主题那样**。
@@ -6190,7 +6190,7 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
       // 玻璃四件套 + 雾化已归入新节「玻璃 UI」；「左侧栏液态玻璃」与它的子项也都在本节
       //（§10.25 起）。⚠️ 本档是**设置页**：只画**简化配置 + 预设方案 + 字体节头（收起）** ——
       //    **玻璃**高级行（独立配置层 / 胶囊细调）仍只住侧栏折叠块（边界判据翻转后双向钉住：
-      //    设置档一个「独立配置」都不许有）；**字体节**在 2026-10-11 三次修订后两档都画
+      //    设置档一个「独立配置」都不许有）；**字体节**在三次修订后两档都画
       //    （默认收起 ⇒ 本节只多一个节头，内容仍不进树）。
       // ⚠️ `selOver` 打开宿主能力位：`sidebarPresent` + `sidebarGlass` 之后，侧栏家族与内容面
       // 那几行才画得出来（`sidebarPresent` 为假时它们整段不渲染 —— 这正是"窗口与侧栏"那节
@@ -6198,11 +6198,11 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
       selOver: { sidebarPresent: true, sidebarGlass: true, thinkingGlass: true },
       // 预设块的 ctx 替身：只给 `presets`（空清单）就够把它画出来 —— 空位虚框 + 保存行是
       // 渲染期就存在的构件，其余处理器只在点击时才用（本用例不点）。
-      // ⚠️ 2026-10-11 **二次修订**：五个整节门在**两档都能折叠** ⇒ 用例必须**显式**给出
+      // ⚠️ **二次修订**：五个整节门在**两档都能折叠** ⇒ 用例必须**显式**给出
       //    "这一档要展开哪几节"（`ctxFrom` 会把没给的字段填成 `noop` ⇒ `noop === true` 为假
       //    ⇒ 被当成"收起"）。本用例 = 设置页的**默认形态**：细节 / 主题预设 / 玻璃 UI /
       //    侧边栏圆角都展开；字体与配色那两节在本台按"收起"跑（它们各自有专门用例）。
-      //    「主题预设」并入本序列（main 480830b）：独立节；2026-10-12 起与其他节同口径
+      //    「主题预设」并入本序列：独立节；与其他节同口径
       //    可折叠（presetsOpen）。
       ctxOver: { glassPresets: { presets: [] }, detailOpen: true, glassUiOpen: true, cornersOpen: true, presetsOpen: true },
       want: ['主题', '细节', '主题预设', '玻璃 UI', '侧边栏圆角', '全局 UI 配色', '全局字体'],
@@ -6218,10 +6218,10 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
       ctxOver: { glassPresets: { presets: [] }, detailOpen: true, glassUiOpen: true, cornersOpen: true },
       want: ['主题', '细节', '主题预设', '玻璃 UI', '侧边栏圆角', '全局 UI 配色', '全局字体'],
       wantLabels: ['主题随壁纸', '边框', '深色单独设置', '玻璃透明度', '雾化', '额外补雾化的选择器', '玻璃保真度', '思考块液态玻璃', '左侧栏液态玻璃', '标题栏液态玻璃', '侧栏液态玻璃', '侧栏全透明', '侧栏玻璃跟随全局', '左侧栏 · 统一圆角', '左侧栏 · 四角单独', '右侧栏 · 统一圆角', '右侧栏 · 四角单独'] },
-    // 侧栏档（默认收起）：**简化配置 + 两块折叠块的头**（ADR-0008 D4，2026-10-09）——
+    // 侧栏档（默认收起）：**简化配置 + 两块折叠块的头**（ADR-0008 D4）——
     // 「详细玻璃调节」开关在（收起 ⇒ 它后面的独立配置层一行都不画）；「全局字体」节头在
     // （收起 ⇒ 字体内容不画）。`selOver` 与设置页用例同位 ⇒ 侧栏家族开关同样画得出来。
-    // ⚠️ 2026-10-11 起「细节 / 玻璃 UI / 侧边栏圆角」三节**在侧边栏整节默认收起** ⇒ 这三条
+    // ⚠️ 起「细节 / 玻璃 UI / 侧边栏圆角」三节**在侧边栏整节默认收起** ⇒ 这三条
     //    老用例一律把三个门播种为**展开**（`ctxOver` 那三个字段）：它们要测的是"展开后控件在
     //    不在、接线通不通"，那是**等价前提**下的老断言，不该因为默认值变了就删/改判不在
     //    （那会把"控件坏了"与"默认收起了"混成同一件事）。默认收敛这条**新行为**由紧随的
@@ -6232,7 +6232,7 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
       selOver: { sidebarPresent: true, sidebarGlass: true },
       want: ['主题', '细节', '玻璃 UI', '侧边栏圆角', '全局 UI 配色', '全局字体'],
       wantLabels: ['主题随壁纸'] },
-    // ⚠️ 2026-10-11「左右拉宽、顶格」：环按**面板实测宽度**等比缩放（`ctxOver.paneWidth`）。
+    // ⚠️ 「左右拉宽、顶格」：环按**面板实测宽度**等比缩放（`ctxOver.paneWidth`）。
     //    ⚠️ 这条必须打在 `renderMascotTab` 上 —— 吉祥物是**独立页签**，不在 `renderAppearanceTab`
     //    里（第一版我挂错了函数，于是 items=0、判据在空转：它"红"了但红的是对象不存在，
     //    而不是缩放不对）。本档喂宽面板 900，带 `geomProbe` ⇒ 下面那条判据**端到端**核对
@@ -6256,7 +6256,7 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
     // ⚠️ 这一条是**覆盖缺口**补上的：字体那一节的细节（颜色角色 / 排版角色 / 字体族 / 组件字体 /
     // 字体集预设，~180 行）被 `sel.fontCustom` 挡着，而它的默认值是关 ⇒ **任何用例都没渲染过它**。
     // 打开它才能让那些行第一次进入判据的视野（这本身是找缺陷，不只是补锚）。
-    // 2026-10-09 迁移后这节只在侧栏档渲染 ⇒ 本档同步改 surface + `fontOpen: true`（展开）。
+    //  迁移后这节只在侧栏档渲染 ⇒ 本档同步改 surface + `fontOpen: true`（展开）。
     { fn: 'renderAppearanceTab', label: '（侧栏档 · 字体节展开 · 字体自定义开）', surface: 'sidebar',
       selOver: { fontCustom: true, sidebarPresent: true, sidebarGlass: true },
       ctxOver: { fontOpen: true, detailOpen: true, glassUiOpen: true, cornersOpen: true, fontSet: FONTSET_STUB },
@@ -6265,7 +6265,7 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
         '左侧栏 · 统一圆角', '左侧栏 · 四角单独', '右侧栏 · 统一圆角', '右侧栏 · 四角单独',
         '字体自定义', '默认字体', '终端字体', '文字颜色角色', '深色单独设置', '正文', '次要文字', '弱化说明', '极小说明', '禁用 / 更弱',
         '排版角色', '只看改过的', '高级字体设置', '字体集预设'] },
-    // ⚠️ 三次修订（2026-10-11）：字体节**回到设置页** ⇒ 必须有一条**设置档展开**的用例。
+    // ⚠️ 三次修订：字体节**回到设置页** ⇒ 必须有一条**设置档展开**的用例。
     //    为什么非有不可：上面那条设置档用例默认收起，只证明"节头在" —— 而这次改动的实质是
     //    "设置页那份能真用"，也就是**展开后整段字体内容（~180 行）要进树**。只有节头没有内容
     //    正是"接线断了一半"的形态（ctx 里少给一个 fontOpen / 处理器没接上），而那种形态在上面
@@ -6273,7 +6273,7 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
     { fn: 'renderAppearanceTab', label: '（设置页 · 字体节展开 · 字体自定义开）', surface: 'settings',
       selOver: { fontCustom: true, sidebarPresent: true, sidebarGlass: true },
       // ⚠️ 前三个门同样要显式给（二次修订后两档都可折叠；不给会被当成收起）；
-      //    「主题预设」的门（presetsOpen，2026-10-12）同口径。
+      //    「主题预设」的门（presetsOpen）同口径。
       ctxOver: { fontOpen: true, glassPresets: { presets: [] }, detailOpen: true, glassUiOpen: true, cornersOpen: true, presetsOpen: true },
       want: ['主题', '细节', '主题预设', '玻璃 UI', '侧边栏圆角', '全局 UI 配色', '全局字体'],
       // ⚠️ 这条序列 = 上面设置档（收起）那 17 项玻璃标签 + 侧栏字体展开那 14 项字体标签，
@@ -6363,7 +6363,7 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
     for (const [k, v] of savedGlobals) globalThis[k] = v;
     check(t.fn + t.label + ' 渲染得出', err === '', err || 'ok');
     if (err) continue;
-    // ── 端到端：**按面板宽度等比缩放**（2026-10-11「左右拉宽、顶格」）──────────────────
+    // ── 端到端：**按面板宽度等比缩放**（「左右拉宽、顶格」）──────────────────
     //    判据自己从源码取设计常量、**独立复算** scale，再逐个核对渲染树里的行内尺寸：
     //    只判"渲染得出"不够 —— 缩放漏接一处（卡放大了、立绘没放大）照样渲染得出。
     if (t.geomProbe) {
@@ -6438,11 +6438,11 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
       check(t.fn + t.label + ' 的控件标签顺序与集合逐字不变',
         sameSeq(labels, t.wantLabels),
         'want=[' + t.wantLabels.join(' / ') + '] got=[' + labels.join(' / ') + ']');
-      // ── 简化配置 / 高级配置的**边界**（ADR-0008 **D4**；2026-10-09 二次修订）──
+      // ── 简化配置 / 高级配置的**边界**（ADR-0008 **D4**；二次修订）──
       //   简化配置（两档都画）= 全局四件套 + 各面**总开关**（思考块液态玻璃 / 左侧栏液态玻璃 /
       //   侧栏那三个开关）；**预设方案**只在设置档（跨面快照覆盖 + 无撤销 ⇒ 不进窄面板）；
       //   高级配置 = 每个面的「独立配置」层**及其子项**、思考块门下的细调行（胶囊雾化 /
-      //   胶囊颜色）—— 2026-10-09 起**迁入侧栏「详细玻璃调节」折叠块**（默认收起；
+      //   胶囊颜色）—— 起**迁入侧栏「详细玻璃调节」折叠块**（默认收起；
       //   设置页对话框挡住主页面、调完看不到实时效果是迁移动因），设置档一个都不许有。
       //   判定走 `ctx.surface` + `ctxOver.glassDetailOpen`（折叠态）；配套的 quick-panel
       //   占位器现在只剩 `glassPresets` 与播放页字段（高级行处理器已改传真值）。
@@ -6459,13 +6459,13 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
       const PRESET_MARK = '保存当前为预设';
       const presetLeak = [PRESET_MARK, '预设方案'].filter((s) => flat.includes(s));
       if ((t.want || []).includes('玻璃 UI')) {
-        // 2026-10-09 真迁移后的 D4：**高级行（独立配置层 / 胶囊细调）只在侧栏档、且
+        //  真迁移后的 D4：**高级行（独立配置层 / 胶囊细调）只在侧栏档、且
         // 「详细玻璃调节」展开时画**；设置档一个都不许有（它们搬走了）。预设方案相反 ——
         // 仍只在设置档（跨面快照覆盖 + 无撤销，不进随手可点的窄面板）。
         // 折叠态用 `ctxOver.glassDetailOpen` / `ctxOver.fontOpen` 认（默认收起 ⇒ 用例不给 = 收起）。
         const detailOpen = !!(t.ctxOver && t.ctxOver.glassDetailOpen);
         const fontOpen = !!(t.ctxOver && t.ctxOver.fontOpen);
-        // ── 整节折叠（2026-10-11 **二次修订**：两档都能折叠，差别只在**默认值**）──────────
+        // ── 整节折叠（**二次修订**：两档都能折叠，差别只在**默认值**）──────────
         //    用户口径：侧边栏「后面三个默认隐藏」、设置页「全部开启但也支持隐藏」。
         //    ⚠️ 默认值由**面板组件**算（`readQpOpen` / `readSavedPickerOpen`），本台是
         //    **直接调渲染器**（隔离测试）⇒ 这里只能判"渲染器**尊重**传进来的开合"：
@@ -6530,7 +6530,7 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
           check(t.fn + t.label + ' 侧栏档不许出现预设块（预设仍设置页专属，D4）',
             presetLeak.length === 0, presetLeak.length ? '泄漏：' + presetLeak.join(' / ') : '无泄漏');
           // ⚠️ 下面两条只在**玻璃 UI 整节展开**时成立：整节收起 ⇒ 简化配置也一并不画
-          //    （那是 2026-10-11 的新门）。不按门分档的话，这条老判据会把"整节收起"
+          //    （那是的新门）。不按门分档的话，这条老判据会把"整节收起"
           //    误判成"简化配置丢了"。收起档要判的是**相反**的东西 —— 见上面那组整节判据。
           if (t.ctxOver && t.ctxOver.glassUiOpen) {
             for (const sw of ['思考块液态玻璃', '左侧栏液态玻璃']) {
@@ -6552,11 +6552,11 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
           // 设置档：**玻璃**高级行仍不许出现（真迁移的反向钉，未变）。
           check(t.fn + t.label + ' 设置档不许出现任何「独立配置」层（已迁侧栏折叠块，D4）',
             indep.length === 0, indep.length + ' 个：' + indep.join(' / '));
-          // ⚠️ 这里原有三条「设置档节头是**纯标题**（不随侧栏折叠）」的判据，2026-10-11
+          // ⚠️ 这里原有三条「设置档节头是**纯标题**（不随侧栏折叠）」的判据，
           //    **二次修订**后按用户口径（"设置页也支持隐藏"）**反转**了 —— 现在两档都必须是
           //    可折叠节头，那三条已由上面那组「节头必须可折叠（两档都支持隐藏）」取代。
           //    反转而不是删除：这条性质真的会回退（谁把 `collapsible` 写回 surface 判断就中了）。
-          // ⚠️ **字体节已回到设置页**（2026-10-11 三次修订，用户口径"两边都有"）⇒ 这一条不再是
+          // ⚠️ **字体节已回到设置页**（三次修订，用户口径"两边都有"）⇒ 这一条不再是
           //    "迁移的反向钉"，而是与侧栏**同形**的**折叠门**判据：展开 ⇒ 字体行必须在；
           //    收起 ⇒ 不许有。两个 surface 走同一条判据，正是"两档都画"的字面含义。
           if (fontOpen) {
@@ -6569,7 +6569,7 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
           check(t.fn + t.label + ' 设置档不许出现「详细玻璃调节」开关（那是侧栏折叠块的入口）',
             !labels.includes('详细玻璃调节'), '泄漏：' + labels.filter((l) => l === '详细玻璃调节').join(''));
           // 门的另一侧：能画出来的时候才判（用例给了 `presets` 替身）—— 否则这条会恒假。
-          // 2026-10-12 起「主题预设」与其他节同口径可折叠：ctxOver 给了 `presetsOpen: true`
+          //  起「主题预设」与其他节同口径可折叠：ctxOver 给了 `presetsOpen: true`
           // 的用例判**整块在**（网格 + 保存行）；没给（= 收起档）的用例反过来判**网格不许在**
           // —— 节头本身由 want 的节序列钉住（'主题预设' 一直在，它是重新展开的唯一入口）。
           if (t.ctxOver && t.ctxOver.glassPresets) {
@@ -6647,7 +6647,7 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
 
   check('负对照：外观页侧栏档确实渲染出了内容（不是空树 ⇒ 上面的"少节数"才有意义）',
     (() => {
-      // 侧栏档画「主题 / 细节 / 侧边栏圆角 / 玻璃 UI / 全局字体 / 输入光标」**六节** —— 2026-10-09 迁移后
+      // 侧栏档画「主题 / 细节 / 侧边栏圆角 / 玻璃 UI / 全局字体 / 输入光标」**六节** —— 迁移后
       //（2026-10 新增「侧边栏圆角」节 ⇒ 由五节变六节，与上面两组 want 同步改）
       // 字体节的**节头**进侧栏（折叠门只收内容不收节）；设置档反而只剩四节（字体节整节不在）。
       // ⚠️ 这个数字是**随节数变化**的：新增一节就要同步（它自己就是"节数"那条判据的负对照）。

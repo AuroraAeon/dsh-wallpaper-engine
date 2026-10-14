@@ -424,7 +424,7 @@ section('⑤ 客户端通道：登记进产物 / 浏览器安全 / 只碰自己�
   const qp = stripComments(read('src/quick-panel.js'));
   check('清单初始化**先吃本地缓存**（否则已选中的本机字体首帧显示成"跟随"）',
     /systemFonts:\s*readCachedSystemFonts\(\)/.test(client));
-  // ⚠️ 触发点 2026-10-09 随字体节迁到侧栏（设置页外观已没有字体 UI，在那边拉是白付
+  // ⚠️ 触发点随字体节迁到侧栏（设置页外观已没有字体 UI，在那边拉是白付
   //    宿主扫描）：新口径 = 侧栏外观页 + 字体节**展开** + 字体自定义打开。
   check('清单只在「侧栏外观页 + 字体节展开 + 字体自定义打开」时才去要（宿主那次扫描很贵）',
     /qpTab === "appearance" && fontOpen && sel\.fontCustom/.test(qp)
@@ -667,7 +667,7 @@ section('⑧ 真渲染（构建产物）：内置族键 + 本机字体同列、�
 
   const renders = [];
   const slots = { inject: (key, cb) => cb(), register: (opts, render) => { renders.push({ opts, render }); } };
-  // 侧栏官方档注册需要的两个可选服务桩（2026-10-09 字体节迁侧栏后，字体下拉的行为台
+  // 侧栏官方档注册需要的两个可选服务桩（字体节迁侧栏后，字体下拉的行为台
   // 从设置页渲染器改成侧栏 body 渲染器 —— 与 verify-client 同一套手法）。
   const sidebarRightTabsStub = { register: () => () => {} };
   const sidebarRightStub = { openTab: () => {} };
@@ -709,7 +709,7 @@ section('⑧ 真渲染（构建产物）：内置族键 + 本机字体同列、�
 
   // **走真实触发路径**：字体自定义默认关 ⇒ 面板上没有那两个下拉；打开总开关时顺手去要一次
   // 本机字体清单（`onToggleFontCustom` 里那一句）——这一条本身就是被测行为之一。
-  // ⚠️ 2026-10-09 字体节迁侧栏 ⇒ 行为台从设置页渲染器改为侧栏 body（renderSide，
+  // ⚠️ 字体节迁侧栏 ⇒ 行为台从设置页渲染器改为侧栏 body（renderSide，
   //    播种 qp-tab=appearance + qp-font-open=1 ⇒ 外观页且字体节展开）。
   const before = renderSide();
   check('总开关关着时**没有**这两行（那一整块是 `fontCustom` 的门控）',

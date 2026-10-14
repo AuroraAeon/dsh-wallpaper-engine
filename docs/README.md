@@ -1,6 +1,7 @@
 # docs — 决策与用户文档
 
-> **English**: [`en/README.md`](./en/README.md) —— 英文版索引（`adr/` **有意不译**，见该文件开头的说明）。
+> **English**: 用户向文档的英本在 [`en/`](./en/)（`adr/` 与维护者向文档**有意不译**）；英文门面在仓库根 [`README.en.md`](../README.en.md)。
+> 原先的 `en/README.md`（维护者向索引的英文镜像）已按本节规则撤除。
 >
 > 本项目采用**「代码即真相」**文档模式：渲染 / 逆向 / 根因知识直接内联在对应实现文件的代码注释里。
 > `docs/` 只保留**决策**（含验收判据）、**规范**与**用户文档**；实现机制不在这里。
@@ -58,6 +59,7 @@
 | 6 | **守卫判据只针对代码，不针对散文** —— 断言「源码里不再有 X」之前先剥注释 | [`DEV-GUIDE.md`](./DEV-GUIDE.md) §4.7 |
 | 7 | **跳过不得与通过同形** —— 缺前置要么红，要么要求显式 `--allow-skip`；静默跳过等于悄悄失去覆盖 | `test/verify-media-bridge.mjs`（`--provision` / `--allow-skip`） |
 | 8 | **决策进 ADR，机制进文件头** —— 有备选方案、有人付了代价的取舍写成 [`adr/`](./adr/)；"怎么实现的"写在对应实现文件的头注释 | 无守卫（写作约定）；格式见 [`adr/README.md`](./adr/README.md) |
+| 9 | **活文档不引用归档件** —— 归档区只作记录；活文档（含 `docs/wip/` 与 `src/**`、`test/**` 的注释）**不出现**指向归档的路径或归档条目号。需要那条信息就把它**写进活文档**：机制 → 实现文件头、判据 → `test/`、取舍 → `adr/`、历史 → `CHANGELOG.md` 或 git 历史。**例外**：本文与 [`adr/README.md`](./adr/README.md)（两级索引要列归档件）、`CHANGELOG.md`（账本）、命令与 pathspec 里的路径 | 无守卫（写作约定）。复算：`git grep -n 'archive/' -- ':!docs/archive' ':!docs/README.md' ':!docs/adr/README.md' ':!docs/CHANGELOG.md' ':!docs/en/CHANGELOG.md'` |
 
 **入库文档不得引用本机专用的未跟踪路径** —— 读者打不开的东西不要指向它。唯一豁免是 `docs/archive/`
 （历史记录，顶部已声明不反映现行实现）与其取证线索。
@@ -88,6 +90,7 @@
 | [ROUTE-INDEX.md](./ROUTE-INDEX.md) | 宿主路由的**生成索引**（由 `test/tools/host-route-index.mjs` 重算并逐字节比对 —— 手写必烂） |
 | [GUARD-MAP.md](./GUARD-MAP.md) | **守卫 ↔ 模块的双向派生映射**（"改了某个模块该跑哪几条"）：守卫→模块、模块→守卫两张表，由 `test/tools/guard-targets.mjs` 从**守卫代码里**派生（`--write` 重算，逐字节比对；生成物，不手改） |
 | [TOKEN-CONTRACT.md](./TOKEN-CONTRACT.md) | **`--dsw-*` 令牌契约的生成索引**（我们改写了哪些宿主设计令牌、各挂什么门控、无门控白名单）—— 由 `test/tools/token-contract.mjs` 重算并逐字节比对（`test/verify-token-contract.mjs` 守着，白名单封闭；生成物，不手改）—— 共存耦合面的账本，见 [`COEXISTENCE.md`](./COEXISTENCE.md) |
+| [TRIAGE.md](./TRIAGE.md) | **问题分诊与认领** —— 标签体系（`status:*` / `area:*`）、`/assign` 认领与失联回收、PR 与 issue 的关联要求；机器人实现 `.github/workflows/issue-claim.yml`，治理总纲见 issue [#212](https://github.com/elysia395/dsh-wallpaper-engine/issues/212) |
 
 > **上表的英文镜像已撤除**（维护者向文档只留中文，理由见 §语言结构；`ROUTE-INDEX.md` / `GUARD-MAP.md` / `TOKEN-CONTRACT.md` 是生成物，同样只出中文）；用户向文档仍中英成对。
 
@@ -117,7 +120,7 @@
 | [0010](./adr/0010-glass-off-revisit-four-states.md) | **修订 ADR-0008 的「放弃关玻璃」**：令牌层整组回退的前置条件已成立（账本 [`TOKEN-CONTRACT.md`](./TOKEN-CONTRACT.md) + 封闭白名单守卫）；目标形态 = **一个模式键四态**（full / glass-only / wallpaper-only / off），实施分三批、主开关最后 |
 | [0011](./adr/0011-preset-full-snapshot.md) | 预设从**玻璃子集快照**升为**整机配置快照**（键集由 `KINDS` 派生、资产按需携带、旧预设作废、新增导入导出） |
 | [0012](./adr/0012-artifact-untracking.md) | 构建产物出库（`lib/client.js` 不入库，改由 build / prepack 现场构建）＋ README 展示图迁至 Release 资产外链；修订 ADR-0003 的 D6 |
-| [0013](./adr/0013-bundle-multi-component-rows.md) | **插件拆分（现行唯一版本）**：一 bundle 多组件行（单包，不推翻 ADR-0003）；核心目标 = **降复杂度 / 锚定模块边界 / 解耦合**三件并列；**行级开关 = 宿主路由 ＋ 该组件的浏览器可见面**（可见面由宿主行状态派生、双向对账、"宁可显示不可静默消失"）；待完成 = 契约收紧 + 实现入包；**不做**多包 / 每组件一格客户端开关 / 包内懒块。**旧 0012–0016（该决定的旧编号）已归档**到 [`archive/adr/`](./archive/adr/)；本决定**重编号 0012 → 0013**（让位给上游的 `0012-artifact-untracking`） |
+| [0013](./adr/0013-bundle-multi-component-rows.md) | **插件拆分（现行唯一版本）**：终态 = **多包**（主包 + 子包，版本一致；D6/D8 于 2026-10-14 就地改写），单包多行是**起点**；核心目标 = **降复杂度 / 锚定模块边界 / 解耦合**三件并列；**行级开关 = 宿主路由 ＋ 该组件的浏览器可见面**（可见面由宿主行状态派生、双向对账、"宁可显示不可静默消失"）；**不做**每组件一格客户端开关 / 包内懒块。**旧 0012–0016（该决定的旧编号）已归档**到 [`archive/adr/`](./archive/adr/)；本决定**重编号 0012 → 0013**（让位给上游的 `0012-artifact-untracking`） |
 
 ## 已归档（`archive/`，只作记录）
 
@@ -155,6 +158,7 @@
 | [audits/F3-PLAN.md](./archive/audits/F3-PLAN.md) | 字体集文件化的过程记录（**已完成**：阶段 0–4）—— 随包预设 · 两层存储 · 人工切换 · 导入导出。**机制与不变量已留在 `lib/routes/fontsets.js` / `src/fontset-store.js` / `src/fontset-editor.js` / `lib/settings-schema.js` 的文件头**，判据在 `test/verify-fontset.mjs` + `test/fontset-load-smoke.mjs` |
 | [audits/TEST-ANTIPATTERN-AUDIT.md](./archive/audits/TEST-ANTIPATTERN-AUDIT.md) | **测试框架的反模式审计（逐条现状）** —— `test/` 的 72 个 `.mjs`（顶层 57 + `test/tools/` 15）与 2 份夹具按 A1–A4（面向结果编程）/ B1–B4（无意义测试）/ C1–C6（自欺欺人）三族口径逐条过了一遍：每条守什么、**牙齿**（`yes` / `no` / `partial`，即"产品真按它声称守护的方式回归时它会不会红"）如何、现址 `file:line` 在哪。**106 处发现已全部定案**（R 47 / H 33 / D 20 / 不改·声明 5 / 取消 2），未决 0 |
 | [audits/TEST-ANTIPATTERN-FIX-PLAN.md](./archive/audits/TEST-ANTIPATTERN-FIX-PLAN.md) | 同一轮审计的**遗留与风险清单**（收口后重写为"现在还有什么问题"）—— 只剩仍未解决或本机证明不了的项（F4/F5 两个手动工具、harness 与 e2e 的覆盖空洞、M16 只剩正判据、设置夹具是漂移棘轮、`%TEMP%` 里删不掉的探针）+ 需要决定的事 + 复核命令。逐条现状在审计报告里，不在这里重复 |
+| [wip/](./archive/wip/) 的**第二期收口批** | **追版本第二期（追链 / 文档注释同步 / 测试锚定）的过程记录整体归档**：`TEST-ANCHORING.md`（task-8 判据锚定）· `TEST-CREDIBILITY-AUDIT.md`（对抗性审计 + 修复落地账）· `UNWIRED-MODULES.md`（task-9 孤儿盘点）· `DOC-DRIFT-REPORT.md` + `DOC-ROT-REPORT-2.md` + `DOC-ROT-REPORT-3.md`（三轮文档 / 注释腐化复核）· `COMPONENT-TOGGLE-REPORT.md`（P2-11 开关语义实测取证）· `ISSUE-190-FX-PERF-DESIGN.md`（#190 光效层治理）· `ISSUE-AUDIT-148PLUS.md`（issue ≥148 核查；**残留 6 条未做项写在它的归档横幅里**）。各件的结论已分头落位：机制 → 实现文件头注释、判据 → `test/`、取舍 → [`adr/`](./adr/README.md) |
 
 ### 其它归档
 
@@ -171,13 +175,15 @@
   [`archive/wip/OPEN-ITEMS.md`](./archive/wip/OPEN-ITEMS.md)（**都不反映现行实现**）。
   **尚在进行的工作**的计划可临时住 `docs/wip/`（**保留目录**：它随工作项的开工与收口一进一出，
   门槛与去向见 §目录的寿命规则；**里面放了哪些文件不写在这里** —— 那是会漂的清单，按目录自身枚举即得）；
-  最近一次收口的是
+  最近一次收口的是 [`archive/wip/`](./archive/wip/) 的**第二期收口批**（8 份过程记录 + issue ≥148 核查，
+  见上表最后一行）；再往前是
   [`archive/wip/GLASS-CONFIG-REFACTOR.md`](./archive/wip/GLASS-CONFIG-REFACTOR.md)
   （玻璃配置重构：R0–R4 + 三轮实测修复 + 收口，**已成历史**，结论已按上表分头落位）；
   再往前是 [`archive/wip/PLAN.md`](./archive/wip/PLAN.md)（`src/` 缺陷 · 注释审计 · 目录裁决 · 守卫重构）；
   **本机专用的临时待办不入库**，也不被任何入库文档引用 —— 读者打不开的东西不指向它。
 - 开发/发布：仓库根 `CONTRIBUTING.md`（含「`lib/client.js` 到底是什么」）；用户门面：`README.md` / `README.en.md` / `README.beginner.md`。
-- `images/`：README 引用的截图。
+- `images/`：**已不是门面截图的来源** —— 展示图走 Release 外链（取舍见 [`adr/0012`](./adr/0012-artifact-untracking.md)），
+  该目录在 `.gitignore` 内、仓库里没有它（本地可能残留构建/截图产物，不入库）。
 - **已溶解进代码**的文档（结论进注释）：`RENDERER-OFFICIAL-STRUCTURE.md`、`RENDER-ISSUES-ANALYSIS.md`、
   `REFACTOR-ROUND-2026-08-28.md`、`REFACTOR-STATIC-FRAME.md`；
   废弃方向（`HOOK-PROGRESS` / `V6-DUMP-ANALYSIS` / `EYE-PREDICTION` / `FIX-PLAN-AMYA` /

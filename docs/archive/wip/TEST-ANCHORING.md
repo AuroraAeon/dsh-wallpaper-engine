@@ -1,5 +1,12 @@
 # TEST-ANCHORING —— 判据锚定审计（task-8）
 
+<!-- status-banner: code-is-truth -->
+> **状态：历史记录（不反映现行实现）。** 第二期 task-8（判据锚定审计）的交付物，已收口：
+> 每条判据「守哪个不变量」已回到守卫自身（`test/**`），可信度复核见
+> [`./TEST-CREDIBILITY-AUDIT.md`](./TEST-CREDIBILITY-AUDIT.md)。
+> 其中 §8.3 记的 `verify-bundle-rows` **有意脱链**的理由，现由该守卫自己的注释与
+> `.github/workflows/verify.yml` 持有（本文只作历史）。
+
 > **哈希说明（squash 后）**：本文件中的短哈希是 **squash 前历史哈希**。追版本第二期收口已把
 > `c43a936..352467a` 的 **108 笔**压缩为一笔（父 = `c43a936`，树内容逐字未变），该提交以 tag `catchup-2nd` 标注。
 > 原文可由分支 `backup/pre-squash-20261014` 取得；逐条对应见该提交正文附录。

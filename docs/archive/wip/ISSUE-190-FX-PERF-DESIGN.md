@@ -1,5 +1,11 @@
 # Issue #190 光效层 GPU 占用治理 · 设计方案
 
+<!-- status-banner: code-is-truth -->
+> **状态：历史记录（不反映现行实现）。** issue #190（光效层 GPU 占用）的根因核查 + 方案设计 + 第一期落地记录。
+> **本期已实施**：机制在 `src/fx-layer.js` 的文件头、手动对照装置在 `test/tools/fx-perf-rig.mjs`、
+> 用户可见口径在 [`../../CHANGELOG.md`](../../CHANGELOG.md) 的 v1.3.2 节。
+> 按 [`../../README.md`](../../README.md) §目录的寿命规则归档（本文当初自己就这么写的）。
+
 > 状态：**第一期已实施**（实测结果见 §9）。本文件先是一次只读根因核查与方案设计的交付物，
 > 现已补上落地记录。收口时按 `docs/README.md` 的寿命规则处置：机制进 `src/fx-layer.js` 文件头、
 > 判据进 `test/`、取舍进 `adr/`，本文件移入 `docs/archive/wip/`。

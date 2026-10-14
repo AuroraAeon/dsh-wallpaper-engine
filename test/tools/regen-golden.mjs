@@ -7,13 +7,13 @@
  * "没有无理由地变化"，**不证明取值正确**。自动重录会把缺陷输出一起录成"期望"（本仓实测过：
  * 三张布尔表的 `{}` 曾被抄成期望，整套 sanitize 判据全绿而功能是死的）。
  *
- * 两侧的地位**一样**（本轮起）：都被 `test/verify-client.mjs` ③ 逐用例比对**值** ⇒ 任一漂移都会让
+ * 两侧的地位**一样**：都被 `test/verify-client.mjs` ③ 逐用例比对**值** ⇒ 任一漂移都会让
  * `npm run verify` 红：
  *   · host    —— 宿主 `lib/index.js` 的 `sanitizeSettings`（落盘形状；整侧 null 用夹具哨兵 `__null__`）。
  *   · client  —— 浏览器 `src/client.js` 的 `sanitizeSettings`（含 CLIENT_ONLY 键，键集与 host 不同）。
- *     ⚠️ 本脚本曾经把 client 标成"没有判据比对值、漂移只作提示" —— 实测把 18 个用例的 client 值
- *     全部改坏后 `verify-client` + `verify-glass-surfaces` 双绿（那半数据是死的，
- *     见 `docs/wip/TEST-CREDIBILITY-AUDIT.md` §B3）。现在两侧同权：漂移都非 0。
+ *     ⚠️ client 侧**必须有判据比对值**：没有它时，把夹具里 18 个用例的 client 值全部改坏
+ *     仍会 `verify-client` + `verify-glass-surfaces` 双绿 —— 那半数据是死的。
+ *     两侧同权：任一侧漂移都非 0。
  *
  * 用法：
  *   node test/tools/regen-golden.mjs                       # 只报告，不写

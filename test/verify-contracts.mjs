@@ -400,7 +400,7 @@ console.log('\n④ CI 平台矩阵（平台条件分支的两半都要有覆盖�
 
 // ── ⑤ CI 工作流与 **GitHub 解析器**的契约：工作流级表达式不得引用作业作用域的上下文 ──
 // 这是"本地全绿、推上去 0 秒失败且**一个作业都没有**"那一类失败（页面只说
-// "This run likely failed because of a workflow file issue"）。实测（2026-10-02）：
+// "This run likely failed because of a workflow file issue"）。实测：
 //   concurrency:
 //     group: verify-${{ github.ref }}-${{ matrix.os }}      ← 工作流级！
 // `matrix` 只在**作业**上下文里存在 ⇒ GitHub 在启动阶段就把整个工作流文件判为无效。

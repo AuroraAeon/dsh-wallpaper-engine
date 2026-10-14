@@ -541,9 +541,7 @@ graph LR
 | **一次性清理的验收判据**（退役线里的"笔误「秡」不再出现"） | 修完即**恒真**；按 §写作纪律 5「删完清空即为零残留」，收口时就该撤。见 [`adr/0007`](./adr/0007-machine-checks-target-code-not-prose.md) |
 
 **本文怎样才算"规范"**：§5 的硬约束与 §6 在册的守卫同时成立即可 —— 两者现在都成立。
-升为规范的**过程记录**（当时的四条偏离如何逐条收敛）属于历史，已归档在
-[`archive/REFACTOR-ASSESSMENT.md`](./archive/REFACTOR-ASSESSMENT.md) 与
-[`archive/wip/OPEN-ITEMS.md`](./archive/wip/OPEN-ITEMS.md)，本文不重复。
+升为规范的**过程记录**（当时的四条偏离如何逐条收敛）属于历史（见 `CHANGELOG.md` 与 git 历史），本文不重复。
 
 ---
 

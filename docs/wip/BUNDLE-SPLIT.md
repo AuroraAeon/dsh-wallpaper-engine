@@ -1,18 +1,22 @@
 # 插件包重构手册 —— 多包拆分（主包 + 核心子插件 + 边缘子插件）
 
-> **哈希说明（squash 后）**：本文件中的短哈希是 **squash 前历史哈希**。追版本第二期收口已把
-> `c43a936..352467a` 的 **108 笔**压缩为一笔（父 = `c43a936`，树内容逐字未变），该提交以 tag `catchup-2nd` 标注。
-> 原文可由分支 `backup/pre-squash-20261014` 取得；逐条对应见该提交正文附录。
-> 新增引用请优先使用 tag `catchup-2nd`。
+> **哈希说明（这条线被重写过两次，旧哈希多半已不在现行 `main` 上）**：本文件里的短哈希是**当时那条线上的**历史哈希。
+> 现行线 = 单笔 squash `6385b62e`（父 = 上游 merge `a86923b7`），本地工作树即该提交。
+> 追版本第二期那一笔（108 笔压缩，父 = `c43a936`）以 tag `catchup-2nd` 标注，但**该 tag 只被
+> `backup/main-pre-rebase-20261014` 包含，不是 `main` 的祖先**；`backup/pre-squash-20261014` 亦然。
+> ⇒ **复核本文件的旧哈希前先切到对应备份分支**，不要在 `main` 上找。
+> 复算：`git rev-parse --short HEAD catchup-2nd` · `git branch -a --contains catchup-2nd` ·
+> `git merge-base --is-ancestor catchup-2nd HEAD`（预期非 0）。
 
 
 > **本文是这条重构线的唯一执行口径**：目标架构、机制约束、包边界、通讯纪律、阶段计划、判据改造、发布流程。
-> **决策正本** = [`adr/0012`](../adr/0012-bundle-multi-component-rows.md)（目标与判据、开关语义、明确不做的事）；
+> **决策正本** = [`adr/0013`](../adr/0013-bundle-multi-component-rows.md)（目标与判据、开关语义、明确不做的事）；
 > 本文**只写"怎么做"**，与 ADR 重复的目标陈述一律改成指针。
 > **写作纪律**（[`docs/README.md`](../README.md) §写作纪律）：不抄会漂的数值；证据锚点用**符号名 / 文件路径 / 复算命令**；
-> 行号必漂，一律不写。**状态**：进行中（住 `docs/wip/`，收口后按 §11 移入 `docs/archive/wip/`）。
+> 行号必漂，一律不写。**状态**：进行中（住 `docs/wip/`，收口后按 §11 归档）。
 
-**基线**：上游 `main` + 未发布增量；当前形态 = **单包 + 4 个插件行**（`dsh-plugin-wallpaper-engine`）。
+**基线**：现行 `main` 相对 `origin/main` **behind 0**（复算：`git rev-list --left-right --count origin/main...HEAD`）；
+当前形态 = **单包 + 4 个插件行**（`dsh-plugin-wallpaper-engine`，即 `cordis.patch.yml` 的四条 `insert`）。
 **目标形态** = **主包 + N 个子插件包**（版本一致、一次安装落地、代码各自成包、第三方代码除外）。
 
 ---
@@ -32,16 +36,21 @@
 
 **贯穿性约束**：
 1. **实现代码搬进各自插件**（不是"目录搬、实现留主包"）；
-2. **第三方代码除外** —— 现在是 `lib/webwallgl/**`（vendored，1.15 MB）：**"不搬"= 留在主包**，
-   由 `WEBWALLGL_DIR` 作注入键交给需要它的包（见 §9.4 的两种做法与取舍）；
+2. **第三方代码除外** —— 引擎**已经是 npm 依赖**（`package.json` 的 `dependencies` 里有 `webwallgl`），
+   仓库内 `lib/webwallgl/**` 只剩自家模板/宿主桥文件（复算：`git ls-files lib/webwallgl`）：
+   **"不搬"= 不随子包走**，由主包持有依赖，并以 `WEBWALLGL_PKG_DIR` / `WEBWALLGL_DIR` 作注入键交给需要它的包
+   （见 §9.4 的两种做法与取舍）；
 3. **所有子包版本一致**（不追求独立发布）—— 这条把"发布面 ×N"的成本消掉（见 §4.1）；
 4. **组件之间明确的通讯纪律**（见 §6）。
 
 ### 1.2 与现行 ADR 的关系
 
 - 现行形态（单包多行）与 D3（关掉一行 ⇒ 路由不注册 ＋ 界面不渲染）**已经落地**，是本手册的**起点**；
-- 目标形态（多包）需要**修订 ADR-0012 的 D8**（"不做多包 monorepo"）。修订理由**只有一条**：
-  **降复杂度与解耦**（用户口径：独立发布不必要；版本一致更方便管理）。**"关掉即不下载"仍是非目标（D16）**。
+- 目标形态（多包）需要**修订 [`adr/0013`](../adr/0013-bundle-multi-component-rows.md) 的 D6 / D8 / D17**
+  （"终态取单包多行" / "不做多包 monorepo" / "每组件一格客户端开关"三条的**前提**）。
+  **2026-10-14 用户拍板：就地改写 ADR-0013 的 D6 与 D8 正文、D17 只改理由**（不新开 ADR）。修订理由**只有一条**：
+  **降复杂度与解耦**（用户口径：独立发布不必要；版本一致更方便管理）。**"关掉即不下载"仍是非目标（D16）**，
+  **每组件一格客户端开关仍不做**（理由改为"子包粒度 ≠ 组件行粒度"，见 ADR-0013 D17）。
 
 ---
 
@@ -64,7 +73,7 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 |---|---|---|
 | **宿主实现** `lib/index.js` | 一个可调用的 `apply`（哪怕空） | **不可省**：Loader 行的目标必须是函数或 `{apply}`，否则装载期报错 |
 | **宿主行** `cordis.patch.yml` 里的一行 | 让宿主知道"有这么一个插件" | 整包不存在（行级失败是**只打印、不中断启动**，见 §5.1） |
-| **浏览器半边** `exports["./client"]` + `dsh.client` | 界面/样式/槽贡献 | **可选**（in-box 218/289 个包没有）；缺了不影响宿主半边 |
+| **浏览器半边** `exports["./client"]` + `dsh.client` | 界面/样式/槽贡献 | **可选**（in-box 多数包没有 `dsh.client`，占比复算见附录 D）；缺了不影响宿主半边 |
 | **行元数据** `exports` 三连 + `locale/` + `icon` | 插件管理器里的标题/描述/图标 | **静默降级**：显示裸 specifier |
 
 **官方对"纯浏览器包"的写法**：**空宿主壳**。in-box 的 `dsh-client-ui-layout/lib/index.js` 全文
@@ -85,7 +94,8 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 **为什么 A 三通道都行**：`installBundle` 只把**主包**写进 profile 的 `dependencies`；子包作为**传递依赖**
 被 pnpm hoist 到 `profile/node_modules` 顶层，`resolveBundleDir` 用 `require.resolve.paths` 就能命中
 （本机实证：`js-yaml` / `undici` / `zod` 都在顶层）。宿主还会**连带校验** patch 指向的每个包的
-`peerDependencies`（`bundleComponentManifests`）—— 任一不匹配 ⇒ 整次安装被拒并回滚（含 `node_modules` 修复）。
+`peerDependencies`（`dsh-plugin-manager` 的 `bundleComponent*` 一族；`dsh-app-boot` 侧另有一道读取期兼容性校验）
+—— 任一不匹配 ⇒ 整次安装被拒并回滚（含 `node_modules` 修复）。
 
 **B 为什么不行**：`installBundle` 硬性要求"这次 `pnpm add` 恰好让 1 个包从无到有"（`installed.length === 1`），
 多一个就 `ambiguous-install` 拒绝。⇒ **不采纳 B**。
@@ -109,7 +119,8 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
    ⇒ **`id` 与 `name` 任一变了，老用户的开关记忆就丢**（覆盖项变成 warn-then-skip 的孤儿）。
 2. 行自身带 `insert` 键的条目**不可通过 UI 开关**（`item.has('insert')` 直接跳过）—— 这是 `- insert:` 这个
    **YAML 语法**与"行上有个 `insert` 字段"的区别；我们插进 `- insert:` 列表里的行**没有** `insert` 键，
-   **可以开关**（真机实证：profile patch 里有 `- id: wallpaper-engine-about-notice / disabled: false`）。
+   **可以开关**（真机实证：profile patch 里的行开关覆盖项形如 `- id: <行 id>` + `disabled: false`；
+   本机 desktop profile 里就有 `wallpaper-engine` 那一条 —— 见附录 D 的复算命令）。
 
 **结论（决策）**：**老行出口时保留 `id` 与 `name` 两者不变**。
 子包在自己 `package.json` 的 `exports` 里保留同名子路径（`"./<c>"` / `"./<c>/package.json"` / `"./<c>/locale/*.json"`），
@@ -182,7 +193,7 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 | S3 | `sanitizeFromSchema` 是**白名单**：不认识的键**静默丢弃** | 子包不认识别的包的键 ⇒ 一次写入抹掉别人的键（ADR-0002 记录的原始 bug 型） |
 | S4 | 7 个设置簇（`core` / `appearance` / `mascot` / `fx` / `parallax` / `typeColor` / `media`）**不是按插件边界画的** | 见 §6.3 的三选一 |
 | S5 | `config.json` 有 4 个根字段（`settings` / `fontSetId` / `uploadDir` / `cacheDir`），写串行化 = `enqueueConfigWrite` 的**模块级队列** | 队列必须**进程唯一**（§5.1 的共享内核问题） |
-| S6 | `PROFILE_PRESET_KEYS`（116 键）横跨**全部 7 簇**；预设资产段横跨字体 / 立绘 / 头像三族 | 预设是最硬的跨包面，见 §6.4 |
+| S6 | `PROFILE_PRESET_KEYS` 横跨**全部设置簇**；预设资产段横跨字体 / 立绘 / 头像三族 | 预设是最硬的跨包面，见 §6.4 |
 
 ---
 
@@ -200,12 +211,15 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 
 **三条出路（必须选一条，且写进 ADR）**：
 - **① 主包以 Service 形式提供**（`export default class extends Service`）：官方三种导出形态之一，宿主侧**全仓零先例**；
-  代价 = 主包行从"纯插件"变成 provider，`verify-component-face` 的硬编码数字（95/88/15）必须同步改。
+  代价 = 主包行从"纯插件"变成 provider，`verify-component-face` 的冻结契约（内核分级面的复算口径
+  `KERNEL_STABLE_FACE` —— 该判据已改成**读真源现算**，不再写死数字）必须同步重算。
 - **② 子包 `import` 主包的叶子模块**：形状最简单、今天就能做；代价 = 把内核内部面公开进 `files`，
   且撞 `verify-module-layout` 的"共享内核白名单只许一项"。
 - **③ 把内核下沉成独立小包**（`dsh-plugin-we-core`）：边界最干净；代价 = 多一个发布面 + 新包名要进各守卫的顶层目录地板。
 
-> **本手册的建议**：**先走 ②**（零新机制、可立即验证），把 ① 作为"② 撞到白名单/耦合墙时"的升级路径。
+> **决策（2026-10-14，用户拍板 —— 见 §13 的 D-4 与 D-8）**：**先走 ②**（零新机制、可立即验证），
+> 把 ① 作为"② 撞到白名单/耦合墙时"的升级路径；**跨包贡献/服务面**先走**宿主注入显式键集**
+> （§5.2 允许清单第 2 条），P-A…P-B **不新开 Service**。
 
 ### 5.2 跨包通讯纪律（**写进判据，不靠人记**）
 
@@ -233,9 +247,19 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 - 或"值 + 回调"（子包只是渲染器，写权留主包）；
 - **不要**用 `external` + `require` 传长命对象。
 
+> **决策（2026-10-14，§13 D-8）**：P-A 的三个子包先走**宿主注入显式键集**（值由主包注入、子包只读），
+> 不做长命对象跨包 `require`，也不新开 Service；§5.1 ① 仍是升级路径。
+
 ---
 
-## 6. 需要产品/架构拍板的四个问题（**在动手前必须表态**）
+## 6. 需要产品/架构拍板的四个问题（**2026-10-14 复核：两条已定案，两条按阶段前置**）
+
+| 问题 | 状态 | 决策 / 期限 |
+|---|---|---|
+| §6.1 配置项归属（代码 / 状态） | **阶段前置** | **P-C 之前必须表态**（§7.3 已把它列为前置） |
+| §6.2 客户端半边怎么协作（服务面形状） | **已定案（2026-10-14）** | P-A…P-B 走**宿主注入显式键集**（§5.2 允许清单第 2 条）、不做长命对象跨包 `require`、**不新开 Service**（升级路径 = §5.1 ①）；"provider 缺席"的期望 = 注入键缺席，按 D3③「宁可显示、不可静默消失」 |
+| §6.3 设置簇要不要按插件重画 | **阶段前置** | **P-C 之前必须表态**（与 §6.1 同批） |
+| §6.4 预设怎么跨包 | **阶段前置** | **P-D 之前必须表态**（与 §7.4 同批） |
 
 ### 6.1 "配置项归子插件" = 代码归属还是**状态归属**？
 
@@ -252,13 +276,15 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 
 ### 6.3 设置簇要不要按插件重画？
 
-- **重画**（`core.library` / `core.playback` / `appearance.glass` / `appearance.ui`…）：7 条路由变 N 条，
-  `verify-settings-namespaces` 的 `EXPECT_COUNTS` 与分区对账全要重写，老客户端与老存档要语义映射；
+- **重画**（`core.library` / `core.playback` / `appearance.glass` / `appearance.ui`…）：分区的命名空间表与
+  `SETTINGS_NAMESPACE_NAMES` 要按新簇重排，分区对账的**口径**（键集逐键相等）随之重述，
+  老客户端与老存档要语义映射；⚠️ 该判据里的键数**已经是现算**（从 `sanitizeFromSchema` 派生，
+  复算：`node test/verify-settings-namespaces.mjs`）⇒ 重画要改的是**分区表与口径**，不是硬编码计数；
 - **不重画**（两个包共用一个簇）：**单写者（M4=0）不变量立刻破功**。
 
 > **二选一，没有第三条。**
 
-### 6.4 预设（`PROFILE_PRESET_KEYS`，116 键 / 7 簇 / 3 资产族）怎么跨包？
+### 6.4 预设（`PROFILE_PRESET_KEYS`，键集横跨全部设置簇 + 三族资产）怎么跨包？
 
 它是唯一"路由不写设置却必须理解所有包的键"的落点（`sanitizePresetValues` / `installAssets`）。
 三选一：主包聚合（子包把键注册进主包）/ 每包自带片段 + 宿主装配 / 拆成多个预设。
@@ -271,13 +297,15 @@ U5 说运行期是**安全 park**，但插件管理器会报 `failed`。若"停�
 
 ## 7. 阶段计划
 
-> **贯穿纪律**：① 每阶段先落**判据**、再改实现（ADR-0012 D12 的教训）；
+> **贯穿纪律**：① 每阶段先落**判据**、再改实现（ADR-0013 D12 的教训）；
 > ② 每阶段独立提交、可单独 revert；③ 每阶段末跑 §7.7 的验收；④ **不许先放宽守卫再改**。
 
 ### 7.0 起步态（已达成，作为基线）
 
 单包 + 4 行；D3 的界面级开关语义已落地（状态面 `/inventory.components`、可见面声明 `lib/components/visibility.js`、
-判据 `test/verify-component-visibility.mjs`）；`npm run verify:all` 全绿。**历史进度与度量口径见本文件末 §12。**
+判据 `test/verify-component-visibility.mjs`）；守卫链 `node test/run-guards.mjs all` **全绿**
+（步数与地板以 `test/run-guards.mjs` 与 `test/verify-package-files.mjs` 的 `CHAIN_FLOOR` 为准，本文不抄数）。
+**度量口径见本文件末的附录 E；历史进度与追版本日志见 `CHANGELOG.md` 与 git 历史。**
 
 ### 7.1 P-A 试点：三个小子包（**建议从这里开始**）
 
@@ -289,9 +317,9 @@ U5 说运行期是**安全 park**，但插件管理器会报 `failed`。若"停�
 | 3D 效果 | `src/parallax-layer.js`、`src/ext-parallax.js`（`PARALLAX_EXTENSION_MODULE`） | 同上 |
 | 字体系统 | `src/font/**`、`src/fontset-store.js`、`src/fontset-editor.js`、`src/system-fonts.js`；宿主侧 `lib/routes/{fontsets,system-fonts}.js` | 宿主实现 + 浏览器半边 + 一条行 |
 
-**动作**：① 建三包（`packages/` 或独立仓库，落点见 §8.1）；② 主包 `dependencies` 精确依赖三者；
+**动作**：① 建三包，落点 = **同仓 `packages/<pkg>/`**（§8.1，2026-10-14 定案）；② 主包 `dependencies` 精确依赖三者；
 ③ 主包 patch 里 `insert` 三行；④ 加启动自检与"行在 patch 里"的判据（§7.6）；
-⑤ 把 `extensionModules()` 从**静态数组**改成"读注册表"（首个跨包贡献点）。
+⑤ 把 `extensionModules()` 从**静态数组**改成"读注册表"（**首个跨包贡献点**，通道 = **宿主注入显式键集**，见 §6.2 / §13 D-8）。
 **判据**：三包能被单独停用且界面/路由各自消失（复用 D3 的可见面判据）；主包不装子包时**大声报错**。
 
 ### 7.2 P-B 基础设施
@@ -311,11 +339,11 @@ U5 说运行期是**安全 park**，但插件管理器会报 `failed`。若"停�
 
 以 `lib/components/media-bridge` 为基础大改：WE 壁纸与自定义导入壁纸的渲染、壁纸库 + 播放-画面里的配置项、声音、省电。
 **前置**：层的所有权（`LAYER_ID` / `SCRIM_ID` / iframe 的建立与退役）必须有唯一所有者，否则两个包各建层 = 撞单例 id。
-**注意**：`lib/webwallgl/**` 的三方代码按 §9.4 的决策留在主包或随包。
+**注意**：引擎已是 npm 依赖（§9.4 定案 = 主包持有、不随子包）；`lib/webwallgl/**` 如今只剩自家模板/桥文件。
 
 ### 7.5 P-E 收尾
 
-文档（`CODE-STRUCTURE` / `HOW-IT-WORKS` / 三份 README / `CONTRIBUTING` / CHANGELOG 四段式）、生成物重算、本文件移入 `docs/archive/wip/`。
+文档（`CODE-STRUCTURE` / `HOW-IT-WORKS` / 三份 README / `CONTRIBUTING` / CHANGELOG 四段式）、生成物重算、本文件归档。
 
 ### 7.6 **新增判据（三条，现在零覆盖）**
 
@@ -332,16 +360,27 @@ U5 说运行期是**安全 park**，但插件管理器会报 `failed`。若"停�
 
 ## 8. 落到仓库的形态
 
-### 8.1 目录与包布局（待定项）
+### 8.1 目录与包布局（**2026-10-14 定案：同仓 `packages/<pkg>/`**）
 
-| 选项 | 形态 | 代价 |
+| 选项 | 形态 | 结论 |
 |---|---|---|
-| **同仓 workspace** | `packages/<pkg>/`，各自 `package.json` + `dsh.bundle.patch` | 需要新的目录纪律；`host-route-index` / `guard-targets` / `verify-retired-lines` 的顶层目录假设都要改 |
-| **多仓** | 每包独立仓库 | 发布/同步成本高；**版本一致**靠人工对齐，与"方便管理"相反 |
-| **同仓但不在 `packages/`** | 例如 `sub/<pkg>/` | 同上，只是换个名字 |
+| **同仓 `packages/<pkg>/`**（**采纳**） | 各自 `package.json` + `cordis.patch.yml`（若自己带行）+ `lib/` | 需要新的目录纪律；`host-route-index` / `guard-targets` / `verify-retired-lines` 的顶层目录假设都要登记（§10.1 #7/#8） |
+| 同仓但不在 `packages/`（如 `sub/<pkg>/`） | 同上，换个名字 | 不采纳：私有名字只增加解释成本，换不来任何机制收益 |
+| 多仓 | 每包独立仓库 | 不采纳：发布/同步成本高；**版本一致**靠人工对齐，与"方便管理"相反 |
 
 > **注意**：`workspace:` / `bundledDependencies` / monorepo 的**安装语义不被 DSH 支持**（I3），
 > 但"同仓多包 + 各自发布"在 npm 层是可行的 —— 我们要的只是**同仓开发**，不是 workspace 协议。
+>
+> ⚠️ **开发期解析：未验证，P-A 开工前必须做一次 spike**。本机两个 profile 都按
+> `link:D:/dsh-wallpaper-engine/` 安装（复算：`$DSH_HOME/profiles/<p>/package.json` 的 `dependencies`），
+> 而 **`link:` 不会把被 link 包的 `dependencies` 装进 profile** —— 实测 profile 顶层有 `js-yaml` / `undici`，
+> 但**没有** `webwallgl` / `x11`（它们只在本仓自己的 `node_modules` 里）。
+> 行名走 loader：**裸包名 → `internal.import(name, bareModuleBaseUrl)`**（installed-host base），
+> **只有相对名（`./…`）才 "resolve beside the configuration file"**。
+> ⇒ **发布路径**（用户 `pnpm add` 主包、子包作为传递依赖被 hoist 到 profile 顶层）成立；
+> **开发路径**下 §8.3 那个**裸真名**能不能解析到子包，必须先 spike 证伪或改口径
+> （备选：开发期行名写相对 patch 的 `./packages/<pkg>/lib/index.js` —— I4 明列支持相对名）。
+> **在 spike 出结论之前，不要把 P-A 的"三行都在场"当成已成立。**
 
 ### 8.2 每个子包的清单（照抄用）
 
@@ -368,7 +407,8 @@ U5 说运行期是**安全 park**，但插件管理器会报 `failed`。若"停�
     # 既有组件行：id 与 name 一个字都不改（§3）
     - id: wallpaper-engine-about-notice
       name: 'dsh-plugin-wallpaper-engine/about-notice'
-    # 新子包：行名 = 真实包名
+    # 新子包：行名 = 真实包名（**发布形态**；开发期若 profile 是 `link:` 安装，
+    # 见 §8.1 的待验项 —— 可能要用相对 patch 的 `./packages/<pkg>/lib/index.js`）
     - id: wallpaper-engine-fonts
       name: 'dsh-plugin-wallpaper-engine-fonts'
     - id: wallpaper-engine-fx
@@ -386,7 +426,7 @@ U5 说运行期是**安全 park**，但插件管理器会报 `failed`。若"停�
 | `lib/about/**` | `ABOUT_DIR` 由主包 `pluginRoot` 解析 | 若 about 组件出包 ⇒ 资源跟走或主包继续当宿主（作注入键） |
 | `lib/fontsets/**` | `FONTSET_BUILTIN_DIR` 同上 | 字体子包出包时一并迁 |
 | `lib/glass-presets/**` | 内嵌立绘（`factory-author.json` 的 `assets.mascot.data`） | **跨 UI 与吉祥物两族**，归属要表态 |
-| `lib/webwallgl/**` | vendored，**零 import**，只由 `WEBWALLGL_DIR` 常量指向 | 见 §9.4 |
+| `lib/webwallgl/**` | **不再是 vendored 引擎**：引擎 = npm 依赖 `webwallgl`；仓库内只剩自家模板/桥文件，零 import，由 `WEBWALLGL_PKG_DIR` / `WEBWALLGL_DIR` 指向 | 见 §9.4 |
 | `assets/**`（仓库根） | 源资产，**不进包** | 派生物目的地会按包变（两份 README 的流程要重指） |
 | `lib/types/**` | 类型面，今天 = 主包 | 子包要不要类型面（`verify-types` 要按包循环） |
 
@@ -402,14 +442,18 @@ U5 说运行期是**安全 park**，但插件管理器会报 `failed`。若"停�
 | `mascot-avatar` | 同上（吉祥物/头像属 UI 面） | 与 `glass-presets` 的立绘资产交叉 |
 | `media-bridge` | **改造成壁纸子插件**（用户口径） | 最大的一块；后端/进程能力天然是宿主半边 |
 
-### 9.4 第三方代码（`lib/webwallgl/**`）
+### 9.4 第三方代码（引擎 = npm 依赖 `webwallgl`）
+
+**形态已变（2026-10 上游 npm 化）**：引擎不再是 vendored 副本 —— `package.json` 的 `dependencies` 里有 `webwallgl`，
+仓库内 `lib/webwallgl/**` 只剩自家模板/宿主桥文件（复算：`git ls-files lib/webwallgl`；
+取舍记录见 [`ARCHITECTURE-SPLIT.md`](../ARCHITECTURE-SPLIT.md) §5）。
 
 | 做法 | 好处 | 代价 |
 |---|---|---|
-| **留主包**（建议先这样） | `dependencies` 保持为空、CI 零安装、`sync-webwallgl.mjs` 零改动、上游撞车面不变 | 装壁纸子包的人必装主包，体积不省 |
-| 随壁纸子包 | 语义归属正确 | `sync-webwallgl.mjs` 与 `BASE_PATH` 单一真源要参数化；上游 #195/#196 的撞车面变化（#196 正要删 vendored 副本） |
+| **主包持有依赖、不随子包走**（**2026-10-14 定案**） | 依赖声明单点；CI 与守卫零改动；上游撞车面不变 | 装壁纸子包的人必装主包（体积不省） |
+| 让壁纸子包自己声明 `dependencies: webwallgl` | 语义归属正确 | 引擎出现两个持有者 ⇒ 版本漂移与双实例风险（与 §11 纪律 7 同源） |
 
-> **决策**：**先留主包**（用户口径"第三方代码除外"已经允许），等壁纸子包落地后再评估是否随迁。
+> **决策**：**留主包**（用户口径"第三方代码除外"已经允许；且它如今已不是"随包代码"而是**依赖**）。
 
 ---
 
@@ -420,17 +464,17 @@ U5 说运行期是**安全 park**，但插件管理器会报 `failed`。若"停�
 | # | 文件 / 判据 | 现假设 | 要改成 |
 |---|---|---|---|
 | 1 | `test/tools/host-route-index.mjs` | `PKG_MAIN` = 本包 `main`；**单份** patch；`<pkg>/<sub>` → `lib/components/<sub>/index.js` | **包清单 → 每包的 main + patch + 行**；**全部下游守卫的根，改它要最后验收** |
-| 2 | `test/verify-bundle-rows.mjs` | 仓库根**恰好一份** patch；恰好一行裸包名；其余行 `startsWith(BARE + '/')` | 按包枚举；行命名空间断言按包重写；组件的"图标与包根字节相同"对独立包不成立 |
-| 3 | `test/verify-inject-contracts.mjs` | 扫描面 = `lib/routes/*.js` ∪ `lib/components/*/*.js`；地板 `>=21/>=40/>=20` | 扫描面按包派生；地板按新结构重算（**最容易假绿的一处**） |
-| 4 | `test/verify-component-face.mjs` | **硬编码** `95 / 88 / 15`；组件目录固定在 `lib/components/` | 数字化契约随服务化同步；目录集合按包 |
+| 2 | `test/verify-bundle-rows.mjs` ⚠️ **不在守卫链上**（有意脱链，两条理由都在该守卫自己的注释里：① 它 import 宿主 peer 包 `@deepseek-ai/cordis`，而 CI 是 `npm ci --omit=peer`；② `verify-package-files` 的 P5 明令链上脚本不许有裸包依赖） | 仓库根**恰好一份** patch；恰好一行裸包名；其余行 `startsWith(BARE + '/')` | 按包枚举；行命名空间断言按包重写；组件的"图标与包根字节相同"对独立包不成立。**改它时 CI 不会拦 ⇒ 每阶段必须手动跑 `node test/verify-bundle-rows.mjs`** |
+| 3 | `test/verify-inject-contracts.mjs` | 扫描面按磁盘枚举派生；三条哨兵地板 = 模块数 / 声明键数 / 调用点数（**具体数字以该文件为准，本文不抄**） | 扫描面按包派生；三条哨兵按新结构重算（**最容易假绿的一处**） |
+| 4 | `test/verify-component-face.mjs` | 组件目录固定在 `lib/components/`；内核分级面已**读真源现算**（`KERNEL_STABLE_FACE` / `lib/kernel/*`），数字不写死 | 目录集合按包；若走 §5.1 ①（Service）则分级面复算口径同步 |
 | 5 | `test/verify-route-ownership.mjs` | `lib/components/<sub>/index.js` 硬路径；地板 `>=2` | 行→入口的解析改成"读各包 `exports`/`files`" |
-| 6 | `test/verify-package-files.mjs` / `verify-package-publish.mjs` | **单份** `files` / `main` / `scripts`；`CHAIN_FLOOR`；入口硬编码 8 项 | 参数化成"每包跑一次"或拆两套 |
+| 6 | `test/verify-package-files.mjs` / `verify-package-publish.mjs` | **单份** `files` / `main` / `scripts`；链步地板 = `CHAIN_FLOOR`（`verify` / `docs` / `smoke` / `all` 四组，数字以该文件为准）；入口清单写死 | 参数化成"每包跑一次"或拆两套；地板表按包组重算 |
 | 7 | `test/verify-retired-lines.mjs` | 扫描面地板按**顶层目录**计数（`lib`/`src`/`test`/`scripts`） | 新顶层目录要登记 |
 | 8 | `test/tools/guard-targets.mjs` | `walk(src)+walk(lib)`；`ARTIFACT='lib/client.js'` | 按包；产物 N 个 |
 | 9 | `test/verify-module-layout.mjs` | 共享内核白名单**只许一项** | 若走 §5.1 出路 ② 要放宽并写理由 |
 | 10 | 三份生成物（`ROUTE-INDEX` / `GUARD-MAP` / `TOKEN-CONTRACT`） | 逐字节对账、单份 | 决定"每包一份还是仓库一份" |
 | 11 | `scripts/prepare.mjs`（`prepack`） | 源码与产物同包根、只有一份 | 按包循环或只挂主包 |
-| 12 | 15 个读 `package.json` 的 `test/`+`scripts/` 文件 | 单包 | 同 #1（先做"包发现"层） |
+| 12 | 读 `package.json` 的 `test/` + `scripts/` 文件（复算：`Select-String -Path test\*.mjs,scripts\*.mjs -Pattern package\.json`） | 单包 | 同 #1（先做"包发现"层） |
 
 ### 10.2 顺序纪律
 
@@ -472,53 +516,64 @@ U5 说运行期是**安全 park**，但插件管理器会报 `failed`。若"停�
 
 ---
 
-## 13. 待决策清单（开工前必须表态）
+## 13. 待决策清单（**2026-10-14 复核：开工闸门项已定案，其余标了阶段前置**）
 
-| # | 决策 | 现状 |
+| # | 决策 | 状态 |
 |---|---|---|
-| D-1 | 目标形态 | **多包**（主包 + 子包，版本一致）；需修订 ADR-0012 D8 |
+| D-1 | 目标形态 | **多包**（主包 + 子包，版本一致）。**已就地改写 ADR-0013 的 D6 / D8**（§1.2） |
 | D-2 | 行标识兼容 | **保留老行 id 与 name**（零迁移，§3） |
 | D-3 | "一次安装"语义 | **A：主包 patch 引用子包**（三通道可用，§2.3） |
 | D-4 | 共享内核怎么给子包 | ② 叶子 import（先）→ ① Service（升级路径），§5.1 |
-| D-5 | 第三方代码 | **留主包**（§9.4） |
-| D-6 | 配置项 = 代码归属还是状态归属 | **待表态**（§6.1） |
-| D-7 | 设置簇要不要按插件重画 | **待表态**（§6.3） |
-| D-8 | 跨包服务面形状 | **待表态**（§6.2） |
-| D-9 | 预设怎么跨包 | **待表态**（§6.4） |
-| D-10 | 目录布局（`packages/` vs 其它） | **待表态**（§8.1） |
+| D-5 | 第三方代码 | **主包持有 npm 依赖 `webwallgl`、不随子包**（§9.4；形态已随上游 npm 化更新） |
+| D-6 | 配置项 = 代码归属还是状态归属 | **阶段前置：P-C 之前必须表态**（§6.1 / §7.3） |
+| D-7 | 设置簇要不要按插件重画 | **阶段前置：P-C 之前必须表态**（§6.3 / §7.3，与 D-6 同批） |
+| D-8 | 跨包贡献 / 服务面形状 | **定案（2026-10-14）：宿主注入显式键集**（§5.2 允许清单第 2 条）；不开新 Service，升级路径 = §5.1 ① |
+| D-9 | 预设怎么跨包 | **阶段前置：P-D 之前必须表态**（§6.4 / §7.4） |
+| D-10 | 目录布局 | **定案（2026-10-14）：同仓 `packages/<pkg>/`**（§8.1；不用 workspace 协议） |
 | D-11 | 从哪个子包开始 | **建议三个小包试点**（§7.1） |
 
 ---
 
 ## 附录 A —— 现行形态的资产清单（拆包时要逐项归属）
 
-- **宿主半边**：`lib/index.js`（门面）、`lib/kernel/*`（内核 / 会话 / 组件视图）、`lib/routes/*`（16 族）、
-  `lib/media/*`（6 个内核媒体文件）、`lib/*.js`（serve / inventory / faststart / upload-store / cache-dir /
-  shim-seed / diag-trace / http-lifecycle / we-discovery / we-assets / json-response …）、
-  `lib/components/*`（3 个组件行）、`lib/webwallgl/**`（vendored）。
-- **浏览器半边**：`src/**`（41 个内联模块 + 正文 `src/client.js`）→ 单产物 `lib/client.js`。
-- **资产**：`lib/about/**`、`lib/fontsets/**`、`lib/glass-presets/**`、`lib/webwallgl/**`、`lib/types/**`；
-  仓库根 `assets/**`（不进包）。
-- **发布面**：`files`（51 条）、`exports`（主入口三连 + 3 个组件三连 + patch + package.json）、
-  5 条 `peerDependencies`（`@deepseek-ai/*` 三条 + `cordis` + `react`）。
+> **不抄条数**：每一项的规模都以**符号名 + 复算命令**给（`docs/README.md` §写作纪律 4）——
+> 这份清单在 2026-10-14 复核时已有若干条漂了（路由族数 / `files` 条数 / 内联模块数），
+> 故本节只留符号名与类别。
+
+- **宿主半边**：`lib/index.js`（门面）、`lib/kernel/*`（内核 / 会话 / 组件视图）、`lib/routes/*`（路由族，
+  条数以生成物 `docs/ROUTE-INDEX.md` 为准）、`lib/media/*`（内核媒体文件）、
+  `lib/*.js`（serve / inventory / faststart / upload-store / upload-dir / cache-dir / fs-paths / pkg-read /
+  scene-manifest / shim-seed / diag-trace / http-lifecycle / http-body / json-response / wallpaper-scan /
+  steam-discovery / we-assets / we-props / we-focus-guard / media-origin / mp4-vfs / startup-sweep / host-boot /
+  log / notice …）、`lib/components/*`（组件行）、`lib/webwallgl/*`（自家模板 / 宿主桥，**不是引擎**）。
+- **浏览器半边**：`src/**` 的构建期内联模块（清单的**唯一真源** = `scripts/build-client.mjs` 的 `INLINE_MODULES`）
+  → 单产物 `lib/client.js`（生成物，不入库）。
+- **资产**：`lib/about/**`、`lib/fontsets/**`、`lib/glass-presets/**`、`lib/types/**`；仓库根 `assets/**`（不进包）。
+- **发布面**：`package.json` 的 `files`（逐文件白名单）/ `exports`（主入口 + 每个组件三连 + patch + package.json）/
+  `peerDependencies`（宿主 `@deepseek-ai/*` 的兼容锚）—— 逐条以该文件为准。
 
 ## 附录 B —— 上游撞车面（复算：`git merge-tree --write-tree --name-only HEAD <PR>`）
 
-| PR | 触面 | 与本手册的关系 |
+| PR | 触面 | 状态（2026-10-14 复核） |
 |---|---|---|
-| #195 | `lib/index.js` / `lib/routes/scene-serve.js` / `package.json` / `lib/client.js` / `src/client.js` / `lib/webwallgl/**`(曝光打点) / 新增 `lib/occlusion/**` | 多包化会**大幅改造** `package.json` 与构建脚本 ⇒ 与它正面相撞 |
-| #196 | `lib/index.js` / `lib/routes/scene-serve.js` / `package.json` / `lib/client.js` / `src/client.js` / **删 `lib/webwallgl/**`** / 生成物 / 多条守卫 | 若采纳"引擎随壁纸子包"，与它**重复删改** |
+| #195 | `lib/index.js` / `lib/routes/scene-serve.js` / `package.json` / `lib/client.js` / `src/client.js` / 引擎侧曝光打点 / 新增 `lib/occlusion/**` | **已落地**（`93594227`，是 HEAD 的祖先）⇒ 撞车面已收进本线 |
+| #196 | 同上 + **删 `lib/webwallgl/**`**（引擎 vendored 副本）+ 生成物 + 多条守卫 | **已落地**（`b8174983`，是 HEAD 的祖先）⇒ 引擎已 npm 化，见 §9.4 |
 
 **纪律**：① 不碰 PR 独占面；② 生成物一律重算；③ `package.json` 只做并集（多包化会重排 `files`/`exports`，
-与"不重排"冲突 ⇒ **多包化必须在两个 PR 落地合入之后再开**）；④ 每阶段复核冲突面是否变大。
+与"不重排"冲突）；④ 每阶段复核冲突面是否变大。
+
+**⑤ 开工闸门（原纪律 ③）已解除**：原定"多包化必须在 #195 / #196 落地合入之后再开"，两笔现已合入。
+复算：`git merge-base --is-ancestor 93594227 HEAD` 与 `git merge-base --is-ancestor b8174983 HEAD`（均 exit 0）。
 
 ## 附录 C —— 验收命令
 
 ```powershell
 npm run build                      # 重建产物（多包后：多个产物）
-npm run verify:all                 # 硬档 + 软档 + smoke；必须 exit 0
-npm run verify:docs                # 文档侧五档（ADR 索引 / 生成物对账）
+npm run verify:all                 # 硬档 + 软档 + docs + smoke；必须 exit 0
+node test/run-guards.mjs all       # 上面那条的真源（分组与步数以 test/run-guards.mjs 为准）
+node test/run-guards.mjs docs      # 文档档单独跑（**全部 soft，经 warn-only 降级 ⇒ 红不拦 PR，必须自己看输出**）
 node test/verify-component-visibility.mjs    # D3 的可见面双向对账
+node test/verify-bundle-rows.mjs   # ⚠️ 脱链判据：行命名空间 / 路由账对账（CI 不跑，必须手动）
 node test/tools/host-route-index.mjs         # 路由与行清单（现算）
 node test/tools/guard-targets.mjs --write    # 生成物重算（禁手改）
 git status --porcelain             # 期望：只剩本阶段预期改动
@@ -527,359 +582,45 @@ git status --porcelain             # 期望：只剩本阶段预期改动
 ## 附录 D —— 本手册的机制取证（复算入口）
 
 - **asar 读取**：头 16 字节；`headerSize = uint32LE@12`；`base = 16 + headerSize`；按 JSON 的 `offset/size` 直读。
-  条目总数 12967；`@deepseek-ai/*` 包 289 个（有 `dsh.client` 的 71 个）。
+  条目总数 / 包数 / 有 `dsh.client` 的包数**都随上游漂** ⇒ 不抄数，读出来现算（条目数 = 目录树叶节点数；
+  `@deepseek-ai/*` 包数 = 这些叶节点 path 去重后的**父包**个数；有 `dsh.client` 的 = 其 `package.json` 里
+  `dsh.client` 非空。2026-10-14 复核时它们是 12967 / 297 / 72，本行只是**当时的读数**，不是不变量）。
 - **关键包**：`@deepseek-ai/dsh-app-boot`（profile / bundle / patch / 兼容性）、
-  `@deepseek-ai/dsh-plugin-manager`（安装 / 开关 / `reconcile`）、
+  `@deepseek-ai/dsh-plugin-manager`（安装 / 开关 / `reconcile`；`ambiguous-install` 与 `bundleComponent*` 都住这里）、
   `@deepseek-ai/dsh-client-modules`（客户端 graph / 物化 / prune）、
   `@deepseek-ai/dsh-client-hmr`（重建 / 级联）、`@deepseek-ai/cordis`（fiber / reflect 级联）。
-- **本机真机事实**：`$DSH_HOME/profiles/<name>/{package.json,cordis.patch.yml,pnpm-workspace.yaml,node_modules}``；
-  `dsh.profile.patchReload`（本机 `"live"`）；本插件的 4 行开关覆盖项已在 profile patch 里（证明行开关有效）。
+- **本机真机事实**：`$DSH_HOME/profiles/<name>/{package.json,cordis.patch.yml,pnpm-workspace.yaml,node_modules}`；
+  profile 用 `nodeLinker: hoisted`；行开关的覆盖项形如 `- id: <行 id>` + `disabled: false`
+  （本机 desktop profile 里能看到 `wallpaper-engine` 那一条 ⇒ 行开关有效；
+  **具体哪条随用户的开关操作变，别当不变量**）。
+  复算：`Get-Content "$env:USERPROFILE\.dsh\profiles\<p>\cordis.patch.yml" | Select-String 'wallpaper-engine'`。
 
-## 附录 E —— 历史进度与度量口径（**旧 `BUNDLE-SPLIT.md` 的账本部分，原样保留**）
+## 附录 E —— 度量口径 M1–M10（**现行契约**）
 
-> 下面是本文件替换前那一版的**进度与度量**，仍有效：度量 M1–M10 的定义、复算命令、以及
-> P0–P2-11 各阶段已完成的事实。**新的阶段计划在 §7**，两者编号体系不同（旧 P*, 新 P-A…P-E）。
+**度量（成功判据）**：M1 门面体量 · M2 门面非装配占比 · M3 浏览器半边体量 ·
+M4 跨组件共享读改写路径的设置键数（目标 0）· M5 守卫硬编码路径 / 清单条数（**加一个组件行不改工具**）·
+M6 一族的文件归属唯一性 · M7 新人定位成本 · **M8 边界可声明率**（目标 100%）·
+**M9 跨模块隐式共享面**（目标 0）· **M10 实现归属唯一性**（目标 0）——
+**目标值是契约；"当时是多少"属历史**（见 `CHANGELOG.md` 与 git 历史）。
 
-**度量（成功判据，复算命令见旧文 §3 与本节末）**：M1 门面体量 · M2 门面非装配占比 · M3 浏览器半边体量 ·
-M4 跨组件共享读改写路径的设置键数（目标 0）· M5 守卫硬编码路径/清单条数（**加一个组件行不改工具**）·
-M6 一族的文件归属唯一性 · M7 新人定位成本 · **M8 边界可声明率（P2-7 后 100%）** ·
-**M9 跨模块隐式共享面（P2-7 后 0）** · **M10 实现归属唯一性（P2-8 后 0）**。
-**口径**：不改善 M1–M10 任何一项的工作一律不做（唯一例外 = ADR-0012 D3）；**可开关本身不加分**。
+**口径**：不改善 M1–M10 任何一项的工作一律不做（唯一例外 = ADR-0013 D3）；**可开关本身不加分**。
 
-**已完成（旧编号 → 事实）**：
-- **P0 库化**：门面纯搬移出 `lib/{routes,inventory,serve,faststart,...}`；门面 469 行、`apply()` 207 行。
-- **P1 内核化 + 设置分区**：`lib/kernel/*`（host-kernel / host-session / component-session / config / data-dir）；
-  设置引入 7 个组件簇 + `/settings/<ns>`（按段合并、单写者）。
-- **P2-0…P2-6b 组件化**：`lib/components/{about-notice,mascot-avatar,media-bridge}` + 4 行 patch；
-  拆环（`lib/host-boot.js`）、fiber teardown（`handOffTeardown`）、装载探针（`/diag-log` 的 `components`）。
-- **P2-7 契约收紧（M8=100% / M9=0）**：路由族 `export const DEPS` + 组件视图面 `COMPONENT_VIEW_KEYS`；
-  判据 `verify-inject-contracts.mjs` / `verify-component-face.mjs`。
-- **P2-8 实现入包（M10=0）**：四个私有路由搬进组件目录；判据 `verify-route-ownership.mjs`。
-- **P2-9 组件行清单数据驱动**：`host-route-index.mjs` 从 `package.json.main` + patch 行名 + 磁盘交叉派生（M5 两半达成）。
-- **P2-10 媒体桥入包**：`lib/media/` 恰剩 6 个内核媒体文件（M6 成立）。
-- **P2-11 行级开关的界面语义（D3 落地）**：`/inventory.components` 三态状态面（键集 = 代码内建面）、
-  可见面声明单一真源 `lib/components/visibility.js`、gate 唯一实现 `weComponentVisible`、
-  判据 `test/verify-component-visibility.mjs`（双向对账 + 失效口径真跑 + 负对照）。
-- **ADR 合并**：`ADR-0012` 为唯一正本；旧 0013–0016 与旧版 0012 归档在 `docs/archive/adr/`。
+**复算入口**：M1 / M2 = `node test/tools/m2-facade-code-share.mjs`；M5 = `test/verify-bundle-rows.mjs`；
+M8 = `test/verify-inject-contracts.mjs`；M9 = `test/verify-component-face.mjs`；M10 = `test/verify-route-ownership.mjs`；
+M3 = 构建产物 `lib/client.js` 的体积（`npm run build` 后量）。
+## 附录 G —— 候选入选判据 J1–J7（**从旧文原文恢复**）
 
-**旧文的其余章节**（§2 的 J1–J7 入选判据、§4 宿主机制基线、§5 仓库侧硬约束、§6 三方案对比、
-§7 候选清单、§9 守卫改造清单、§10 风险与撞车台账）在本手册中分别由
-**§2/§4/§6/§9/§7/§10/§12 与附录 B** 承接 —— 需要旧表述时查 git 历史里的同名文件。
+> **用途**：判定"一个功能族凭什么独立成包 / 独立成行"。本手册改写时漏带这七条，
+> 导致 §7 的候选讨论（以及本仓 `TODO.md` 的"J1–J7 全过者"）引用了一个没有定义的记号 —— 现原文补回。
+> 历史原件：`git show 5707d358:docs/wip/BUNDLE-SPLIT.md`。**J6 的前提（设置分区）与 J7 的前提（契约收紧）
+> 都已由已完成的 P1 / P2-7 兑现**，判据本身照旧。
 
-## 附录 F —— 追版本（catch-up）日志与丢包裁决表
-
-> 本分支（下下版本开端）追到上游下版本（`origin/main`）的执行记录。起点：落后 123 / 领先 42，合并基 `0e7c806`。
-> 纪律：每轮以 `verify:all` 全绿 + 本地提交收口；**严禁 push**。
-
-### F.1 轮次结果
-
-| 轮 | 提交 | 做了什么 | 状态 |
-|---|---|---|---|
-| 1 | `c43a936` | `git merge origin/main`：32 个冲突逐条裁决（上游治理 / CI / 配置 / **产物出库**全采纳；本地语义层保留；生成物重算） | **behind 0**；`npm run build` exit 0 |
-| 1b | `ee4de37` | 新增叶子模块 `lib/fs-paths.js`（`extOf` / `normalizeUserDir` / `moveFileP` —— 上游放在门面**私有**位置，抽出来避免 `内核→门面` 环边）；`src/panel-tabs.js` 取上游版（上游已拆成 `panel-tabs-*.js`，本地单文件版撞名 ⇒ 构建硬失败） | 构建 exit 0 |
-| 1c | `7bd0597` | 命名空间贴回上游 `settings-schema.js`（新键 `extraGlassSelectors` 归 `appearance`）；`verify-settings-namespaces` 的 7 处**硬编码计数**改成从 schema 现算；`verify-client` 三处变异锚点按上游重构后的源码形态重锚 | `verify-settings-namespaces` **exit 0** |
-| 2 | 本轮 | `verify-client` 全绿（变异③ 与窗口边界自洽 ⇒ 改为"自旋即被拦下"的记账形态）；守卫链 `[2/57] → [6/57]` | 链到 `[6/57] verify-scene` |
-
-### F.2 丢包裁决表
-
-上游这轮把巨石拆成**域模块**，其中若干与本分支 P0 库化的产物**同责**。
-口径：**上游更细且带新守卫者取上游**（判据是"谁有机械覆盖"）。
-
-| 本分支模块 | 上游对应 | 裁决 |
+| # | 判据 | 反例（为什么不独立） |
 |---|---|---|
-| `lib/upload-store.js`（本分支在此搬出 `moveFileP` / `normalizeUserDir`） | 上游同名文件**只有** `createUploadStoreKit`；上传常量与文件解析搬到 `lib/asset-paths.js` | **取上游**（`moveFileP`/`normalizeUserDir` 已迁 `lib/fs-paths.js`） |
-| `lib/we-discovery.js` | `lib/wallpaper-scan.js` + `lib/steam-discovery.js` | **取上游**（待接线；上游有 `verify-wallpaper-scan` / `verify-steam-discovery`） |
-| `lib/media/transcode.js` | `lib/transcode.js` | **取上游**（待接线） |
-| `lib/media/mp4-probe.js` | `lib/media-probe.js` | **取上游**（待接线） |
-| `lib/media/scene-probe.js` | `lib/scene-probe.js` | **取上游**（待接线） |
-| `lib/media/video-preview.js` | `lib/video-preview.js` | **取上游**（待接线） |
-| `lib/diag-trace.js` | `lib/host-diag.js` | 待逐函数比对 |
-| `lib/cache-dir.js` | `lib/cache-prune.js` | 待逐函数比对 |
-| — | `lib/config-store.js` / `lib/asset-paths.js` | **新增接线** |
-
-### F.3 轮 2 定位到的缺口（下一轮从这里接）
-
-**缺口 1（解释 `verify-scene` 成片 404）**：门面从 `hostKernel` 解构 **65 个键**，其中 3 个取不到值：
-
-```
-resolveUploadFile · setUploadDir · UPLOAD_MAX_BYTES
-```
-
-成因：上游把「上传目录常量 + 上传文件解析」从 `upload-store.js` 搬到 **`lib/asset-paths.js`**（`createAssetPathsKit`），
-而本分支的 `lib/kernel/host-kernel.js` 与 `lib/routes/upload.js` 仍从 `upload-store.js` 的 kit 里解构这三个名字。
-⇒ **修法**：接线 `lib/asset-paths.js`；或按上游实现把这三个名字补进叶子模块（与 `fs-paths.js` 同款做法）。
-
-**缺口 2**：`verify-scene` 其余红点（`inventory` 缺 fixture 场景 / 头像系列 404 / `GPU_FRAME_MAX_BYTES = 0`）
-—— 逐条判"接线缺"还是"判据锚点漂"（**不许放宽判据**）。
-
-**缺口 3（产物出库连带面）**：8 条读 `lib/client.js` 的守卫需"先 `npm run build`"；当前由链首
-`verify-client-sync` 现场重建满足，逐条复核后决定是否显式前置。
-
-### F.4 轮 3 结果（缺口 1 已修）
-
-| 项 | 结果 |
-|---|---|
-| 轮 3 提交 | `5c372db` |
-| 缺口 1 | **已修**：新增叶子模块 `lib/upload-dir.js`（`createUploadDirKit` 工厂 + `UPLOAD_MAX_BYTES` + `UPLOAD_FILE_RE`），内核在模块加载期建一次 ⇒ 那 3 个键全部有值；内核仍 **95 键**（`verify-component-face` 的冻结契约不变） |
-| `verify-scene` 帧上限判据 | 改按**真源**解析（常量已随 P0 库化搬到 `lib/media/frame-store.js`；判据原先绑死 `lib/index.js` ⇒ 搬家后静默退化成 0） |
-| 守卫链 | 仍在 `[6/57] verify-scene` |
-
-**轮 4 的裁决点（新增，必须表态）**：`verify-scene` 的 `/avatar` 系列 404 与 inventory fixture 的根因是
-**路由族归属**：`/avatar` 与 `/mascot` 在本分支归**组件行** `mascot-avatar`（P2-2 的成果，由 `verify-route-ownership` 的 M10 钉住），
-而上游那条判据按"**门面 `apply()` 之后 `/avatar` 就可用**"写（它那边是单包单行）。两种处置：
-
-- **(a) 判据连组件一起 boot**（`applyComponent(..., 'mascot-avatar')` 之后再断言）—— 保住组件边界，但要改上游判据的 boot 段；
-- **(b) 门面补注册这两族** —— 判据不用改，但**破坏 M10**（实现归属唯一性）与组件行语义。
-
-### F.5 轮 4 结果（按 (a) 落地）
-
-| 项 | 结果 |
-|---|---|
-| 轮 4 提交 | `b3e210e` |
-| `/avatar` 系列 404（7 条） | **已绿**：夹具连组件一起 boot（`applyComponent(mockCtx, {}, 'mascot-avatar')`），判据判什么未改 |
-| 帧上限判据 | 已按真源解析（常量住 `lib/media/frame-store.js`） |
-| 扫描面分层 | `readHostHalf`（锚点面，含 `lib/kernel/**` 与 `lib/media/**`）与 `readKeyDerivationSurface`（计数面）分开 —— 混成一份会把派生点计数带偏（实测 3→4） |
-| `verify-scene` | **8 红 → 3 红**（69 passed / 3 failed） |
-
-**剩余 3 红（需语义裁决，不是锚点漂）**：
-
-1. `inventory exposes the fixture scene frameUrl` —— fixture 场景没进 inventory；
-2. **`P1-6 每种缓存各只有一个键派生点`**：本分支实测 `base64url` 派生点**全仓 8 处**（门面 + routes + kernel + media 面 4 处），
-   上游口径是 **3**（帧 / 场景音频 / 场景视频）。两种可能：本分支的媒体探测族存在**重复派生**（真回归），
-   或该口径要按"每种缓存一个"重述 —— **必须逐点核对后裁决，不许直接改数**；
-3. `G 去重账本只以引用进 c`（声明位置/生命周期断言）。
-
-**顺带确认的"丢包"信号**：上游 `lib/routes/scene-frame.js` 的依赖面是
-`GPU_FRAME_AREA_TOL` / `GPU_FRAME_MAX_BYTES` / `GPU_WRITE_INFLIGHT`（带**面积升级守卫**），
-而本分支该族用 `sceneFrameSlot` / `gpuFrameFileFor`（无 `GPU_FRAME_AREA_TOL`）⇒ 这一族是
-**上游更细且带新语义**的样本，按附录 F.2 口径应在轮 5 取上游（需连带接线 `lib/media/frame-store.js` 的新接口）。
-
-⇒ **建议 (a)**：与 ADR-0012 D14（实现入包、主包不留注册点）一致；改的是"夹具怎么 boot"，不是"判据判什么"。
-
-### F.6 轮 5–6 结果
-
-| 轮 | 提交 | 结果 |
-|---|---|---|
-| 5 | `71c9424` | `verify-scene` **3 红 → 1 红**（71 passed）。删掉**未被引用**的重复模块 `lib/scene-probe.js`（上游版副本；本分支用 `lib/media/scene-probe.js`）⇒ `P1-6 每种缓存一个键派生点` 自动转绿（**真重复实现**，不是口径问题）；`G 去重账本` 改按声明处判定（`SCENE_VIDEO_INFLIGHT` 随 P0 库化搬进 `lib/kernel/host-session.js`） |
-| 6 | 无代码提交 | 用**临时插桩**（已还原，工作树零残留）把最后 1 红的三层逐点量清 |
-
-**轮 6 的实测trace（三层各自的结果）**：
-
-```
-[TRACE] steamRootsFromEnv raw="…\.test-cache\scene-fixture\steamlib"     ← ① env 读到了
-[TRACE] probeDirs env=[fixture]  all=[fixture, C:\Program Files (x86)\Steam, …]  ← ② 候选中含 fixture
-[TRACE] owningLibraries=[fixture, E:\SteamLibrary]                        ← ③ fixture 库**已被认定归属**
-[TRACE] scanRoots installDir=E:\SteamLibrary\steamapps\common\wallpaper_engine   ← ④ installDir 是本机真实安装
-```
-
-**结论（把范围钉死在枚举层）**：`scanRootsP(installDir, libraryDirs)` 的实现里
-`for (const lib of libraryDirs)` **确实会把** `fixture/steamapps/workshop/content/431960` 推成扫描根，
-而 `owningLibrariesP()` 也把 fixture 库算进 `libraryDirs` ⇒ **根是对的、库是对的**
-⇒ 剩下的可能只在**枚举/解析层**（`enumerateWallpapersAsync` 对该根的条目筛选），
-或 `pathExistsP` 对该根的判定（跨 `DSH_WE_STEAM_ROOT` 的 wslPath 归一）。
-
-**轮 7 的下一步（直接从这里接）**：在 `enumerateWallpapersAsync` 的根循环里按根打点（哪些根进了循环、
-每个根产出几条、被哪个条件刷掉），再决定是修筛选条件还是修路径归一；
-若两轮内仍不能定位，则**按附录 F.2 采纳上游两族拆分**（`steam-discovery` +
-`wallpaper-scan`）—— 上游那套在同一层算清 installDir 与 owningLibraries，不存在本条的分叉。
-
-
-### F.7 轮 7 结果：结论反转（发现族无罪）
-
-用**最小复现脚本**照 verify-scene 的 fixture 建合成库、直接调发现族（`.test-cache/probe-discovery.cjs`）：
-
-```
-env root        : …\.test-cache\probe-fixture\steamlib
-installDir      : E:\SteamLibrary\steamapps\common\wallpaper_engine
-owningLibraries : [probe-fixture, E:\SteamLibrary]
-fixture 在 libs : true
-枚举条目数      : 48
-含 990002       : true          ← **发现族完全正常**
-project.json 可读: Probe Scene
-```
-
-⇒ **发现族（root 推导 / 库归属 / 根枚举 / `readProjectP`）无罪**。
-"零命中"只能出在**清单装配层**（`lib/inventory.js` 的 `createInventoryBuilder` → 条目筛选与
-`hasFrame`/`frameUrl` 生成），或出在 fixture 与探针的差异上（测试用 `buildPkg` 造**真 pkg**，
-探针用的是 4 字节假 pkg）。
-
-**轮 8 的唯一待办（照此顺序，别再回到发现族）**：
-
-1. 用**测试同款 fixture**（真 `buildPkg`）跑最小复现，确认装配层是否丢条目；
-2. 在装配的条目筛选与 `hasFrame` 分支各打一条 trace，看 990002 被哪一条刷掉；
-3. 判据口径不变（**不许放宽**）：要么修装配筛选，要么修 pkg 探测 —— 两者都不是判据问题。
-
-> 方法论备注（值得复用）：本轮先用真值 trace 排除了"实现同源的三层"，再用最小复现把嫌疑面
-> 从"发现族整体"压到"装配层"。两次都没有改判据 —— 这正是"先定位、再动手"的收益。
-
-### F.9 轮 18–20：GL 引擎依赖 + shim 注入归属
-
-**轮 18（依赖）**：`verify-scene-live` 的红点里有一类是"依赖未安装"。上游树里也**没有** `lib/webwallgl/engine/`
-⇒ 引擎产物是**依赖安装后的构建产物**（判据自己的提示即 `CI: npm install before verify`）。处置：`npm install`。
-
-> ⚠️ 沙箱细节：直接 `npm install` 失败（exit −4048），因为 npm 默认缓存 `C:\Users\…\npm-cache\_logs` 在
-> **工作区之外**。改用 `npm install --cache .npm-cache` 成功 —— 这是把写入**收进允许范围**的合法做法。
-> `.npm-cache` 与 `node_modules` 均已被 .gitignore 覆盖（`git check-ignore` 命中），`package-lock.json` 无变化。
-
-**轮 19–20（shim 注入归属）**：`/wallpaper-engine/scene-files` 的 HTML 入口被判据要求带四段注入：
-
-```
-data-we-site-root="host"  → window.__weSiteRoot（**必须早于 shim**：shim 首次解析 URL 前要读到）
-data-we-shim="host"       → __weShimInstalled / __weSetPaused（正文从 webwallgl 包的 shimSource 提取）
-data-we-focus-guard="host"→ __weFocusGuard（**必须早于 seed**，晚于作者脚本等于没装）
-data-we-seed="host"       → __weSeedProps / color0（严格沙箱下渲染页读不到 iframe，属性只能随 HTML 注入）
-```
-
-现状核对（两侧都查过）：
-
-| 位置 | 状态 |
-|---|---|
-| `lib/routes/scene-serve.js`（**门面**注册的 `/scene-files`） | **无注入**（`data-we-shim` 等命中 = 0） |
-| 上游 `lib/routes/scene-serve.js` | **也无注入**（命中 = 0） |
-| `lib/serve.js` 的 `createServeKit` HTML 分支（460–491 行） | **有完整注入**（site-root → shim → focus-guard → seed，顺序正确） |
-
-⇒ 结论：注入能力在本分支被收进 **serve 套件**（组件会话消费），而门面那条路由不再注入 ——
-与第 4 轮 `/avatar` **同族**（上游按"单包单行、门面即宿主"写判据，本分支把能力搬进了会话/组件）。
-
-**裁决（轮 20，倾向 (b)）**：把 `lib/serve.js` 460–491 那段注入**抽成一个导出的共享函数**
-（入参：`html` / `token` / `readWebShim` / `buildSeedScript` / `BASE`），
-让 **kit 的 HTML 分支**与**门面的 `scene-serve.js` HTML 分支**共用同一份实现。理由：
-
-1. 判据同组的另两条（`engine/*` 的 revalidate 缓存、`engine/` 下编码 `../` ⇒ **403**）明显是
-   **宿主级文件服务**语义，而 `/scene-files` 本身就是宿主路由 —— 三者同源，放一处更内聚；
-2. 抽成共享函数符合本分支"**同一不变量只有一处构造点**"的既有纪律（否则两处注入会漂）。
-
-**轮 21 执行清单**：
-
-1. `lib/serve.js`：抽 `injectEntryHtml(...)` 并让原分支调用它（纯重构，行为不变 ⇒ 现有判据应保持全绿）；
-2. `lib/routes/scene-serve.js`：HTML 分支调用同一函数；`DEPS` 补 `readWebShim` / `buildSeedScript`，
-   门面调用点同步补两个实参（`verify-inject-contracts` 三方对账）；
-3. 同文件：引擎文件 `Cache-Control` 改 **revalidate**（文件名不带哈希但内容随 `webwallgl` 升级变）；
-   `engine/` 下编码型 `../` 逃逸回 **403**（当前 404 ⇒ 围栏判定在"找不到"之后）；
-4. 复跑 `node test/verify-scene-live.mjs`，再推链 `[9/57]` 起。
-
-### F.10 轮 21–27：注入/引擎/契约三条线收口 + 新域模块依赖盘点
-
-**已收口（提交序列）**
-
-| 轮 | 提交 | 结果 |
-|---|---|---|
-| 21 | `6b66a41` | 入口 HTML 四段注入抽成导出函数 `injectEntryHtml`（纯重构，`verify-scene` 保持 132/0 ⇒ 行为不变） |
-| 23 | `d7af89b` | `readWebShim` 改为从 **webwallgl 包 bundle** 提取（npm 包不发 `web-shim.js`）；补全 **`WEBWALLGL_PKG_DIR`** 整链（该键全仓从未定义）⇒ 四条注入判据转绿 |
-| 24 | `fa639d4` | `registerSceneServeRoutes` **调用点**补 `WEBWALLGL_PKG_DIR` ⇒ 引擎 404/no-store 与逃逸 403 两条转绿 |
-| 25 | `fa17b30` | scene-serve 的 **DEPS** 补该键 ⇒ `verify-inject-contracts` 93% → 98% |
-| 26 | `eca482c` | **接线 occlusion 族**（本仓早有 `lib/occlusion/**`，只差挂载）⇒ M8 = **100%**（22/22 族、22/22 调用点） |
-| 27 | 无代码提交 | `now-playing` 试接后**回退**（见下） |
-
-**三条反复出现的"静默退化"形态（本轮追版本的主要敌人）**
-
-1. **键在"DEPS 声明 ↔ 门面解构 ↔ 调用点实参"三者之一漏掉** ⇒ 路由拿到 `undefined` ⇒ 要么走错分支（`!WEBWALLGL_PKG_DIR` ⇒ 404），要么参与算术得 **NaN**（`1 - GPU_FRAME_AREA_TOL` ⇒ 守卫恒 false）。出现 **3 次**。
-2. **解构遮蔽模块级常量**：同名键在"kit 不提供它"的解构列表里 ⇒ 外层 const 被盖成 `undefined`。出现 **2 次**（`GPU_FRAME_AREA_TOL`、`WEBWALLGL_PKG_DIR`）。
-3. **取源方式过时 + 静默 catch**：`readWebShim` 读一个 npm 包根本不发的文件 ⇒ 每次静默返回 `''` ⇒ 整条注入通道消失。同类还有判据侧 `|| 'sf'` 的默认值回落。
-
-> **纪律**：改"键集"（DEPS / 解构 / 调用点）后，**必须单跑 `node test/verify-inject-contracts.mjs`** —— 守卫链会在前面短路，等链跑到它等于没跑。
-> **纪律**：模块级常量**不要**出现在"同名键可能不存在"的解构列表里（解构取不到即得 `undefined` 并遮蔽外层，不报错）。
-
-**轮 27 的接口盘点（新域模块接线的前置依赖）**
-
-| 待接线 | 上游实现位置 | 依赖（本仓状态） |
-|---|---|---|
-| `now-playing` | `lib/routes/now-playing.js`（172 行） | ⚠️ import `../media/index.js` 的 **`createMediaBackend`** —— 本仓**没有** `lib/media/index.js` 这个 barrel（只有 `frame-store/media-dirs/mp4-probe/scene-probe/transcode/video-preview`）⇒ **需先移植上游媒体子系统**，不可单点硬接（已试，套件因 `ERR_MODULE_NOT_FOUND` 整个崩溃，故回退） |
-| `/media-control` | 上游 `lib/media/legacy.js` | 同属媒体子系统 |
-| `scene-files` 双挂载 | `handleSceneFiles` ×2（应用源 + 媒体源） | 处理器已有，只差第二处挂载 |
-| 视频字节布局（服务期合成） | 媒体子系统 | 同属媒体子系统 |
-
-⇒ **结论**：第 8 步剩余的 4 条红**全部汇聚到"上游媒体子系统（`lib/media/**` + `createMediaBackend`）尚未移植"**这一个根因上。它不是单点接线，而是一次**成族移植**（对应手册 F.2 里 `lib/media/*` 与上游 `lib/media-probe.js` / `transcode.js` 的丢包裁决）。轮 28 起按"成族移植"规划，而不是逐个洞补。
-
-### F.11 追版本方法论（轮 8–60 总结）与剩余工作清单
-
-#### 一、这条链真正的敌人：**五类"静默退化"**
-
-| # | 形态 | 代表案例 | 为什么难查 |
-|---|---|---|---|
-| 1 | **键集三处之一漏传**（DEPS 声明 / 门面解构 / 调用点实参） | `GPU_FRAME_AREA_TOL`（`1 - undefined` = **NaN** ⇒ 面积守卫恒不生效）、`WEBWALLGL_PKG_DIR` | 不抛错、不判红；守卫"在位"却不再工作 |
-| 2 | **解构遮蔽模块级常量** | `GPU_FRAME_AREA_TOL`、`WEBWALLGL_PKG_DIR`（各踩一次） | 解构取不到即 `undefined` 并**遮蔽**外层同名绑定，不报错 |
-| 3 | **取源/解析写死上游坐标** | 判据读 `lib/index.js` 抠 `const BASE`、`LIVE_FRAME_KEY_VERSION`、`traceMediaRequests`、`scene-manifest.js`、`http-body.js` 的 specifier 深度…… | 实现搬家后判据**静默失配**：要么假红，要么拿默认值**假绿**（`|| 'sf'` 最典型） |
-| 4 | **辅助逻辑写死坐标**（不只读取面） | 判据把 `'./scene-manifest.js'` 改写成绝对 URL 的**补丁步骤**落空 | 症状伪装成"缺夹具" |
-| 5 | **失败静默 / 永不 settle** | 路由对失败回**空体 200**；`promisify(fs.promises.rename)` ⇒ promise **永不 settle** ⇒ 迁移挂死 | 前者让客户端以为成功，后者让请求永不回包 |
-
-> 判据侧的对照纪律：**不许有默认值回落**（缺锚即红）。本轮把 `|| 'sf'` 改成"解析不到就判红"，
-> 并给多处判据加了"非空转自检"（例如 verify-contracts 的"宿主代码里确实用到了有版本要求的 API
-> — 推导出的下限 = 0"）。判据自己会喊"我现在什么都没在看"，这是最有效的防护。
-
-#### 二、**判据即接口契约**（本轮反复验证的一条）
-
-判据不只断言行为，它同时是"这个模块对外承诺什么"的**书面形式**：
-
-- `avatar-layer.js` 的**导出面被钉死为四项** ⇒ 我新增一个导出就红；
-- 模块输入一律走 **`globalThis`**（`selection` / `apiUrl` 同款）⇒ 注入也必须走全局，且**缺省方向取 true**
-  （"未知 ⇒ 按可用渲染"：注入缺失只可能是接线疏漏，那种情况下把整个面板藏掉是更坏的失败）；
-- 页签函数的**首行必须从 `ctx` 解构**、接线语句的**换行位置**都被正则钉住 ⇒ 形态也是契约。
-
-⇒ 我在轮 41 按自己的偏好定接口（加导出 + 裸引用拼接作用域），红；轮 42 **先读契约再定接口**，全绿。
-
-#### 三、"搬家"是一类**多面操作**（删/移一个实现要连带检查四处）
-
-| 处 | 案例 |
-|---|---|
-| 判据的 import / 读取面 | `lib/scene-probe.js`、`const BASE` |
-| `package.json.files` | `lib/scene-probe.js` 残留（npm 会静默少发） |
-| 代码/文档里的**相对路径深度** | 组件行文件的 `../log.js` 应为 `../../log.js` |
-| 封装面登记表（`DEV_ONLY` 等） | `verify:bridge:strict` |
-
-#### 四、基础设施（本轮新增，供后续复用）
-
-- `test/tools/child-out.mjs`：**拿子进程输出的唯一方式**。本会话沙箱禁子进程管道 ⇒ 默认 `pipe` 抛
-  `EPERM`（踩过三次：`readChain` / occlusion 语法检查 / package-files 的 runner 探测）。
-  `runNodeCaptured`（stdout 落文件再读回）与 `runNodeStatus`（只要退出码，不产生管道）。
-- `COMPONENT_GATE_ALIASES`（`lib/components/visibility.js`）：登记"可单独 import 的模块通过注入拿同一 gate"
-  的别名；**词汇扩展必须连"验证该词汇的负对照"一起扩展**（否则负对照自己变假红）。
-- `mediaSrcPath` / `readAnyOf`：判据侧的"真源解析"雏形（组件行优先、`lib/media` 兜底、缺失不 ENOENT）。
-
-#### 五、★本轮唯一的**用户可见真 bug**（判据跑到真路径才暴露）
-
-`lib/fs-paths.js` 的 `moveFileP`：
-
-```js
-import { copyFile, rename, unlink } from 'node:fs/promises';   // 已是 Promise API
-const renameP = promisify(rename);   // ❌ promisify 是回调式适配器：调 rename(src,dst,cb)，
-                                     //    promises 版忽略第三参 ⇒ cb 永不触发 ⇒ promise 永不 settle
-```
-
-⇒ **缓存根 `setCacheDir` 与上传目录 `setUploadDir` 共用这条迁移链** ⇒ 用户改缓存/上传目录时
-**插件挂住不回包**。潜伏至今的原因：此前判据里的迁移场景**从未真的搬过文件**（都是 `same` 或空目录）。
-
-#### 六、剩余工作清单（交接）
-
-1. **守卫链位置**：`[34/58] verify-cache-dir`。该判据已修 5 项（迁移挂死、三处读点、容错解析），
-   余 **D1/D3** 两条（媒体三处缓存根写法 + 中间件跟缓存根走）与一处 **ENOENT**：
-   `lib/routes/now-playing.js` ⇒ 应映射到 `lib/components/media-bridge/now-playing.js`（`readAnyOf` 同款）。
-2. **链的其余 24 步**（`[35/58]`–`[58/58]`）全部**未跑**：docs 组与 smoke 组。
-   按本轮方法逐步骤处理：先读检查式 → 判"归属（改读取面/口径/生成物）vs 真缺（补实现）"。
-3. **仍未全绿的判据面**：无（本轮结束时的已知红点集中在上面第 1 条）。
-4. **上游新域模块**：`lib/media/**`（`createMediaBackend` 等约 1585 行）尚未移植 —— 但注意
-   轮 28 的发现：**本分支的 `lib/components/media-bridge/` 已完整实现这些路由与后端**，
-   因此"要不要移植"取决于**要不要与上游媒体子系统同构**，而不是"缺功能"。
-5. **待办工具（治本）**：`test/tools/source-locator.mjs` —— 按符号名在全仓定位**唯一真源**，
-   让判据写"我要 `BASE`"而不是写路径。本轮共 12+ 次手工修读取面，若该工具在场可省大半。
-6. **纪律落地**：把上面五类静默退化与"判据即契约"补进 `docs/TRIAGE.md` 或贡献指南（目前只在 wip 手册）。
-
-### F.12 第二期：智能体团队分工与验收标准（Lead 记录）
-
-第一期（轮 1–60）把基底追平（`behind origin/main = 0`）并把守卫链从 `[2/58]` 推到 `[34/58]`。
-第二期引入团队并行处理三条线，**写作用域按文件级互斥**，避免同文件并发写。
-
-| 线 | 任务 | 写作用域（互斥） | 验收标准 |
-|---|---|---|---|
-| **追链（关键路径）** | `task-6` chain-runner | `test/verify-cache-dir.mjs`、`test/verify-scene-live*.mjs`、`test/verify-package-*.mjs`、`test/tools/child-out.mjs`、`test/tools/host-route-index.mjs`、`lib/routes/**`、`lib/kernel/**`、`lib/fs-paths.js`、`lib/cache-dir.js` | 每步：该判据 exit 0 + `node test/run-guards.mjs verify` 位置前移；链路不得回退 |
-| **文档/注释同步** | `task-7` docs-comment-sync | `docs/**`（**除本手册**）、`README.md`、`lib/index.js`、`lib/components/**`（**注释 only**） | 不再有指向已不存在文件的路径陈述；`docs/ARCHITECTURE-SPLIT.md` 记录门面重写与迁移路径；`verify-logging` / `verify-inject-contracts` 无回归 |
-| **测试系统锚定** | `task-8` test-audit | `test/verify-{component-visibility,inject-contracts,settings-namespaces,guard-map,component-face,route-ownership}.mjs`、`test/tools/{source-locator,guard-targets}.mjs`、`test/fixtures/**`、`docs/wip/TEST-ANCHORING.md` | 每个测试点能说出"守哪个不变量"；写死数字裁定为契约或改现算；静默回落到"缺锚即红"；新锚点各配负对照；`verify-guard-map` 全绿 |
-
-**共同纪律**（第一期教训的固化，三人一体适用）：
-1. 判据是**接口契约的书面形式** —— 改实现前先读判据检查式；改接口形状要服从既有契约（导出面 / globalThis 输入 / 首行解构 / 换行形态都可能被钉住）。
-2. 五类静默退化：键集三处漏传、解构遮蔽模块级常量、取源写死上游坐标、辅助逻辑写死坐标、失败静默与永不 settle。
-3. 归属类 vs 真缺：先判"能力搬到哪去了"（本分支 `lib/components/**`、`lib/kernel/**`），只有两侧都搜不到才判"需移植上游"。
-4. 生成物一律用生成器重算；沙箱下子进程输出走 `test/tools/child-out.mjs`；`lib/**` 除 log/notice 外零 `console.*`。
-5. 本地提交、**严禁 push**；每笔提交写清"现象 → 根因 → 修法 → 验证证据"。
-
-**Lead 保留范围**：本手册、`package.json`、`docs/adr/**`、最终验收（跑全链 + 关键行为判据 + 复核他人 diff）。
+| J1 | **贡献面自洽**：有自己的 HTTP 路由族（或完全不占路由）与自己的设置键簇 | `/media` 挂在媒体字节实现上（跨簇） |
+| J2 | **状态自持**：自己的磁盘载体（目录 / 文件）或自己的 `config.json` 根字段 | 只有 `settings` 段里的一堆键 ⇒ 见 J6 |
+| J3 | **无同进程强耦合**：不依赖别的簇的内存注册表、不共享单例缓冲 | `/diag` 环形缓冲必须与媒体源同进程（只有一个 `/diag-log`） |
+| J4 | **可缺省**：关掉它，其余功能**没有可见缺失**（不是"降级"而是"不存在"） | `/inventory` 是所有簇的真源 ⇒ 关不掉 |
+| J5 | **出入边少**：`import` 面自足（理想：≤ 2 个内核模块） | `lib/routes/presets.js` 需要一批注入点，横跨三簇 |
+| J6 | **设置可切分**：它的键能整簇搬进自己的命名空间，且不与别的簇共享同一个**读改写**路径 | 全部键同段、`PUT /settings` 整段覆盖 ⇒ **P1 之前对谁都不成立**（P1 已兑现） |
+| J7 | **依赖面可声明**：它需要的东西能写成一份**显式键集**（注入面），不靠共享可变状态、不靠直接解构内核对象 | 只有靠门面的会话状态 / `const { … } = hostKernel` 的隐式共享才跑得起来 ⇒ 先做契约收紧（P2-7，已完成） |

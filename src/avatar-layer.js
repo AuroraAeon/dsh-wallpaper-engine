@@ -371,18 +371,7 @@ function syncAvatarLayer() {
   // 判据只有一处实现：src/client.js 的 `weComponentVisible`（内联后同作用域）；状态面是宿主
   // 行状态（`selection.inventory.components`），本层与别处一样**只读** selection。
   // 不可用与"用户关掉开关"走**同一条 stop 路径**（幂等，不留痕）。
-  /**
- * 可见面判据的**注入点**（模块边界真实化）。
- *
- * ⚠️ 本文件必须能**单独 import**（判据 test/verify-scene-live.mjs：无 DOM 环境零抛错零副作用）。
- * 因此**不得裸引用** `weComponentVisible` —— 它的唯一实现住 `src/client.js`，只在**拼接**之后才同作用域；
- * 单独 import 会抛 `ReferenceError: weComponentVisible is not defined`（实测真实回归）。
- * 改由调用方注入：`src/client.js` 在拼接作用域里持有唯一实现，启动时调 `setAvatarComponentGate(weComponentVisible)`。
- *
- * 缺省 `() => true`：与 ADR-0013 D3①「组件行不可用 ⇒ 整层不挂」**同向**（安全方向：宁可不挂，不挂破图）。
- */
-
-const componentOn = avatarComponentVisible(selection.inventory && selection.inventory.components, "mascot-avatar");
+  const componentOn = avatarComponentVisible(selection.inventory && selection.inventory.components, "mascot-avatar");
   const on = componentOn && selection.avatarEnabled === true;
   const body = weBody();
   if (!on || !body || typeof MutationObserver !== 'function') {

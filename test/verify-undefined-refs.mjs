@@ -3,13 +3,13 @@
  * verify-undefined-refs.mjs —— **未定义引用**普查（"用了但没 import/声明" ⇒ 运行到那行必炸）。
  *
  * 为什么值得一条常驻判据：本仓在"把上游域模块搬进活侧"的过程中出现过
- * `lib/media/transcode.js` 用了 `dirname(` 却没 import 的缺陷（`da00a7b`）—— 它的症状是
+ * `lib/media/transcode.js` 用了 `dirname(` 却没 import 的缺陷 —— 它的症状是
  * **运行期** ReferenceError，而当时三道网都照不到：
  *   · `node --check` / 语法解析：合法（未定义标识符不是语法错）；
  *   · 聚焦判据：那条判据当时测的是**上游同名副本**（import 是全的），活侧真源从未被真的调用；
  *   · `verify-static` 的 eslint `no-undef`：本机工具链不可用，且它只是"按规则计数"的棘轮。
  * 它造成的后果是**静默**的：ffmpeg 主下载路径先炸（system PATH 兜底不可达）、启动清扫被外层
- * try/catch 吞掉（永不执行）。详见 `docs/wip/UNWIRED-MODULES.md` §15。
+ * try/catch 吞掉（永不执行）。
  *
  * ⚠️ **零依赖**（链的硬纪律：`verify-package-files` P5 明令链上脚本不许有裸包 import ——
  * CI 不装任何依赖）。所以本判据**不做语法树解析**，用 `test/tools/js-text.mjs` 的词法层

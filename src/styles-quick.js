@@ -25,7 +25,7 @@ const CSS_QUICK = `  /* ── Rope dock: chibi pull-cord + glass repo drawer �
      settle class so the rope follows the pointer 1:1. Pulling it DOWN draws
      out the repo panel, which descends from the top like a drawer. Z-order:
      repo panel 995 < rope 996 (the rope stays grabbable/clickable as the
-     panel's handle while it is out) < repo modal scrim 1003 < repo modal 1004. ── */
+     panel's handle while it is out). ── */
   .we-rope {
     position: fixed;
     z-index: 996;

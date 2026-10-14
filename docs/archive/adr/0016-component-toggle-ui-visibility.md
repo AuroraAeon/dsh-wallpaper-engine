@@ -18,7 +18,7 @@
   [ADR-0013](./0013-component-toggle-soft-goal-chunks.md)（「关掉即不下载」的机制事实 —— 本 ADR **不**重开它）、
   [ADR-0003](../adr/)（浏览器半边靠构建期内联）、
   [ADR-0015](./0015-component-view-face.md)（内核公开面 = 稳定面 ∪ 具名视图面）
-- **取证报告**: [`docs/wip/COMPONENT-TOGGLE-REPORT.md`](../)（逐条现象 + 机制 + 复算命令）
+- **取证报告**: [`docs/archive/wip/COMPONENT-TOGGLE-REPORT.md`](../)（逐条现象 + 机制 + 复算命令）
 - **实施计划**: [`docs/wip/BUNDLE-SPLIT.md`](../)（本 ADR 通过后新增阶段；目前尚**未**列入）
 
 ## Context

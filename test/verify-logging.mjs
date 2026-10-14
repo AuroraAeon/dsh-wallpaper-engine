@@ -344,7 +344,7 @@ function prefixAlignment(hostSrc, routeSrc, clientSrc, pageSrc) {
 }
 
 // ── N8 模块级代码不得引用 apply 作用域的 log（真机事故：宿主被杀、DSH 反复重启）──
-// 事故形态（2026-10-02 晚·官方壳，崩溃日志原文）：
+// 事故形态（晚·官方壳，崩溃日志原文）：
 //   `dsh: fatal load failure: ReferenceError: log is not defined at lib/index.js:1235`
 // 一个**模块级**助手在失败分支里写了 `log.warn(...)`，而 `log` 只在 `apply()` 体内存在：
 // ReferenceError 抛在 catch 里 ⇒ 那个 async 任务以 reject 收场且无人接管 ⇒ Node 24 按
@@ -387,7 +387,7 @@ function moduleScopeLogRefs(src) {
 //     （本判据 N1 的口径是"终端只有一个收口"，而不是"没人写过 console"）。
 const wiredUp = (importsSrc, consoleSrc = importsSrc) =>
   // specifier 用**任意相对形式**（真源在 lib/kernel/ 下 ⇒ 是 `../log.js` 而不是 `./log.js`）：
-  // 写死 `./` 会让"是否真的 import 了"的判据在实现搬家后假红（与轮 44 的 specifier 落空同一课）。
+  // 写死 `./` 会让"是否真的 import 了"的判据在实现搬家后假红（与 specifier 落空同一课）。
   /from\s*'[^']*\/log\.js'/.test(importsSrc) && /from\s*'[^']*\/notice\.js'/.test(importsSrc)
   && /createNotice\(/.test(importsSrc) && consoleCalls(consoleSrc) === 0;
 {

@@ -58,8 +58,10 @@ graph LR
 
 **行的开关语义 = A 语义**：宿主行级。停用某个组件行 ⇒ 该组件的宿主路由**整族不注册**；
 浏览器半边仍随整包加载，可见面由宿主行状态派生、双向对账（[`HOW-IT-WORKS.md`](./HOW-IT-WORKS.md)
-与 `lib/components/visibility.js`）。**不**做成多包、也**不**做每组件一格客户端开关
-（[`adr/0013`](./adr/0013-bundle-multi-component-rows.md) 的非目标）。
+与 `lib/components/visibility.js`）。**当前**不做成多包、也**不**做每组件一格客户端开关
+（[`adr/0013`](./adr/0013-bundle-multi-component-rows.md) 的非目标）；⚠️ **目标形态已于 2026-10-14 改为
+「多包」**（该 ADR 的 D6/D8 就地改写，实施计划见 [`wip/BUNDLE-SPLIT.md`](./wip/BUNDLE-SPLIT.md)）——
+本条描述的是**本分支的现状**，不是终态。
 
 ## 3. 门面现在只剩什么
 
@@ -144,7 +146,7 @@ graph LR
    动了共享内核 / 浏览器半边 ⇒ `npm run build`（`lib/client.js` 是产物，不入库）。
 7. **上游已删的东西不要搬回来**：vendored WebWallGL 那一套（由 `d561f5f` 删除；最后的样子在
    `git show 'd561f5f^:test/tools/sync-webwallgl.mjs'` / `'d561f5f^:lib/webwallgl/.upstream.json'`），
-   以及更早退役、只在 `CHANGELOG` 与 `docs/archive/` 里还有记载的那几条线。搬任何东西之前，
+   以及更早退役、只在 `CHANGELOG` 与 git 历史里还有记载的那几条线。搬任何东西之前，
    先确认它在 import 图上活着（§7 第一条）。
 
 ## 7. 已知缺口（诚实清单，不是待办台账）
@@ -159,11 +161,9 @@ graph LR
   node test/verify-reachability.mjs        # 期望：ALL REACHABILITY CHECKS PASSED（不可达 0 个 / 0 行）
   node test/verify-guard-map.mjs           # 期望：例外表仍只有 1 条（lib/components/mascot-avatar/index.js）
   ```
-  逐项清单与原因（谁接替了谁）在 [`docs/wip/DOC-DRIFT-REPORT.md`](./wip/DOC-DRIFT-REPORT.md) 与
-  [`docs/wip/UNWIRED-MODULES.md`](./wip/UNWIRED-MODULES.md) §14（九项：`media-probe` / `transcode` /
-  `video-preview` / `host-diag` / `config-store` / `we-discovery` / `wallpaper-scan` / `asset-paths` /
-  `cache-prune`，每项一行"现象→修法→证据"）；同类余项（上游同名文件全部消失 / 全仓零未定义引用）的
-  可复算命令见同文件 §16。
+  九项"发布面孤儿"已全部收口（删副本 / 移回真源）⇒ 结论由两条守卫钉住：
+  `node test/verify-reachability.mjs`（不可达 0 个 / 0 行）与 `node test/verify-undefined-refs.mjs`
+  （全仓零未定义引用）。**哪一项接替了哪一项属历史**，见 [`CHANGELOG.md`](./CHANGELOG.md) 与 git 历史。
 - ~~**`lib/asset-paths.js` 未接线**~~ —— **已收口**（G-A1/G-A2/G-A3）：上传目录解析提取成叶子
   `lib/upload-dir.js` 的 `createUploadDirResolution()`（默认值唯一真源在那里），目录族真源是
   `lib/media/media-dirs.js`，WE 素材族真源是 `lib/we-assets.js`；副本已删，聚焦守卫
@@ -176,11 +176,11 @@ graph LR
   本分支那份**已重编号为 [ADR-0013](./adr/0013-bundle-multi-component-rows.md)**
   （文件头带 `**Renumbered**: 0012 → 0013`），两份索引现在都各列两条
   （[`adr/README.md`](./adr/README.md) §索引 与 [`README.md`](./README.md) 的 ADR 表同口径）。
-  ⚠️ `docs/archive/adr/**` 与两份 `CHANGELOG` 里出现的 `ADR-0012` 是**当时的编号/账本**，保持原样
+  ⚠️ 两份 `CHANGELOG` 与归档件里出现的 `ADR-0012` 是**当时的编号/账本**，保持原样
   （[`adr/0006`](./adr/0006-comment-discipline-as-written-convention.md)：历史文档不追溯）；
-  读归档件时按 `docs/archive/adr/README.md` 顶部的映射说明理解。
+  读归档件时按 [`adr/README.md`](./adr/README.md) 里那张映射说明理解。
 - **本分支的过程手册**是 [`docs/wip/BUNDLE-SPLIT.md`](./wip/BUNDLE-SPLIT.md)（活手册：收口后按
-  `docs/README.md` §目录的寿命规则移入 `archive/wip/` ⇒ 那时路径会变，本文只在"过程记录"意义上引用它）。
+  `docs/README.md` §目录的寿命规则归档 ⇒ 那时路径会变，本文只在"过程记录"意义上引用它）。
 
 ## 参考
 

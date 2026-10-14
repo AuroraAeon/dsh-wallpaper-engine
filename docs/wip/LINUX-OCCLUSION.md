@@ -1,8 +1,8 @@
 # Linux 壳窗遮挡区域获取 → WebWallGL 降帧/暂停 —— 实施规格
 
 <!-- status-banner: work-in-progress -->
-> **状态：进行中（未落地）。** 本文按 [`docs/README.md`](../README.md) §目录的寿命规则只放
-> **还没做成事实的东西**；做完即整体移入 [`docs/archive/wip/`](../archive/wip/)。
+> **状态：进行中 —— P0（X11 适配器）已落地（2026-10-12，见 §10），Wayland 与后续项未落地。** 本文按 [`docs/README.md`](../README.md) §目录的寿命规则只放
+> **还没做成事实的东西**；做完即整体归档。
 > **本文不是进度真源**：机制 → 实现文件头注释、判据 → `test/`、取舍 → [`adr/`](../adr/)。
 >
 > **范围**：仅 Linux 会话（X11 / Wayland）。Windows/macOS 数据通路不同，另行立项。

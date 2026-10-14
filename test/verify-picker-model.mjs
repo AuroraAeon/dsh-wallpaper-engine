@@ -6,7 +6,7 @@
 //      宽松分级 / 隐藏排除 / 分页切片与页号 clamp / 轮换编辑器列表 / 空库存与零命中。
 //   ② 跨层对拍：真挂载客户端（readFileSync(lib/client.js) + __ModuleLoader__.load 捕获
 //      handoff → factory(mockReact) → slots → ctx → apply() → 打开模态框），拿**模型算出的
-//      可播放数**与**真实渲染出的 `.we-picker__card` 数（减掉关闭卡）**对拍 —— 2026-10-04
+//      可播放数**与**真实渲染出的 `.we-picker__card` 数（减掉关闭卡）**对拍 ——
 //      起库视图不分页、改虚拟窗口（首窗 = 关闭卡 + min(VP_FIRST, 可播放数)），对拍对象
 //      相应从"当页切片"换成"首窗"；"模型说的和视图画的是不是同一件事"照旧只在这条上能看出。
 //
@@ -153,9 +153,9 @@ const MODEL_API_NAMES = '{ ratingOf, matchesRatingFilter, matchesTypeFilter, isP
  *  注意它和上面 `MODEL_API_NAMES` 是**两个不同的面**，别一起改：
  *  - `MODEL_API_NAMES` 是「从内联段落里解构出哪些名字来测」⇒ 需要的是**声明**存在
  *    （`hiddenWallpapers` 在源文件 `:136` 声明、`:163` 主流程自用 ⇒ 必须留在这里）。
- *  - `MODEL_EXPORTS` 是「这个模块对外发布哪些名字」⇒ 2026-10 收窄导出面时
- *    `hiddenWallpapers` 因零跨模块按名引用被移出 `export { … }`（见仓库提交
- *    `04b7750`），故这里同步移除；判据形状不变（导出名集合必须与钉住的清单逐字相等，
+ *  - `MODEL_EXPORTS` 是「这个模块对外发布哪些名字」⇒ 收窄导出面时
+ *    `hiddenWallpapers` 因零跨模块按名引用被移出 `export { … }`，故这里同步移除；
+ *    判据形状不变（导出名集合必须与钉住的清单逐字相等，
  *    多一枚少一枚都判红）。 */
 const MODEL_EXPORTS = ['ratingOf', 'matchesRatingFilter', 'matchesTypeFilter', 'isPlayableType',
   'isRotatableWallpaper', 'keepPlayingWallpaper', 'isHiddenWallpaper', 'isUploadedWallpaper',

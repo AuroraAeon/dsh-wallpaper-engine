@@ -97,7 +97,7 @@ const WE_I18N_EN_EXT = {
   "0 = 立刻跟手，越大越柔和（跟得越慢、停下后还会飘一小段才归位）": "0 = follows the cursor instantly; higher values are softer (it trails behind and keeps drifting a little after the cursor stops)",
 
   // ── src/ext-avatar.js · 「扩展」页签**第一个**模块（自定义会话头像）──
-  //    范围/默认值不在这里写死：真源是 lib/settings-schema.js 的七个 `avatar*` 键。
+  //    范围/默认值不在这里写死：真源是 lib/settings-schema.js 的五个 `avatar*` 键。
   //    与别的模块共用的键（清除那种）**不重复登记** —— 上面已经有的直接复用。
   "自定义会话头像": "Custom session avatars",
   "给会话双方各配一张头像，消息像好友聊天一样左右分列（默认关）": "Give both sides of the conversation an avatar, so messages line up left and right like a chat with a friend (off by default)",
@@ -173,7 +173,7 @@ const WE_I18N_EN_EXT = {
   "正在应用…": "Applying…",
   "采用「作者自用」": "Apply “Author's preset”",
   "保持我的设置": "Keep my settings",
-  // ── 更新公告（2026-10-12 改版：简洁大字三条；旧清单条目全部退役）──
+  // ── 更新公告（改版：简洁大字三条；旧清单条目全部退役）──
   "🎉 更新：吉祥物新朋友 · 一键预设 · 缓存路径自选": "🎉 Update: new mascot friends · one-click presets · pick your cache drive",
   "新朋友「星来」登场": "The blue-haired maid mascot says hi",
   "在设置中的壁纸引擎页面中的关于中可一键直达，谢谢喵！": "One click away under Settings → Wallpaper Engine → About — thank you, meow!",

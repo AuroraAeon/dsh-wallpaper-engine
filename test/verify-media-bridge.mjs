@@ -42,7 +42,8 @@
  *   ⚠️ 但"环境差异"与"通过"**仍然不同形**：判词行 + 那条 ✗ + 末尾"这条通道本次没有断言覆盖"的
  *   明细都在，退出码非 0（3）—— 严格入口直接跑依旧是"红"，只是红的原因可被机器区分。
  *   这三条判别式是**纯函数** `resolveOutcome()`，文末用合成输入钉住四判词（见负对照）。
- *   取舍原委见 `docs/archive/audits/TEST-ANTIPATTERN-FIX-PLAN.md`。
+ *   取舍口径：**"环境跳过"不能与"通过"同形**（否则静默失去覆盖），所以判词行 + 非 0 退出码
+ *   必须同时在位；`--allow-skip` 是显式开口，不给默认值。
  *
  * 属于 `npm run verify`；用 npm run verify:bridge 单独跑也可以。
  */
@@ -635,9 +636,9 @@ function outcomeMatrixFailures(rows, resolveFn) {
 }
 /**
  * 合成输入矩阵（**6 组，无重复行**）。
- * ⚠️ 本表原来第 2 行与第 6 行**逐字相同**（零新增判别力），且**缺**最能区分分支顺序的那组：
+ * ⚠️ 本表**不许有重复行**（逐字相同的行零新增判别力），且必须含最能区分分支顺序的那组：
  *    `envOnly=true + trustOk=true + failedCount=1 + probeVerdict='regression'`。
- *    那组修前实测落成 `environment/3`（见 `docs/wip/TEST-CREDIBILITY-AUDIT.md` §B5），修后必须 `regression/1`。
+ *    那组**必须**落 `regression/1`：它是唯一能区分判定顺序的输入（落 `environment/3` 就说明顺序被绕过）。
  */
 const OUTCOME_ROWS = [
   [{ failedCount: 0, envOnly: false, probeVerdict: '', trustOk: null, blockedCount: 0, allowSkip: false }, 'ok', 0],

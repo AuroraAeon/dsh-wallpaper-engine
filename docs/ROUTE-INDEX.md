@@ -33,7 +33,7 @@
 | 14 | `/scene-payload-progress` | lib/routes/scene-serve.js:181 | 箭头 | disposers base payloadProgress | 1 |
 | 15 | `/props` | lib/routes/props.js:45 | 箭头 | disposers base mediaMap userPropsFor | 7 |
 | 16 | `/live-frame` | lib/routes/live-frame.js:44 | 箭头 | disposers base mediaMap serveFile traceRequests liveFrameFile …(+2) | 3 |
-| 17 | `/occlusion` | lib/routes/occlusion.js:50 | async 箭头 | disposers base hub | 4 |
+| 17 | `/occlusion` | lib/routes/occlusion.js:50 | async 箭头 | disposers base hub | 3 |
 | 18 | `/client-diag` | lib/routes/diag.js:85 | 箭头 | disposers appendDiagLine notice base | 4 |
 | 19 | `/diag` | lib/routes/diag.js:149 | 箭头 | disposers | 11 |
 | 20 | `/diag` | lib/routes/diag.js:150 | 箭头 | disposers base | 11 |

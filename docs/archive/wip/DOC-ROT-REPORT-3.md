@@ -1,5 +1,10 @@
 # 第三轮文档 / 注释腐化检查（对抗性复核）
 
+<!-- status-banner: code-is-truth -->
+> **状态：历史记录（不反映现行实现）。** 第三轮（对抗性）文档 / 注释腐化复核的过程记录，已收口：
+> 它按 Lead 指示改掉的 R1-R4 已随整线 squash 入库；本轮口径与结论见
+> [`./TEST-CREDIBILITY-AUDIT.md`](./TEST-CREDIBILITY-AUDIT.md)。
+
 > **基线**：`main` = `cd5deaff`（CI 判绿于 `2d650f5f`，其后只有一笔 TS 收尾）。
 > **两个阶段**：① 只读复核（本报告 §0–§4 的全部证据都是这一阶段取的）；
 > ② 按 Lead 指示把 R1–R4 改掉 —— **改动留在工作树、未 commit、未 push**（见 §5 的处置表）。
@@ -36,11 +41,11 @@
   - `node test/verify-component-face.mjs` 输出：
     `✓ 锚点：门面导出 hostKernel 对象（缺锚即红） — 98 个键`
     `✓ 内核实跑分级 == 文件头合同数字（合计 / 稳定面 / 稳定面 ∩ 内核 / 内部面 四项全对） — 合计 98 / 稳定面 15 / 稳定面 ∩ 内核 7 / 内部面 91`
-  - 反证 95 是**上一期**的数：`docs/wip/TEST-ANCHORING.md:110` 记录"合同数字…**唯一真源 = 文件头那一行**「合计 98 …」"，
+  - 反证 95 是**上一期**的数：`docs/archive/wip/TEST-ANCHORING.md:110` 记录"合同数字…**唯一真源 = 文件头那一行**「合计 98 …」"，
     且把旧的 `95/96/89/87` 列为被改造的腐化点；`docs/wip/BUNDLE-SPLIT.md:623` 的"内核仍 **95 键**"是更早的账本。
 - **建议 patch**（只改注释，零可执行语句）：`:20` 95→98；`:22` 95→98、88→91；`:36` 88→91；`:40` 95→98、88→91；
   `:127` 95→98。并在 `:22` 那句后补一句"数字的唯一真源 = `test/verify-component-face.mjs` 文件头那一行"
-  （否则这里永远是一份会漂的第二副本，[`adr/0006`](../adr/0006-comment-discipline-as-written-convention.md) D2）。
+  （否则这里永远是一份会漂的第二副本，[`adr/0006`](../../adr/0006-comment-discipline-as-written-convention.md) D2）。
 - **为什么危险**：这是内核**冻结契约**的读者入口，内部面键数错会让"该不该升稳定面"的判断错位；
   而守卫只与自己的文件头对账 ⇒ **散文错了不会红**。
 
@@ -54,7 +59,7 @@
   - `git grep -n repo-face -- docs/DEV-GUIDE.md` = **0 命中**；
   - 工具确实存在且被消费：`test/tools/repo-face.mjs`、`test/verify-settings-schema-exports.mjs:102`
     `import { listFace, gitViewDiff, diffFace } from './tools/repo-face.mjs'`。
-- **为何失真**：`5d555af1` 新增了它（"脏扫描面 ⇒ 假绿"的修法），但只写进 `docs/wip/TEST-ANCHORING.md` §11/§12（账本），
+- **为何失真**：`5d555af1` 新增了它（"脏扫描面 ⇒ 假绿"的修法），但只写进 `docs/archive/wip/TEST-ANCHORING.md` §11/§12（账本），
   没进**活跃**的 §4.6 名册 ⇒ ⑧ 直接判红。
 - **该红在 CI 判绿的那一笔也在**（所以它不是本轮引入的）：
   `git show 2d650f5f:docs/DEV-GUIDE.md | Select-String repo-face` ⇒ 0 命中；`git cat-file -e 2d650f5f:test/tools/repo-face.mjs` ⇒ 成功。
@@ -95,7 +100,7 @@
 - **S1**：`docs/DEV-GUIDE.md` §4.9（L516-543）有"`include` 边界"表，但**没有 ignores 清单**；
   本期新增了一条**全局 ignore** `.integration-notes/**`（`eslint.config.mjs:83-86`，理由在其 `:79-82`：
   忽略它会把本机 lint 面从 ~260 撑到 ~1470 ⇒ 本机读数与 CI 不一致；同一族的"脏扫描面"由 `repo-face.mjs`
-  的 git 视角口径解决，细节在 `docs/wip/TEST-ANCHORING.md` §12）。
+  的 git 视角口径解决，细节在 `docs/archive/wip/TEST-ANCHORING.md` §12）。
   → 建议在 §4.9 加**一行指针**（不含数字），说明"本机与 CI 的面差异来自 ignores，真源 = `eslint.config.mjs`"。
   本轮**未**把它列为腐化：现有句子没有说错，缺的是新增事实的落点。
 
@@ -103,7 +108,7 @@
 
 | 项 | 处置 | 理由 |
 |---|---|---|
-| `docs/wip/BUNDLE-SPLIT.md:623`（"内核仍 **95 键**"）、`docs/wip/TEST-ANCHORING.md:110` | **未改** | wip 账本，且二者恰好互为佐证：95 = 上一期、98 = 本期 ⇒ 反过来证明 R1 是真腐化 |
+| `docs/wip/BUNDLE-SPLIT.md:623`（"内核仍 **95 键**"）、`docs/archive/wip/TEST-ANCHORING.md:110` | **未改** | wip 账本，且二者恰好互为佐证：95 = 上一期、98 = 本期 ⇒ 反过来证明 R1 是真腐化 |
 | `docs/README.md:156` / `docs/en/README.md:183` 的 "`test/` 的 72 个 `.mjs`（顶层 57 + `test/tools/` 15）" | **未改（待你裁决）** | 那是**归档审计件当时的规模**（实测现状：`test/*.mjs` 顶层 85、`test/tools/` 25），属账本引用；若要活跃索引与真源严格一致，建议改成"当时的规模（真源 = 该归档件自身）" |
 | R4 的 132 / 133 | **待验证** | 需要该段作者确认意图，见 §1 R4 |
 | `docs/archive/**`、两份 `CHANGELOG`、`docs/wip/**` 的旧路径与旧数字 | **未改** | ADR-0006「历史文档不追溯」 |
@@ -176,7 +181,7 @@
   2. 判据若需要"人可读的契约摘要"，用**符号**（`KERNEL_STABLE_FACE`、`COMPONENT_VIEW_KEYS`、`INLINE_MODULES`）或**复算命令**，
      不写"合计 N"。
   3. **升级既有散文时先问"这里是不是第二次抄"**：是 ⇒ 删数字留指针；无法判断意图 ⇒ 标 **待验证**、别猜（本轮 R4 就是照这条处置的）。
-  4. 这类腐化**不该配新判据**（[`adr/0007`](../adr/0007-machine-checks-target-code-not-prose.md) 四问：判定对象是措辞 ⇒ 不加），
+  4. 这类腐化**不该配新判据**（[`adr/0007`](../../adr/0007-machine-checks-target-code-not-prose.md) 四问：判定对象是措辞 ⇒ 不加），
      该做的是把数字**移出散文**——让"没有第二份拷贝"这件事由结构保证，而不是由一条判据去盯句子。
 
 ## 7. 本轮动作与复算入口

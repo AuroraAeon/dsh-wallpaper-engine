@@ -1,9 +1,15 @@
 # 测试系统可信度审计（对抗性）—— A 可见性 / B 假绿 / C 有效性 / D 必要性
 
+<!-- status-banner: code-is-truth -->
+> **状态：历史记录（不反映现行实现）。** 第二期 task-8 的对抗性审计（A 可见性 / B 假绿 / C 有效性 / D 必要性），
+> 已收口：它点名「脱链」的 4 条判据已回到守卫链上，修复落地账见 §附录 R，
+> 判据锚定见 [`./TEST-ANCHORING.md`](./TEST-ANCHORING.md)。
+> ⚠️ 文末**待验证清单**（只能由 CI / 完整工具链验的项）**仍未在本机复核**，读它按「未经核对的记录」对待。
+
 > **审计对象**：分支 `main`、HEAD `cd5deaff`（`fix(类型): 清掉 IDE 面板最后 3 处 TS 报错…`）。
 > 所有读数锚定 **HEAD 的干净副本**（`git archive HEAD | tar -x -C .test-cache/audit`，409 个文件），
 > 因为会话期间**其他队友在并发改同一棵工作树**（会话结束时 `git status` = `M docs/DEV-GUIDE.md`、
-> `M lib/kernel/host-kernel.js`、`M lib/settings-schema.js`，另有未跟踪 `docs/wip/DOC-ROT-REPORT-3.md`）。
+> `M lib/kernel/host-kernel.js`、`M lib/settings-schema.js`，另有未跟踪 `docs/archive/wip/DOC-ROT-REPORT-3.md`）。
 > 凡涉及"当前工作树"的读数，文中**逐条标注**是「HEAD 副本」还是「工作树」。
 >
 > **本审计未修改任何被跟踪文件、未 commit / push / reset / rebase / amend。**
@@ -58,7 +64,7 @@
 
 ### A2 4 条强判据**静默脱链**，而链的自检结构上看不见"少了一条"
 
-**结论**：`test/run-guards.mjs` 的 MANIFEST（链的唯一真源）**不含** `verify-inject-contracts` / `verify-component-face` / `verify-route-ownership` / `verify-settings-namespaces`，也不含曾经在链末的 `test/tools/js-text.mjs selftest`。这 4 条判据（在 `docs/wip/TEST-ANCHORING.md` §2.2–2.5 里逐条有"正判据 + 变异体/负对照"记录）在 HEAD 上仍存在、单跑 `exit 0`，但**已不在 PR 门禁上**。`verify-bundle-rows` 的脱链是**有意且已记档**的（`TEST-ANCHORING.md` §8.3），另外 4 条 + js-text selftest 在文档里找不到任何"脱链理由"。
+**结论**：`test/run-guards.mjs` 的 MANIFEST（链的唯一真源）**不含** `verify-inject-contracts` / `verify-component-face` / `verify-route-ownership` / `verify-settings-namespaces`，也不含曾经在链末的 `test/tools/js-text.mjs selftest`。这 4 条判据（在 `docs/archive/wip/TEST-ANCHORING.md` §2.2–2.5 里逐条有"正判据 + 变异体/负对照"记录）在 HEAD 上仍存在、单跑 `exit 0`，但**已不在 PR 门禁上**。`verify-bundle-rows` 的脱链是**有意且已记档**的（`TEST-ANCHORING.md` §8.3），另外 4 条 + js-text selftest 在文档里找不到任何"脱链理由"。
 
 **证据**
 - 集合差（旧 `&&` 链 = `git show ddcbe4c0^:package.json` 的 `scripts.verify`，46 步；新链 = `node test/run-guards.mjs verify --list-json`，58 步）：
@@ -564,14 +570,14 @@ $ git status --porcelain=v1
  M docs/DEV-GUIDE.md            ← 队友 docs-comment-sync：补 repo-face.mjs 等文档行
  M lib/kernel/host-kernel.js    ← 队友（chain-runner/wiring-audit）
  M lib/settings-schema.js
-?? docs/wip/DOC-ROT-REPORT-3.md
+?? docs/archive/wip/DOC-ROT-REPORT-3.md
 $ git diff --check   → 无输出 exit=0
 $ node test/verify-module-layout.mjs（工作树）→ ALL MODULE LAYOUT CHECKS PASSED exit=0
 $ node .test-cache/audit/test/verify-module-layout.mjs（HEAD 副本）→ MODULE LAYOUT CHECKS FAILED — 1 failed exit=1
 ```
 
 > **审计者声明**：以上全部读操作；写操作仅限 `.test-cache/**`（HEAD 副本树、2 个探针脚本、日志与 eslint/tsc 落盘文件）。
-> 未提交、未 push、未改任何被跟踪文件；报告本身 `docs/wip/TEST-CREDIBILITY-AUDIT.md` 按任务要求**不入库**。
+> 未提交、未 push、未改任何被跟踪文件；报告本身 `docs/archive/wip/TEST-CREDIBILITY-AUDIT.md` 按任务要求**不入库**。
 
 ---
 
@@ -615,7 +621,7 @@ $ node .test-cache/audit/test/verify-module-layout.mjs（HEAD 副本）→ MODUL
 - 豁免两条并给出**证据来源**：`*.md`（Markdown 行尾两空格 = 硬换行；实测当前 **0 命中**，属预防性）、
   `assets/**`（实测 **1821 行**命中，全部在 `assets/mascot/vector-960x1024.svg`，是导出数据）。
   冲突标记只认 `<<<<<<<`/`>>>>>>>`（不认 `=======`：Markdown setext 标题下划线）。
-- 本机复算入口与三条命令见 `docs/wip/TEST-ANCHORING.md` §13（**未写进 `docs/DEV-GUIDE.md`**：该文件当时
+- 本机复算入口与三条命令见 `docs/archive/wip/TEST-ANCHORING.md` §13（**未写进 `docs/DEV-GUIDE.md`**：该文件当时
   有他人的在途改动，避免写冲突；Lead 若要归到手册，一句话我就搬）。
 - 处置取向：这 2 处是**修掉**而不是加进豁免名单（棘轮只许收紧）。
 

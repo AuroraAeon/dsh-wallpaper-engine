@@ -212,7 +212,7 @@ const PARALLAX_GROUP_SCAN_MAX = 400;
  *  （见 parallaxGroupBig）。取 1s 的理由：重扫本身是 250ms 一次，过期后重验一次 ⇒ 一组最多
  *  每秒付一次 `querySelectorAll('*')`，而"子树从超限缩回可验范围、且里面有 fixed 后代"这种
  *  变化晚 ≤1s 被认到 —— 这个量级对着色延迟无关痛痒，却把"超限组每 250ms 白枚举一遍整棵子树"
- *  那笔账（审计 P3-1）整个抹掉。 */
+ *  那笔账整个抹掉。 */
 const PARALLAX_GROUP_SCAN_COOLDOWN_MS = 1000;
 /** 从槽出口往上找"有盒子的祖先"最多走这么多层：`display: contents` 连着套是极端情况，兜底用。 */
 const PARALLAX_GROUP_BOX_MAX_UP = 3;
@@ -304,7 +304,7 @@ function parallaxSettings() {
 /**
  * 插件槽的**距离取值器**（唯一真源）：`parallaxPluginDepths[slot]` 经钳制后的数字。
  * 缺键、非数字、`NaN` / `Infinity`、超范围 —— **一律**回同一个结果（钳到 `0..10` 里）。
- * 为什么要一个共用取值器（审计 P3-2）：算"屏上最大距离"的 `parallaxMaxPercent` 与算系数的
+ * 为什么要一个共用取值器：算"屏上最大距离"的 `parallaxMaxPercent` 与算系数的
  * `parallaxTargetRatio` 各写了一套兜底，而两套的**非有限值**分支不一样（一个回 0、一个回
  * `PARALLAX_PLUGIN_DEFAULT`）⇒ 存档里手写一个 `null` / `"abc"` 就能让"最大距离算 0"而"系数算 1"，
  * 于是 `pctMax === 0` 触发"一次落位、收工"那条短路，整组缓动静默失效（屏上表现为瞬移）。
@@ -317,7 +317,7 @@ function parallaxPluginDepth(st, slot) {
   if (!map) return PARALLAX_PLUGIN_DEFAULT;
   const own = Object.prototype.hasOwnProperty.call(map, slot) ? map[slot] : undefined;
   // 一行写完，别换行：`test/verify-scene-live.mjs` 的结构判据按**整行子串**钉这条取值器
-  //（两行会让 `includes` 落空，审计 P3-2）。
+  //（两行会让 `includes` 落空）。
   return weClampTo(own, PARALLAX_GROUP_DEPTH_MIN, PARALLAX_GROUP_DEPTH_MAX, PARALLAX_PLUGIN_DEFAULT);
 }
 
@@ -338,13 +338,13 @@ function parallaxMaxPercent(st) {
   // 槽**没存过值**时插件组按缺省 `PARALLAX_PLUGIN_DEFAULT` 走（parallaxTargetRatio 的兜底）
   // ⇒ 这里必须把缺省也算进来：只遍历已存的键会让"槽还没调过 + 原生那几档正好都是 0"这一格
   // 算出 `pctMax = 0`，帧于是走"一次落位、收工"的短路（见 parallaxFrame）—— 插件组每帧直接贴到
-  // 目标，面板上那个「缓动平滑」静默失效（审计 M1）。代价很小：插件开关开着时那条短路不再触发，
+  // 目标，面板上那个「缓动平滑」静默失效。代价很小：插件开关开着时那条短路不再触发，
   // 顶多多排几帧空帧（真的一个都不动时，写与属性摘挂照旧在头两帧里做完）。
   if (PARALLAX_PLUGIN_DEFAULT > max) max = PARALLAX_PLUGIN_DEFAULT;
   const map = st.plugin;
   for (const key in map) {
     if (!Object.prototype.hasOwnProperty.call(map, key)) continue;
-    // 与 parallaxTargetRatio 走**同一个**取值器（审计 P3-2：两处各写一套兜底时非有限值会算出
+    // 与 parallaxTargetRatio 走**同一个**取值器（两处各写一套兜底时非有限值会算出
     // 不同结果 ⇒ 手改存档能让"最大距离"与真实系数打架，`pctMax === 0` 把缓动短路掉）。
     const v = parallaxPluginDepth(st, key);
     if (v > max) max = v;
@@ -413,7 +413,7 @@ function parallaxTargetKind(el) {
  *  `data-chat-flow-kind` → `data-slot` → `data-composer-card` 依次认 —— 都是宿主写的**语义**属性，
  *  比构建哈希类名稳；认不出来按基准档（会话文本区）算。
  *  ⚠️ composer 只认 `data-composer-card` **属性**（`hasAttribute`）：属性名不会长在类名里，
- *  靠 `className` 找它的分支**永远不成立**（审计 P3-3；真实 composer 卡片的类名是构建哈希、
+ *  靠 `className` 找它的分支**永远不成立**（真实 composer 卡片的类名是构建哈希、
  *  语义只在属性上 ⇒ 类名那条路本就认不出宿主）。 */
 function parallaxGroupKind(el) {
   if (!el) return 'chat';
@@ -624,7 +624,7 @@ function parallaxTargetOffset(rec, x, y) {
 
 /**
  * 这个界面组的子树**此刻有哪些节点**（`el.querySelectorAll('*')`，问不到返回 `null`）。
- * 顺带把"太大"这个结论按 `PARALLAX_GROUP_SCAN_COOLDOWN_MS` 缓存住（审计 P3-1）。
+ * 顺带把"太大"这个结论按 `PARALLAX_GROUP_SCAN_COOLDOWN_MS` 缓存住。
  * 为什么值得缓存：不缓存就得每次重扫（250ms 一轮）都为一句"没验完"白枚举整棵子树 ⇒ 超限组
  * 每轮白付一次全量 `querySelectorAll('*')`；会话流动辄几千节点，这比它想省掉的
  * `getComputedStyle` 那一段还贵。
@@ -660,7 +660,7 @@ function parallaxGroupNodes(el) {
  * PARALLAX_GROUP_SCAN_MAX（= 400）就认作"没验完"（照动）—— 会话流动辄几千节点，每 250ms 全量
  * getComputedStyle 是不行的。
  * ⚠️ 超限那一步自己也有成本：枚举整棵子树不比 `getComputedStyle` 便宜多少 ⇒ 枚举走
- * parallaxGroupNodes 的缓存（超限的组合在 1s 内**连数都不数**，审计 P3-1）；要验的那些组直接
+ * parallaxGroupNodes 的缓存（超限的组合在 1s 内**连数都不数**）；要验的那些组直接
  * 拿它数出来的那张表来遍历，不再为 `length` 白枚举第二遍。
  * ⚠️ 超限放行的代价不只是"白跑"：这一组里若嵌着 `position: fixed` 后代，也会跟着**照旧被改锚**
  * （也就是下面那个 return true 根本没机会跑到）。可接受的理由：会话文本区一棵子树本来就常超 400，
@@ -692,7 +692,7 @@ function parallaxTargetRatio(rec, st) {
       if (!st.pluginOn) return 0;
       // 距离按**槽键**从 parallaxPluginDepths 里取（缺键 = PARALLAX_PLUGIN_DEFAULT）—— 取值口径
       // 与"最大距离"共用 parallaxPluginDepth()：表里只认自己的键（`__proto__` 那件事见那里），
-      // 非有限值 / 超范围与缺键一律同一个结果（审计 P3-2）。
+      // 非有限值 / 超范围与缺键一律同一个结果。
       return parallaxPluginDepth(st, rec.slot) * PARALLAX_UI_SIGN;
     }
     if (!st.ui) return 0;

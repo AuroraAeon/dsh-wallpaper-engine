@@ -349,8 +349,7 @@ const localStorage = {
 const transcodePending = []; // { fps, url, controller, resolve, reject }
 const transcodeResolved = []; // snapshots of completed requests (fps, aborted)
 // 夹具**故意用原生可解的容器/编码**（mp4 里的 avc1 = H.264，浏览器直接能播）：这正是
-// 帧率上限必须仍然生效的那一类源。2026-10-02 的回归就是"原生可解 ⇒ 不抽帧"，而夹具当时写的是
-// `hvc1`（不在原生白名单里）⇒ 走的是"非原生必须转"那条路，回归**在夹具里看不见**。
+// 帧率上限必须仍然生效的那一类源。
 // 口径：上限的判据是"源帧率是否高于上限"，与容器能不能原生播无关（见 src/video-layer.js
 // 的 capNeedsTranscode）。所以夹具必须站在"原生可解 + 高帧率"这一侧。
 const mediaInfo = { width: 3840, height: 2160, codec: 'avc1', fps: 120 };

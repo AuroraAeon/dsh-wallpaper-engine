@@ -1,6 +1,6 @@
 /**
- * 「外观」页签的节渲染器（原 src/panel-tabs.js 的 520–1119 行）：主题 / 细节 /
- * 全局字体 / 输入光标 / 侧边栏圆角 / 全局 UI 配色，含 familyOptions / sysFontNote /
+ * 「外观」页签的节渲染器（原 src/panel-tabs.js）：主题 / 细节 /
+ * 全局字体 / 侧边栏圆角 / 全局 UI 配色，含 familyOptions / sysFontNote /
  * sysFontRefresh / sidebarCornerGroup 与 renderFont* 一族。本节渲染器从 src/panel-tabs.js 按域搬出，函数体逐字未改。
  * 内联顺序见 scripts/build-client.mjs：本模块排在组装点之前（打包后同一工厂作用域）。
  */
@@ -8,7 +8,7 @@
     const { onResetModule, onToggleThemeFollow, sel } = ctx;
     return React.createElement(React.Fragment, null,
     // ── 主题：本节点只剩「主题随壁纸」—— 玻璃配置在「玻璃 UI」节，
-    //    **「配色」（accent）已迁进「全局 UI 配色」节**（2026-10-11 用户口径：配色要成为
+    //    **「配色」（accent）已迁进「全局 UI 配色」节**（用户口径：配色要成为
     //    一个独立大项，并作为"直接调整全部"的总色；见 renderAppearanceUiColorSection）。──
     React.createElement("div", { className: "we-picker__section" },
       React.createElement("div", { className: "we-picker__section-head" },
@@ -35,7 +35,7 @@
     // 简化 / 高级分档见 ADR-0008 **D4**（实现口径在 `src/glass-panel.js`，按 `ctx.surface` 判定）：
     // 全局四件套、预设方案与各面总开关属简化配置（侧栏档也画）；本节的「独立配置」层及其子项
     // 属高级配置 ⇒ 只在设置页画。它与 quick-panel 的 setting-only 占位器互为负对照。
-    // ⚠️ 折叠门（2026-10-11 **二次修订**）：**两档都支持隐藏**；差别只在默认值
+    // ⚠️ 折叠门（**二次修订**）：**两档都支持隐藏**；差别只在默认值
     //    （组件算好当 `open` 传进来）—— 侧边栏默认展开、设置页默认展开。
     const open = detailOpen === true;
     return React.createElement(React.Fragment, null,
@@ -157,10 +157,10 @@
     );
   }
 
-  // ── 文字颜色角色（F1）：逐角色上色 + 深色单独设置 ──
+  // ── 文字颜色角色：逐角色上色 + 深色单独设置 ──
   function renderFontColorRoles(sel, officialColorOf, onThemeDarkSeparate, onThemeColor, onThemeColorClear) {
     return React.createElement(React.Fragment, null,
-    // F1：分角色上色 —— 每个角色独立放开（不把四个角色压成同一个色而压平 DSH 的四级层次），
+    // 分角色上色 —— 每个角色独立放开（不把四个角色压成同一个色而压平 DSH 的四级层次），
     // 留空 = 跟随原生。经 theme 令牌层生效：body 内联、免 !important、{light,dark} 随配色自动换值。
     React.createElement("div", { className: "we-picker__ctl we-picker__ctl--wrap" },
       ctlText(weT("文字颜色角色"), weT("未设置 = 用 DSH 默认色（色块显示当前值）")),
@@ -387,7 +387,7 @@
     return React.createElement(React.Fragment, null,
     // ── 字体 (custom typography)：总开关（关 = 恢复 dsh 原生字体）+ 颜色角色 / 排版角色 /
     //    字体族 / 组件字体（高级），开启时才渲染细节控件。字重不设全局值：按角色与按组件细化。
-    //    ⚠️ 分档（ADR-0008 D4 **三次修订**，2026-10-11 用户口径）：这一节**两档都画**
+    //    ⚠️ 分档（ADR-0008 D4 **三次修订**，用户口径）：这一节**两档都画**
     //    （侧栏 + 设置页），无 surface 门。二次修订曾把它单向迁进侧栏，随后用户在设置页
     //    找不到该节、报"字体自定义被干掉了" ⇒ 用户口径"两边都有"。两档都**默认收起**
     //    （节头点击展开），开合状态各记各的键。──
@@ -473,7 +473,7 @@
 
   function renderAppearanceSidebarCornersSection(ctx) {
     const { onResetModule, onSidebarAllCorners, onSidebarCornerRadius, onSidebarCornerSquare, sel, cornersOpen, onToggleCornersSection } = ctx;
-    // ⚠️ 折叠门同「细节」节（2026-10-11 二次修订）：两档都支持隐藏，差别只在默认值。
+    // ⚠️ 折叠门同「细节」节（二次修订）：两档都支持隐藏，差别只在默认值。
     const open = cornersOpen === true;
     return React.createElement(React.Fragment, null,
       React.createElement("div", { className: "we-picker__section" },
@@ -484,7 +484,7 @@
     );
   }
 
-  // ── 「全局 UI 配色」节（2026-10-11 用户口径）：配色成为独立大项 + 五处"蓝色元素"可单独调 ──
+  // ── 「全局 UI 配色」节（用户口径）：配色成为独立大项 + 五处"蓝色元素"可单独调 ──
   //    结构按用户原话：「做成 <全局 UI 配色> 下挂 <全局配色> 和 <UI 配色自定义>」——
   //      · **全局配色**（accent，原住「主题」节）＝ "用于直接调整全部"；
   //      · **UI 配色自定义**（开关，**默认关**，与 fontCustom 同形）＝ 开启后下面五项各自可调，

@@ -283,7 +283,7 @@ async function main() {
     const GROUPS = [['verify', 'verify'], ['verify:docs', 'docs'], ['smoke', 'smoke'], ['verify:all', 'all']];
     // 地板 = **实测步数**（新增不受限，**删或改名即判红**）。`docs` 整组软档也设 1 位数级别的值时
     // "整组被删空"会和"设计如此"无法区分，所以按实测收紧。
-    // 2026-10-14 收紧：verify 58→63（重新挂回 inject-contracts / component-face /
+    //  收紧：verify 58→63（重新挂回 inject-contracts / component-face /
     // route-ownership / settings-namespaces / js-text selftest 这 5 条，见 run-guards.mjs 的清单注释）、
     // docs 1→7、smoke 5→6、all 29→77。收紧后"删一步即红"由下面的负对照钉住。
     const CHAIN_FLOOR = { verify: 63, docs: 7, smoke: 6, all: 77 };
@@ -390,7 +390,7 @@ async function main() {
   // 判据边界（与 ADR-0006 一致）：它读的是**产物字节**，不是散文措辞 —— 属于"读代码的守卫"。
   // 本条的前身是 `verify-comment-discipline` 里那段"硬编码 5 个文件"的 BOM 检查，
   // 随该守卫撤除；那次撤除让 `lib/routes/fontsets.js` 带着 BOM 无人看管
-  //（`docs/archive/wip/POST-REFACTOR-AUDIT.md` §4.9 早就点出那个盲区）。这里改按扩展名全扫，不再硬编码名单。
+  //（撤除那条守卫时这个盲区被漏掉过）。这里改按扩展名全扫，不再硬编码名单。
   {
     const BOM = [0xEF, 0xBB, 0xBF];
     const PARSED_EXT = ['.js', '.mjs', '.cjs', '.json', '.ts', '.html'];
