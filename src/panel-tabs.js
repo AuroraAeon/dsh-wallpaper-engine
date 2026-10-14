@@ -44,6 +44,18 @@
  * test/tools/src-scope.mjs 的 panelText()），搬出去不等于搬出判据。
  */
 
+/**
+ * 可见面判据的**本地包装**（同 `avatar-layer.js` 的口径）：本文件可被**独立求值**
+ * （判据逐页签抽函数真跑），因此不裸引用拼接作用域里的 `weComponentVisible`，改读
+ * `globalThis.__weComponentVisible`（`src/client.js` 启动时注入）；缺省 `true` = 不渲染（D3① 安全方向）。
+ */
+function weComponentVisibleOf(components, name) {
+  const f = globalThis.__weComponentVisible;
+  // 缺省 **true**（未知 ⇒ 按可用渲染）：注入缺失只可能是接线疏漏或独立求值上下文，
+  // 那种情况下"把整个面板藏掉"是更坏的失败；生产侧 src/client.js 启动时必定注入。
+  return typeof f === 'function' ? f(components, name) : true;
+}
+
   // 这一层只**按顺序组装**各节（"有哪几节、什么顺序"一眼可读；
   // 判据按真渲染的节序列钉住，见 verify-scene-live 的节顺序一节）。
   // 首行空解构是**契约**（test/verify-scene-live.mjs 的『每个页签首行都从 ctx 解构』）：
@@ -121,6 +133,10 @@
 
   function renderMascotTab(ctx) {
     const { onRopeScaleChange, onRopeVisibilityChange, onMascotFormConfirm, onDisarmConfirm, sel, paneWidth } = ctx;
+    // ── D3 可见面 gate（ADR-0013 D3①/D3③）：该组件行关掉 ⇒ **整块不渲染**（返回 null，
+    // 界面不显示；配置项由调用方按同一判据隐藏）。判据：test/verify-component-visibility.mjs
+    // 的"声明落点必须被 gate"双向对账。唯一实现在 src/client.js 的 weComponentVisible。
+    if (!weComponentVisibleOf(ctx.sel && ctx.sel.inventory && ctx.sel.inventory.components, 'mascot-avatar')) return null;
     // 主页面那只吉祥物**当前用的立绘**（自定义优先 / 否则内置形态）—— 与 RopeDock 共用
     // 同一条解析（`ropeArtOf`）：设置页看到的盒与主页面那只的盒必须是同一个数。
     const previewArt = ropeArtOf(sel);
@@ -250,6 +266,10 @@
   // 所以说明文字只能写在函数外面 —— 见 test/verify-scene-live.mjs 的『每个页签首行都从 ctx 解构』。
   function renderExtensionsTab(ctx) {
     const { onResetModule } = ctx;
+    // ── D3 可见面 gate（ADR-0013 D3①/D3③）：该组件行关掉 ⇒ **整块不渲染**（返回 null，
+    // 界面不显示；配置项由调用方按同一判据隐藏）。判据：test/verify-component-visibility.mjs
+    // 的"声明落点必须被 gate"双向对账。唯一实现在 src/client.js 的 weComponentVisible。
+    if (!weComponentVisibleOf(ctx.sel && ctx.sel.inventory && ctx.sel.inventory.components, 'mascot-avatar')) return null;
     const modules = extensionModules();
     return React.createElement(React.Fragment, null,
       React.createElement("div", { className: "we-picker__section" },
@@ -287,6 +307,10 @@
   // 四段的**顺序**是用户的明确口径（致谢压尾），判据按首次出现下标比大小钉住。
   function renderAboutTab(ctx) {
     const { } = ctx;
+    // ── D3 可见面 gate（ADR-0013 D3①/D3③）：该组件行关掉 ⇒ **整块不渲染**（返回 null，
+    // 界面不显示；配置项由调用方按同一判据隐藏）。判据：test/verify-component-visibility.mjs
+    // 的"声明落点必须被 gate"双向对账。唯一实现在 src/client.js 的 weComponentVisible。
+    if (!weComponentVisibleOf(ctx.sel && ctx.sel.inventory && ctx.sel.inventory.components, 'about-notice')) return null;
     // star 数那一行（模块级：值 + 三态文案都在 client.js 的 starCountLabel 里；
     // 这里的"读"与 SliderRow 一类模块级助手同口径 —— 只读，不发请求）。
     const stars = starCountLabel();
@@ -347,7 +371,7 @@
             rel: "noopener noreferrer",
             title: weT("在浏览器里打开项目仓库"),
           }, weT("⭐ 去 GitHub 点亮 Star")),
-          // 实时 star 数：宿主代取（带缓存，见 lib/routes/github-stars.js）。
+          // 实时 star 数：宿主代取（带缓存，见 lib/components/about-notice/github-stars.js）。
           // 取不到时**整行不消失**、改说"暂时取不到" —— 数字是点缀，按钮才是主操作。
           stars
             ? React.createElement("span", {

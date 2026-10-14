@@ -68,7 +68,10 @@ const pkg = JSON.parse(read('package.json'));
 const hasNodeEngine = (p) => Boolean(p && p.engines && p.engines.node);
 {
   // 只扫会被发布的宿主代码（浏览器半边不跑在 Node 上，不能拿它推下限）
-  const hostSrc = ['lib/index.js', 'lib/media/legacy.js', 'lib/media/index.js', 'lib/media/supervisor.js']
+  // ⚠️ 媒体子系统在本分支住**组件行**（P2 拆包）：面要跟着实现走，否则'是否用了有版本要求的 API'
+// 会推导出 0（判据非空转自检立刻报红——这正是它该做的）。
+const hostSrc = ['lib/index.js', 'lib/components/media-bridge/legacy.js', 'lib/components/media-bridge/backend.js',
+  'lib/components/media-bridge/supervisor.js', 'lib/components/media-bridge/index.js']
     .map((f) => { try { return read(f); } catch { return ''; } }).join('\n');
   const need = requiredFloor(hostSrc);
   const declared = pkg.engines && pkg.engines.node;
@@ -122,10 +125,13 @@ function weakenedAcceptAssignments(src) {
     (_, head, list) => head + '"' + list.split(',').slice(0, -1).join(',') + '"');
 }
 
-const hostSrc = read('lib/index.js');
-// ⚠️ 读点变更（T2 #8）：`UPLOAD_EXT` / `CUSTOM_FRAME_EXT` 已搬进 lib/asset-paths.js ⇒ 只改"读哪个
-//    文件"（下面 hostMimeKeys 的两个实参），判据与期望值一字未改。`hostSrc` 仍供 BASE 等其余判据。
-const hostAssetsSrc = read('lib/asset-paths.js');
+// ⚠️ BASE 的真源不在门面正文（P0 库化后由 lib/host-boot.js 定义、门面 import）
+// ⇒ 面 = 门面 + host-boot + 内核（判据的'两侧一致'不变量不变）。
+const hostSrc = read('lib/index.js') + '\n' + read('lib/host-boot.js') + '\n' + read('lib/kernel/host-kernel.js');
+// ⚠️ 读点更正（T2 #8 / task-10 G）：`UPLOAD_EXT` / `CUSTOM_FRAME_EXT` 的真源在本分支是
+//    `lib/media/media-dirs.js`（上游同名副本 `lib/asset-paths.js` 已不在 import 图上）⇒ 只改
+//    "读哪个文件"（下面 hostMimeKeys 的两个实参），判据与期望值一字未改。`hostSrc` 仍供 BASE 等其余判据。
+const hostAssetsSrc = read('lib/media/media-dirs.js');
 const apiSrc = read('src/api-client.js');
 const clientSrc = read('src/client.js');
 const tabsSrc = panelText();
@@ -217,10 +223,12 @@ const tabsSrc = panelText();
   // 会话头像路由（lib/routes/avatar.js）的形态判据。它跟另两条收体路由的关键差别是
   // **不走流式落盘**：上限只有 8MB（客户端导入前已按 512px 缩过一轮）⇒ 走共享读体器 +
   // 原子落盘，内联收集器那条棘轮因此不增（见 test/verify-body-caps.mjs 的两条棘轮）。
-  const routeSrc = read('lib/routes/avatar.js');
-  // ⚠️ 读点变更（T2 #8）：`AVATAR_*` / `MASCOT_*` / `avatarDir()` / `mascotDir()` 的实现已搬进
-  //    lib/asset-paths.js ⇒ 本块只改"读哪个文件"，下面六条断言与期望值一字未改。
-  const hostNow = read('lib/asset-paths.js');
+  // ⚠️ 头像路由族在本分支归**组件行** mascot-avatar（P2 拆包；实现入包、主包不留注册点）。
+const routeSrc = read('lib/components/mascot-avatar/avatar.js');
+  // ⚠️ 读点更正（T2 #8 / task-10 G）：`AVATAR_*` / `MASCOT_*` / `avatarDir()` / `mascotDir()` 的真源
+  //    在本分支是 `lib/media/media-dirs.js`（上游同名副本 `lib/asset-paths.js` 已不在 import 图上）
+  //    ⇒ 本块只改"读哪个文件"，下面六条断言与期望值一字未改。
+  const hostNow = read('lib/media/media-dirs.js');
   // `const json = (code, payload) => sendJson(res, code, payload);` —— 恰好**三个**实参 ⇒ 走共享实现的
   // 默认 `no-store`。四参形态（`sendJson(res, code, payload, null)` 之类）**不**匹配：那等于把这条
   // 错误路径改回可缓存，正是本判据要挡的（`no-store` 的唯一落点是 lib/json-response.js）。
@@ -231,7 +239,7 @@ const tabsSrc = panelText();
     // ⚠️ 这条判据的**字面量形状**有讲究：verify-package-files 的 P5 会扫本文件里的 import 规格，
     // 写成一个带引号的 `from '…/http-body.js'` 会被它当成裸包名（转义后的 `\.\.` 不以点开头）
     // ⇒ 这里用 `\s+['"]…['"]` 形态描述那条 import（探测器的 `from\s+` 匹配不到它）。
-    /import\s*\{[^}]*bodyReader[^}]*\}\s+from\s+['"]\.\.\/http-body\.js['"]/.test(routeSrc)
+    /import\s*\{[^}]*bodyReader[^}]*\}\s+from\s+['"][^'"]*\/http-body\.js['"]/.test(routeSrc)
     && /bodyReader\(req, \{/.test(routeSrc) && /maxBytes: AVATAR_MAX_BYTES/.test(routeSrc)
     && /atomicWriteFileP\(join\(dir, name\), body\)/.test(routeSrc));
   check('头像路由：换图即清兄弟（同 side 的旧文件先删，否则屏上还是旧图）',
@@ -248,11 +256,11 @@ const tabsSrc = panelText();
     && /AVATAR_MAX_BYTES = 8 \* 1024 \* 1024/.test(hostNow));
 
   // 吉祥物立绘族（lib/routes/mascot.js）：与头像同形，但**只有一张**（导入即覆盖）。
-  const mascotRouteSrc = read('lib/routes/mascot.js');
+  const mascotRouteSrc = read('lib/components/mascot-avatar/mascot.js');
   check('立绘路由：形态与头像同族（共享读体器 + 原子落盘，不是新的流式豁免）',
     // ⚠️ 与头像那条同一个理由：写成一个带引号的 `from '…/http-body.js'` 会被 verify-package-files
     //    的 P5 当成裸包名（转义后的 `\.\.` 不以点开头）⇒ 用 `\s+['"]…['"]` 形态描述它。
-    /import\s*\{[^}]*bodyReader[^}]*\}\s+from\s+['"]\.\.\/http-body\.js['"]/.test(mascotRouteSrc)
+    /import\s*\{[^}]*bodyReader[^}]*\}\s+from\s+['"][^'"]*\/http-body\.js['"]/.test(mascotRouteSrc)
     && /bodyReader\(req, \{/.test(mascotRouteSrc) && /maxBytes: MASCOT_MAX_BYTES/.test(mascotRouteSrc)
     && /atomicWriteFileP\(join\(dir, name\), body\)/.test(mascotRouteSrc));
   check('立绘路由：**只有一张**（导入前清同族旧文件 ⇒ 再导入即覆盖）',

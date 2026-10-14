@@ -819,8 +819,9 @@ console.log('\n⑤ 保真度同源不变量（tint 的钳制与 floor 的覆盖�
 
 // ═══ ⑥ settings golden 夹具的**键集快照**（防静默过期）════════════════════════
 // 为什么需要它：`test/fixtures/settings-sanitize-golden.json` 的**值**由
-// `verify-client` 的 `canon(sanitizeFromSchema(input))` 对 `canon(want)` 逐用例比对 ——
-// 那是**回放**：每个用例只验证"记录下来的输入仍产出记录下来的输出"。
+// `verify-client` 的 `canon(sanitizeFromSchema(input, side))` 对 `canon(want)` 逐用例比对 ——
+// **host 与 client 两侧都比**（client 侧是本轮补上的：此前那半数据没有任何判据，
+// 全改坏也双绿）—— 那是**回放**：每个用例只验证"记录下来的输入仍产出记录下来的输出"。
 // 于是它**不覆盖键的存在性**：夹具里某个对象少一个键时，值比对照样全过，守卫**照样绿**。
 // 而夹具的同步一直靠 note 里的人工约定（"新键按引入时行为补入"、"安全阀＝其余键零漂移"）。
 //

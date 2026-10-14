@@ -11,7 +11,7 @@
  *   ② 覆盖面：路由条数 > 20（防解析器静默返回空表 ⇒ ① 变成空对空）；
  *   ③ **路由模块不漏**：`lib/routes/*.js` 每个都进了索引，且没有"文件在、apply 里没调用"的孤儿；
  *   ④ **context 契约没有死声明**：模块声明了却没用到的 `c` 字段必须为 0；
- *   ⑤ **索引 == 运行时真实注册**（这条才是真有牙的那条，见下）。
+ *   ⑤ **索引 == 运行时真实注册**（裸行 + **所有**组件行，逐行数据驱动；这条才是真有牙的那条，见下）。
  *
  * 为什么必须有 ⑤：`webServer.register({` 的**字面量**条数与索引行数做比较是"文本对文本"，
  * 两边可以一起错。**实测**形态：`for (const seg of ['media','preview']) { … register(…) }`
@@ -23,7 +23,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { buildIndex, parseRouteModuleText } from './tools/host-route-index.mjs';
+import { buildIndex, parseRouteModuleText, COMPONENT_MODULES, rowRegistrationCounts } from './tools/host-route-index.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 let failed = 0;
@@ -78,6 +78,14 @@ console.log('\n② 循环注册：一个 register 字面量产出多条路由时
   check('媒体字节族的循环注册已展开（1 个字面量 ⇒ 2 条路由）',
     bytesLiterals === 1 && fromBytes === bytesLiterals + 1,
     `字面量 ${bytesLiterals} + 1（media/preview 循环）= 路由 ${fromBytes}`);
+  // 同一条"按文件对账"纪律的第二例：P0.2-D 把 apply() 里最后一条内联注册（`/inventory`）
+  // 搬进了 lib/routes/inventory.js ⇒ 门面字面量归零后，这 1 条路由也在模块里逐条对账。
+  const invSrc = readFileSync(join(ROOT, 'lib', 'routes', 'inventory.js'), 'utf8');
+  const invLiterals = (invSrc.match(/webServer\.register\(\{/g) || []).length;
+  const fromInv = routes.filter((r) => r.src === 'lib/routes/inventory.js').length;
+  check('清单 JSON 路由的内联注册已展开（1 个字面量 ⇒ 1 条路由）',
+    invLiterals === 1 && fromInv === invLiterals,
+    `字面量 ${invLiterals} = 路由 ${fromInv}`);
   check('负对照：索引里同时有 /media 与 /preview（折叠成一行时这条会红）',
     routes.some((r) => r.path === '/media') && routes.some((r) => r.path === '/preview'));
 }
@@ -155,15 +163,44 @@ console.log('\n⑤ 索引 == 运行时真实注册的路由（唯一能发现"�
 {
   const mod = await import(pathToFileURL(join(ROOT, 'lib', 'index.js')).href);
   const host = mod.default || mod;
+  // `applyComponent` 是具名导出（`export default` 只有 { inject, apply }）⇒ 这里必须读命名空间。
+  const applyComponent = mod.applyComponent || host.applyComponent;
   const registered = [];
-  const dispose = (host.apply || (host.inject && host.apply))({
+  const mock = {
+    // 组件行与主行同款取服务姿势：`inject = ['webServer']` + 直读 `ctx.webServer`（2026-10-14 真机
+    // 故障：未声明 inject 就直读会被 cordis reflect 门禁抛错）⇒ mock 提供 `webServer` 即可。
     webServer: {
       register(route) { registered.push(route); return () => {}; },
       tapIndex() { return () => {}; },
     },
-  });
-  check('运行时注册条数 == 索引行数', registered.length === routes.length,
+  };
+  const dispose = (host.apply || (host.inject && host.apply))(mock);
+  // P2-1/P2-2：组件行是**独立 plugin**（patch 里一行一行加载）⇒ 同一条 mock 上逐行都跑一遍，再与
+  // 索引做**严格等式**（并集，不是 ≥）。放松成 ≥ 就发现不了"组件行悄悄少注册一条 / 多注册一条"。
+  // 组件清单（`COMPONENT_MODULES`）与"每行该注册几条"（该入口调用的路由族条数）都**现算** ——
+  // 不写死组件名，也不写死 2。
+  const componentDisposers = [];
+  const perComponent = [];
+  const countIssues = [];
+  for (const rel of COMPONENT_MODULES) {
+    const sub = rel.replace(/^lib\/components\//, '').replace(/\/index\.js$/, '');
+    const before = registered.length;
+    componentDisposers.push(typeof applyComponent === 'function' ? applyComponent(mock, undefined, sub) : undefined);
+    const got = registered.length - before;
+    const exp = rowRegistrationCounts(rel, modules);
+    if (exp.unknown.length) countIssues.push(sub + ' 调用点解析不到路由模块：' + exp.unknown.join(' '));
+    else if (got !== exp.expected) countIssues.push(sub + ' 注册 ' + got + ' 条 ≠ 路由族 ' + exp.expected + ' 条（' + exp.fns.join(' ') + '）');
+    perComponent.push(sub + '=' + got);
+  }
+  check('每个组件行在同一个 mock 上注册的条数 == 它调用的路由族条数（逐行数据驱动）',
+    COMPONENT_MODULES.length >= 1 && countIssues.length === 0,
+    countIssues.join('；') || perComponent.join(' '));
+  check('运行时注册条数 == 索引行数（裸行 + 组件行的并集）', registered.length === routes.length,
     `运行时 ${registered.length} / 索引 ${routes.length}`);
+  // 跨行 (kind, path) 不得重复：宿主对重复注册**可能**抛错（R1 未证实），这里兜底钉住"两行注册面不相交"。
+  const keyed = registered.map((r) => r.kind + ' ' + r.path);
+  const dupes = [...new Set(keyed.filter((k, i) => keyed.indexOf(k) !== i))];
+  check('跨行无重复 (kind, path)（裸行与组件行的注册面不相交）', dupes.length === 0, dupes.join(' ') || '无重复');
   // 负对照：循环注册在运行时**确实**是两条独立的注册（证明上面那条对账有对象可数）
   const looped = registered.filter((r) => r.path === '/wallpaper-engine/media' || r.path === '/wallpaper-engine/preview');
   check('负对照：循环注册在运行时是两条独立注册', looped.length === 2, looped.map((r) => r.path).join(' '));
@@ -178,6 +215,7 @@ console.log('\n⑤ 索引 == 运行时真实注册的路由（唯一能发现"�
   const unindexed = [...runtimePaths].filter((p) => !indexed.has(p.replace(/^\/wallpaper-engine/, '')));
   check('运行时注册的路径都在索引里（没有路由绕过索引）', unindexed.length === 0, unindexed.join(' ') || '全部在索引');
   if (typeof dispose === 'function') { try { dispose(); } catch { /* 清理失败不影响判定 */ } }
+  for (const d of componentDisposers) { if (typeof d === 'function') { try { d(); } catch { /* 同上 */ } } }
 }
 
 console.log('');

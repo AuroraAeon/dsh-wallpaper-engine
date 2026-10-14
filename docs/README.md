@@ -70,7 +70,6 @@
 | [CHANGELOG.md](./CHANGELOG.md) | **变更记录** —— 逐版本功能与修复（新版在前）。**英文版在 [`en/CHANGELOG.md`](./en/CHANGELOG.md)**（与其它文档同布局：basename 相同、顶部互换链接） |
 | [HOW-IT-WORKS.md](./HOW-IT-WORKS.md) | **工作原理** —— 出图来源链（实时渲染 → 内嵌 MP4 → 实时抓帧 → 自定义画面 → 空态）、宿主 / 客户端分工、**字体集通道**、遮挡暂停与客户端异常留痕、HTTP 路由表 |
 | [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) | **排障** —— 安装失败排查与「症状 → 先看哪里」速查 |
-| [TRIAGE.md](./TRIAGE.md) | **问题分诊与认领** —— 标签体系（`status:*` / `area:*`）、`/assign` 自动认领、维护者分诊动作与贡献者路径 |
 | [COEXISTENCE.md](./COEXISTENCE.md) | **共存** —— 与皮肤中心 / 侧栏插件 / 其它 UI 插件一起装时的冲突矩阵（症状 → 嫌疑机制 → 三步自查）、「玻璃关不掉」的真相与共存四态的目标形态 |
 
 **分层约定**：门面 `README.md` / `README.en.md` 只放**不随版本变化、且新访客决策必需**的事实；
@@ -82,6 +81,7 @@
 | 文档 | 内容 |
 |---|---|
 | [CODE-STRUCTURE.md](./CODE-STRUCTURE.md) | **代码结构与边界** —— 两份文档合并而成（原 `MODULE-LAYOUT.md` ⊕ `ARCHITECTURE.md`）：`lib/` 与 `src/` 的分工规范、目录约定与准入门槛、两个半边与路由族、构建期内联、启停生命周期、数据流、**状态真源清单**、层间边界表、在册守卫 |
+| [ARCHITECTURE-SPLIT.md](./ARCHITECTURE-SPLIT.md) | **本分支的宿主半边形态：门面重写记录** —— "主包 + 组件行 + 内核化"三层各自是什么、门面现在只剩什么、能力分别搬去哪（组件目录 / 内核 / 叶子模块）、与上游单包形态的差异与迁移路径、组件行归属与开关的判据在哪 |
 | [DEV-GUIDE.md](./DEV-GUIDE.md) | **二次开发指南** —— "怎么加一个 X"的配方（加路由 / 加设置项 / 加浏览器端代码）；**§4 是验证与测试**（原 `TEST-LAYOUT.md` 并入）：三层结构、两档判据、运行矩阵、覆盖范围、`test/tools/` 清单、写判据的八条约定 |
 | [FONT-SYSTEM.md](./FONT-SYSTEM.md) | 字体系统的通道分工、不变量、扩展步骤、进浏览器包的约束 |
 | [DSH-UI-INTERFACES.md](./DSH-UI-INTERFACES.md) | **我们去依赖了 DSH 的哪些 UI 接口** —— 按"客户端产物 / node 宿主 / 桌面壳 / 第三方插件"四层记账：哪些是宿主刻意提供的稳定契约（设计令牌、源码作者写的数据属性）、哪些是构建哈希或第三方私有类名、哪些**与预想不同**（宿主有正式的槽系统而我们钉渲染后的 DOM；`data-dsh-desktop-mode` 其实是桌面壳的 URL 参数）。含**复算方法**（asar 直读 + 偏移→包索引），升级前照它重跑 |
@@ -115,7 +115,9 @@
 | [0008](./adr/0008-glass-config-two-state.md) | 玻璃配置收成**两态**（"要不要玻璃"整层退役；每面一个「独立配置」= `inherit` / `custom`）并定下**门控策略**：恒挂属性做 CSS 侧的证书，**简化配置 / 高级配置**按 `ctx.surface` 分档（D4） |
 | [0009](./adr/0009-system-fonts-from-the-os.md) | 本机字体清单**由宿主问操作系统**（枚举 + 缓存，浏览器侧只当读者），而不是在进程内解析字体文件或从浏览器枚举；取不到权威来源就如实标 `approximate` |
 | [0010](./adr/0010-glass-off-revisit-four-states.md) | **修订 ADR-0008 的「放弃关玻璃」**：令牌层整组回退的前置条件已成立（账本 [`TOKEN-CONTRACT.md`](./TOKEN-CONTRACT.md) + 封闭白名单守卫）；目标形态 = **一个模式键四态**（full / glass-only / wallpaper-only / off），实施分三批、主开关最后 |
-| [0012](./adr/0012-artifact-untracking.md) | **构建产物出库**：`lib/client.js` 不入库（改由 build / prepack 现场构建），README 展示图迁至 Release 资产外链；修订 ADR-0003 的 D6 |
+| [0011](./adr/0011-preset-full-snapshot.md) | 预设从**玻璃子集快照**升为**整机配置快照**（键集由 `KINDS` 派生、资产按需携带、旧预设作废、新增导入导出） |
+| [0012](./adr/0012-artifact-untracking.md) | 构建产物出库（`lib/client.js` 不入库，改由 build / prepack 现场构建）＋ README 展示图迁至 Release 资产外链；修订 ADR-0003 的 D6 |
+| [0013](./adr/0013-bundle-multi-component-rows.md) | **插件拆分（现行唯一版本）**：一 bundle 多组件行（单包，不推翻 ADR-0003）；核心目标 = **降复杂度 / 锚定模块边界 / 解耦合**三件并列；**行级开关 = 宿主路由 ＋ 该组件的浏览器可见面**（可见面由宿主行状态派生、双向对账、"宁可显示不可静默消失"）；待完成 = 契约收紧 + 实现入包；**不做**多包 / 每组件一格客户端开关 / 包内懒块。**旧 0012–0016（该决定的旧编号）已归档**到 [`archive/adr/`](./archive/adr/)；本决定**重编号 0012 → 0013**（让位给上游的 `0012-artifact-untracking`） |
 
 ## 已归档（`archive/`，只作记录）
 
@@ -140,6 +142,7 @@
 
 | 文档 | 内容 |
 |---|---|
+| [adr/](./archive/adr/README.md) | **拆分子插件重构的决策档案**：`0012`–`0016` 五份（含旧版 0012）已按用户口径**合并**进现行的 [`adr/0013`](./adr/0013-bundle-multi-component-rows.md)，旧件只作记录、各带**旧编号 → 现行 `D*` 编号**的映射 |
 | [wip/GLASS-CONFIG-REFACTOR.md](./archive/wip/GLASS-CONFIG-REFACTOR.md) | **玻璃配置重构（用户口径 → 审计 → 分期实施 → 收口，整体归档）** —— 现状测绘（§4 的实测取证）· 目标架构（§10.5）· 分期 R0–R4 与三轮实测修复（§10.9–§10.24）。**机制与不变量已留在 `src/glass.js` / `src/glass-panel.js` / `lib/settings-schema.js` 的文件头**，判据在 `test/verify-glass-surfaces.mjs`（每条带负对照；**组数与条数由该守卫自己报**，文档不抄），取舍与被证伪的方案在 [`adr/0008`](./adr/0008-glass-config-two-state.md) |
 | [wip/OPEN-ITEMS.md](./archive/wip/OPEN-ITEMS.md) | **重构账本（主动部分已结项，整体归档）** —— §2 现状基线（上界棘轮）、§3.1–§3.3 现状锚点、§5 状态列、§7 触发线、§9.1 令牌层约束。归档时活着的内容已挪走：**行为缺口 → [`TROUBLESHOOTING.md`](./TROUBLESHOOTING.md)**，**令牌层约束 → 守卫**（`verify-readability` / `verify-glass-compositing`）。⚠️ **状态列从来没有机器兜底**（账本守卫随 [`adr/0006`](./adr/0006-comment-discipline-as-written-convention.md) 下线），读它按"未经核对的记录"对待 |
 | [wip/POST-REFACTOR-AUDIT.md](./archive/wip/POST-REFACTOR-AUDIT.md) | **收官后审计（过程记录）** —— 2026-09-29 重构结项后的只读复核，**只收工程债**：宿主请求体上限 / 编码正确性 / 无界状态 / 中断泄漏 / 并发删产物、客户端启动链与状态拆除、注释与文档失真，以及**判据缺口**（为什么当时全绿却漏掉这些）。它开出的条目（账本的 P4 系列）**已全部收口** |
@@ -174,7 +177,7 @@
   再往前是 [`archive/wip/PLAN.md`](./archive/wip/PLAN.md)（`src/` 缺陷 · 注释审计 · 目录裁决 · 守卫重构）；
   **本机专用的临时待办不入库**，也不被任何入库文档引用 —— 读者打不开的东西不指向它。
 - 开发/发布：仓库根 `CONTRIBUTING.md`（含「`lib/client.js` 到底是什么」）；用户门面：`README.md` / `README.en.md` / `README.beginner.md`。
-- `images/`：本地工作截图目录 —— README 展示图已迁至 Release 资产（`media-v1`）外链，仓库不保留。
+- `images/`：README 引用的截图。
 - **已溶解进代码**的文档（结论进注释）：`RENDERER-OFFICIAL-STRUCTURE.md`、`RENDER-ISSUES-ANALYSIS.md`、
   `REFACTOR-ROUND-2026-08-28.md`、`REFACTOR-STATIC-FRAME.md`；
   废弃方向（`HOOK-PROGRESS` / `V6-DUMP-ANALYSIS` / `EYE-PREDICTION` / `FIX-PLAN-AMYA` /

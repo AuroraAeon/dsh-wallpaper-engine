@@ -23,6 +23,14 @@
         {
           "kind": "guard",
           "npm": null,
+          "file": "test/verify-component-visibility.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
           "file": "test/verify-windows-caption.mjs",
           "args": [],
           "tier": "hard",
@@ -265,6 +273,14 @@
         {
           "kind": "guard",
           "npm": null,
+          "file": "test/verify-inject-contracts.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
           "file": "test/verify-cache-dir.mjs",
           "args": [],
           "tier": "hard",
@@ -337,6 +353,14 @@
         {
           "kind": "guard",
           "npm": null,
+          "file": "test/verify-component-face.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
           "file": "test/verify-fontset.mjs",
           "args": [],
           "tier": "hard",
@@ -346,6 +370,14 @@
           "kind": "guard",
           "npm": null,
           "file": "test/verify-presets.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-settings-namespaces.mjs",
           "args": [],
           "tier": "hard",
           "probe": false
@@ -394,6 +426,14 @@
           "kind": "guard",
           "npm": null,
           "file": "test/verify-token-contract.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-route-ownership.mjs",
           "args": [],
           "tier": "hard",
           "probe": false
@@ -461,6 +501,16 @@
           "args": [],
           "tier": "hard",
           "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/tools/js-text.mjs",
+          "args": [
+            "selftest"
+          ],
+          "tier": "hard",
+          "probe": false
         }
       ]
     },
@@ -495,6 +545,14 @@
           "kind": "guard",
           "npm": null,
           "file": "test/verify-dead-declarations.mjs",
+          "args": [],
+          "tier": "soft",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-undefined-refs.mjs",
           "args": [],
           "tier": "soft",
           "probe": false
@@ -600,6 +658,14 @@
         {
           "kind": "guard",
           "npm": null,
+          "file": "test/verify-component-visibility.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
           "file": "test/verify-windows-caption.mjs",
           "args": [],
           "tier": "hard",
@@ -842,6 +908,14 @@
         {
           "kind": "guard",
           "npm": null,
+          "file": "test/verify-inject-contracts.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
           "file": "test/verify-cache-dir.mjs",
           "args": [],
           "tier": "hard",
@@ -914,6 +988,14 @@
         {
           "kind": "guard",
           "npm": null,
+          "file": "test/verify-component-face.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
           "file": "test/verify-fontset.mjs",
           "args": [],
           "tier": "hard",
@@ -923,6 +1005,14 @@
           "kind": "guard",
           "npm": null,
           "file": "test/verify-presets.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-settings-namespaces.mjs",
           "args": [],
           "tier": "hard",
           "probe": false
@@ -971,6 +1061,14 @@
           "kind": "guard",
           "npm": null,
           "file": "test/verify-token-contract.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-route-ownership.mjs",
           "args": [],
           "tier": "hard",
           "probe": false
@@ -1042,6 +1140,16 @@
         {
           "kind": "guard",
           "npm": null,
+          "file": "test/tools/js-text.mjs",
+          "args": [
+            "selftest"
+          ],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
           "file": "test/verify-module-layout.mjs",
           "args": [],
           "tier": "soft",
@@ -1067,6 +1175,14 @@
           "kind": "guard",
           "npm": null,
           "file": "test/verify-dead-declarations.mjs",
+          "args": [],
+          "tier": "soft",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-undefined-refs.mjs",
           "args": [],
           "tier": "soft",
           "probe": false

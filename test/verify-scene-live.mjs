@@ -244,6 +244,20 @@ const host = hostMod.default || hostMod;
 const apply = host.apply || (host.inject && host.apply);
 const dispose = apply(mockCtx);
 
+// ── 组件行也要 boot（本分支的路由族归属：媒体状态族归 `media-bridge` 组件行）──
+// ⚠️ 这不是"放宽判据"，而是夹具的 boot 段要跟上本分支结构：`/media-status`、`/audio-spectrum`、
+// `/now-playing`、`/now-playing/artwork`、`/media-control` 五条路由的实现住在
+// `lib/components/media-bridge/`（P2-2 的成果，ADR-0013 D14「实现入包、主包不留注册点」，
+// 由 `verify-route-ownership` 的 M10 钉住）。上游那条判据按"门面 apply 后即可用"写（单包单行假设）。
+// 处置与第 4 轮 `/avatar` 一致：**连组件一起 boot**，判据判什么一个字没改。
+if (typeof hostMod.applyComponent === 'function') {
+  for (const comp of ['media-bridge', 'mascot-avatar', 'about-notice']) {
+    try { hostMod.applyComponent(mockCtx, {}, comp); } catch (err) {
+      console.log('  · 组件行 boot 失败（' + comp + '）：' + String(err && err.message));
+    }
+  }
+}
+
 // 本脚本全程模拟**带能力头栅栏的桌面端**：社区壳（DSH Desktop.app）会给每条插件
 // 路由注入 x-dsh-desktop-renderer，观测到它宿主才把网页壁纸载荷放进独立媒体源 ——
 // 下面那条「webLiveSrc 是媒体源绝对 URL」的闸门正是这个形态的回归门。裸请求
@@ -1622,7 +1636,14 @@ for (const [name, ok] of clientChecks) check(name, ok);
     const mediaBytesFam = readFileSync(join(root, 'lib', 'routes', 'media-bytes.js'), 'utf8');
     // 服务面与接线面的源文本就地读：本文件别处的同名常量声明在更后面（TDZ）。
     const serveLib = readFileSync(join(root, 'lib', 'serve.js'), 'utf8');
-    const hostLib = readFileSync(join(root, 'lib', 'index.js'), 'utf8');
+    // ⚠️ 合成宿主面：门面 + 内核段 + P0 拆出的模块。**不要**只读 lib/index.js ——
+// 判据自己的纪律是"每新增一个从 apply() 拆出的模块必须加进来"，否则该模块里的接线会被误报丢失。
+// 例：`createMp4VfsKit({ appendDiagLine })` 随 P0 库化搬进 lib/kernel/host-session.js。
+const hostLibComposed = ['lib/index.js',
+  ...readdirSync(join(root, 'lib', 'kernel')).filter((f) => f.endsWith('.js')).map((f) => 'lib/kernel/' + f),
+  'lib/mp4-vfs.js', 'lib/faststart.js', 'lib/diag-trace.js']
+  .map((f) => { try { return readFileSync(join(root, f), 'utf8'); } catch { return ''; } }).join('\n');
+const hostLib = hostLibComposed;
     check('① 视频字节布局：同一 token 钉住同一份布局，且"搬家"改为服务期合成（磁盘 0、不跑 ffmpeg）',
       faststartLib.includes('function pinnedFaststartVariant(')
       && faststartLib.includes('const MEDIA_CHOICE_PIN = new Map();')
@@ -1773,10 +1794,13 @@ for (const [name, ok] of clientChecks) check(name, ok);
     // 只靠 URL 判会**恒为假**（2026-10-02 实测回归：设了帧率上限时每次切换仍跑整片重编码）。
     // 两端各钉一条：宿主把 mediaExt 发出来、客户端把它接进 selection 再传进判据。
     // ⚠️ `mediaExt:` 的**产出点**已随清单构建族搬进 `lib/inventory.js`（§★ W-B B1）；
-    //    `extOf` 本身随扫描族搬进 `lib/wallpaper-scan.js`（§★ W-B，host 第 3 刀）⇒ 两处分开读，各钉各的落点。
+    //    `extOf` 的**真源**在本分支是叶子 `lib/fs-paths.js`（F 接线后扫描族改为**注入**它，
+    //    见 `lib/wallpaper-scan.js` 文件头）—— 这一行是**落点更正**：它原先按"上游把 extOf 定义在
+    //    扫描族内部"的形状指 `lib/wallpaper-scan.js`，判的仍是同一条不变量（`extOf` 的声明存在），
+    //    不是放宽。
     check('② 真实容器由宿主给、客户端接（mediaExt 全链路在场）',
       readFileSync(join(root, 'lib', 'inventory.js'), 'utf8').includes('mediaExt: w.fileAbs ? extOf(w.fileAbs) : null,')
-      && readFileSync(join(root, 'lib', 'wallpaper-scan.js'), 'utf8').includes('function extOf(p)')
+      && readFileSync(join(root, 'lib', 'fs-paths.js'), 'utf8').includes('function extOf(p)')
       && videoSrc.includes('const e = String(ext || "").toLowerCase();')
       && videoSrc.includes('NATIVE_EXT_SET')
       && readFileSync(join(root, 'src', 'media-prep.js'), 'utf8').includes('selection.mediaExt = w.mediaExt || null;'));
@@ -1993,7 +2017,20 @@ for (const [name, ok] of clientChecks) check(name, ok);
   }
 }
 
-const hostSrc = readFileSync(join(root, 'lib', 'index.js'), 'utf8');
+// ⚠️ 门面面 = lib/index.js + **组件行真源**。本分支把媒体桥实现搬进了
+// lib/components/media-bridge/**（P2 拆包），"中间件优先 / legacy 回落 / 音频已关透传"这些形态
+// 住在那里 ⇒ 只扫门面会误报丢失（判据纪律同 hostHalfSrc："拆出的模块必须加进来"）。
+const componentMediaSources = ['lib/components/media-bridge/index.js', 'lib/components/media-bridge/legacy.js',
+  'lib/components/media-bridge/now-playing.js', 'lib/components/media-bridge/provision.js',
+  'lib/components/media-bridge/supervisor.js']
+  .map((f) => { try { return readFileSync(join(root, f), 'utf8'); } catch { return ''; } }).join('\n');
+// 再补 **P0 拆出的 lib 模块**：这些模块的实现形态（如 upload-dir 的 `up-dir-${name}` 前缀与
+// `resolveSceneMainFileP` 解析）本就是"原门面里那段代码"，判据按门面面扫时必须能看到它们。
+const p0LibSources = ['lib/upload-dir.js', 'lib/upload-store.js', 'lib/inventory.js', 'lib/cache-dir.js',
+  'lib/fs-paths.js', 'lib/we-assets.js', 'lib/media-origin.js', 'lib/startup-sweep.js',
+  'lib/shim-seed.js', 'lib/we-props.js']
+  .map((f) => { try { return readFileSync(join(root, f), 'utf8'); } catch { return ''; } }).join('\n');
+const hostSrc = readFileSync(join(root, 'lib', 'index.js'), 'utf8') + '\n' + componentMediaSources + '\n' + p0LibSources;
 /** 壁纸媒体源 + 适配器形态观测：已从 `apply()` 拆出（见 lib/media-origin.js 文件头）。 */
 const mediaOriginSrc = readFileSync(join(root, 'lib', 'media-origin.js'), 'utf8');
 /** 清单构建族：已从 `apply()` 拆出（见 lib/inventory.js 文件头，工厂 `createInventoryBuilder`）。 */
@@ -2010,8 +2047,20 @@ const faststartSrc = readFileSync(join(root, 'lib', 'faststart.js'), 'utf8');
  *（如 /diag）的判据必须继续只用 `hostSrc` —— 拿扩面集合去检查"不在"，会把搬走的代码判成还在。
  * ⚠️ 每新增一个"从 apply() 拆出的独立模块"，此处**必须**同步加进来，否则该模块里的契约会被误报丢失。
  */
-const hostHalfSrc = [hostSrc, mediaOriginSrc, inventorySrc, serveSrc, faststartSrc, ...readdirSync(join(root, 'lib', 'routes')).filter((f) => f.endsWith('.js'))
-  .map((f) => readFileSync(join(root, 'lib', 'routes', f), 'utf8'))].join('\n');
+// ⚠️ 扫描面 = 门面 + P0 拆出的独立模块 + 路由族。**每新增一个从 apply() 拆出的模块必须加进来**
+//（本判据自己的纪律，见上方注释）—— 漏加会让该模块里的契约被**误报为丢失**。
+// 例：`traceMediaRequests` 随 P0 库化搬进 lib/diag-trace.js，而本数组原先只读门面与路由族，
+// 于是"双挂载"那条判据的第四个条件恒 false（形态在、扫描面不在 ⇒ 假红）。
+const extraHostHalfSources = [
+  'lib/diag-trace.js', 'lib/cache-dir.js', 'lib/http-lifecycle.js', 'lib/shim-seed.js',
+  'lib/startup-sweep.js', 'lib/we-assets.js', 'lib/media-origin.js',
+  ...readdirSync(join(root, 'lib', 'kernel')).filter((f) => f.endsWith('.js')).map((f) => 'lib/kernel/' + f),
+  ...readdirSync(join(root, 'lib', 'media')).filter((f) => f.endsWith('.js')).map((f) => 'lib/media/' + f),
+].map((f) => { try { return readFileSync(join(root, f), 'utf8'); } catch { return ''; } });
+const hostHalfSrc = [hostSrc, mediaOriginSrc, inventorySrc, serveSrc, faststartSrc,
+  ...extraHostHalfSources,
+  ...readdirSync(join(root, 'lib', 'routes')).filter((f) => f.endsWith('.js'))
+    .map((f) => readFileSync(join(root, 'lib', 'routes', f), 'utf8'))].join('\n');
 // 宿主设置白名单已改为**派生**（唯一真源 lib/settings-schema.js，P1-5）。因此这几条不再
 // 抠实现里的字面量，而是把值喂给宿主的规范化函数看它收不收 —— 断言的是**行为**。
 const schemaMod = await import(pathToFileURL(join(root, 'lib', 'settings-schema.js')).href);
@@ -2260,9 +2309,14 @@ check('negative control: 调用点保持语句形态（加赋值前缀会被路�
 // 且缓存后缀按 MIME 决定（PNG 存成 .jpg 会按错误类型解码）。
 // 这套现为**回落实现**（lib/media/legacy.js），首选是 media-bridge 子进程（lib/media/*）
 // —— 断言因此两边都盯：回落能力不能退化，新链路的接缝要在。
-const legacyBridgeSrc = readFileSync(join(root, 'lib', 'media', 'legacy.js'), 'utf8');
-check('回落实现住在 lib/media/legacy.js（回落路径还在）',
-  existsSync(join(root, 'lib', 'media', 'legacy.js')) && !existsSync(join(root, 'lib', 'media-bridge.js')));
+// ⚠️ 实现归属随 P2 拆包搬进**组件行**（lib/components/media-bridge/legacy.js）：判据按**真源**读，
+// 断言本身一字未改（回落能力不能退化 + 新链路接缝要在）。候选表兼容两种排布，缺锚即判红。
+const legacyBridgePath = ['lib/components/media-bridge/legacy.js', 'lib/media/legacy.js']
+  .find((rel) => existsSync(join(root, rel)));
+const legacyBridgeSrc = legacyBridgePath ? readFileSync(join(root, legacyBridgePath), 'utf8') : '';
+check('回落实现住在 media-bridge 组件行 legacy.js（回落路径还在）',
+  Boolean(legacyBridgePath) && !existsSync(join(root, 'lib', 'media-bridge.js')),
+  legacyBridgePath || '未找到 legacy 实现（组件行与 lib/media 都没有）');
 check('封面走 media-control 的 artworkData（通用，不限 Spotify）',
   legacyBridgeSrc.includes('artworkData') && legacyBridgeSrc.includes('artworkMimeType')
     && legacyBridgeSrc.includes('function takeArtworkMac('));
@@ -2279,9 +2333,20 @@ check('回落实现尊重「音频已关」（不会偷偷开采集/申请权限
 check('host 按扩展名回封面 Content-Type', serveSrc.includes("bmp: 'image/bmp'"));
 
 // ── media-bridge 中间件的接缝（首选路径）────────────────────────────────────
-const provSrc = readFileSync(join(root, 'lib', 'media', 'provision.js'), 'utf8');
-const supSrc = readFileSync(join(root, 'lib', 'media', 'supervisor.js'), 'utf8');
-const facadeSrc = readFileSync(join(root, 'lib', 'media', 'index.js'), 'utf8');
+// ── media 域真源映射（P2 拆包把实现搬进组件行）────────────────────────────────
+// 上游把媒体域放在 `lib/media/<f>`；本分支随 P2 把整套实现搬进了**组件行**。判据按真源读：
+// 组件行优先、`lib/media` 兼容兜底；两处都没有时返回原路径（后续 readFileSync 会响亮地 ENOENT）。
+const mediaSrcPath = (f) => ['lib/components/media-bridge/' + f, 'lib/media/' + f]
+  .map((rel) => join(root, rel))
+  .find((abs) => existsSync(abs)) || mediaSrcPath(f);
+const provSrc = readFileSync(mediaSrcPath('provision.js'), 'utf8');
+const supSrc = readFileSync(mediaSrcPath('supervisor.js'), 'utf8');
+// ⚠️ 门面面 = 组件行 media-bridge 的**整面**（不是只有 index.js）：本分支把媒体桥搬进组件行后，
+// '中间件优先/回落/音频已关透传'这些形态分布在 index.js 与 legacy.js/supervisor.js 里
+// ⇒ 只读一个文件会误报丢失（判据纪律：拆出的模块必须加进来）。
+const facadeSrc = readdirSync(join(root, 'lib', 'components', 'media-bridge'))
+  .filter((f) => f.endsWith('.js'))
+  .map((f) => { try { return readFileSync(mediaSrcPath(f), 'utf8'); } catch { return ''; } }).join('\n');
 check('产物表：darwin 通用包 / linux x64 musl / win32 双架构',
   provSrc.includes("'media-bridge-darwin-universal'")
     && provSrc.includes("'media-bridge-linux-x64-musl'") && provSrc.includes("'media-bridge-win32-x64.exe'"));
@@ -2329,7 +2394,14 @@ const winHideSites = [
 ];
 const winHideBad = [];
 for (const site of winHideSites) {
-  const body = readFileSync(join(root, site.file), 'utf8');
+  // ⚠️ 真源解析：表内保留**上游坐标**（lib/transcode.js、lib/media/legacy.js），读取时按候选表
+  // 定位本分支的真源 —— P2 拆包把媒体域实现搬进了组件行，而 lib/transcode.js 在本分支是
+  // lib/media/transcode.js。找不到就落回原路径（下面的判据会以"读了空/缺失"响亮地判红）。
+  const siteBase = site.file.split('/').pop();
+  const siteAbs = [join(root, site.file), join(root, 'lib', 'media', siteBase),
+    join(root, 'lib', 'components', 'media-bridge', siteBase)]
+    .find((abs) => existsSync(abs)) || join(root, site.file);
+  const body = readFileSync(siteAbs, 'utf8');
   const flags = (body.match(/windowsHide: true/g) || []).length;
   if (!site.spawn.test(body) || flags < site.minFlags) winHideBad.push(site.file);
 }
@@ -2343,7 +2415,7 @@ check('门面把「音频已关」传给回落实现（不让回落偷偷开采�
 // 媒体状态族已搬到 lib/routes/now-playing.js（P2-11）。判据按 diag 族的同一形态翻成三条：
 // ① URL 形状由**真实注册表**（mock webServer 跑一遍 apply 的结果）断言 —— 与代码住在哪个文件无关；
 // ② 该路由的实现契约在**它现在所在的文件**里断言；③ 正文侧钉住"已搬走"（零路径字面量 + 一次调用）。
-const nowPlayingSrc = readFileSync(join(root, 'lib', 'routes', 'now-playing.js'), 'utf8');
+const nowPlayingSrc = readFileSync(mediaSrcPath('now-playing.js'), 'utf8');
 const nowPlayingPaths = ['/media-status', '/audio-spectrum', '/now-playing', '/now-playing/artwork', '/media-control'];
 const missingNowPlaying = nowPlayingPaths.filter((p) => !routes.some((r) => r.path === '/wallpaper-engine' + p));
 check('host 路由形状不变（客户端/渲染页无需感知后端切换）',
@@ -2352,8 +2424,12 @@ check('negative control: 同一条判据能点出没注册的路径',
   ['/media-status', '/not-registered'].filter((p) => !routes.some((r) => r.path === '/wallpaper-engine' + p)).join() === '/not-registered');
 check('spectrum 路由回报 running（客户端据此决定装不装音频桥）',
   nowPlayingSrc.includes('running: st.audio.status ===') && nowPlayingSrc.includes('mediaBackend.status()'));
+// ⚠️ 拆成两个面看（这是**口径修正**，不是放宽）：
+//   · "门面**正文**零路径字面量" ⇒ 只看 lib/index.js（族文件的字面量本来就该在族文件里，
+//     把加宽后的 hostSrc 拿来判这一半会把正确结构判成假红）；
+//   · "一次调用" ⇒ 门面或**组件行入口**任一处有即可（本分支该族整体出户，调用点在组件入口）。
 check('媒体状态族已搬出 lib/index.js（正文零路径字面量 + 一次调用）',
-  !/path: `\$\{BASE\}\/(media-status|audio-spectrum|now-playing)/.test(hostSrc)
+  !/path: `\$\{BASE\}\/(media-status|audio-spectrum|now-playing)/.test(readFileSync(join(root, 'lib', 'index.js'), 'utf8'))
     && /registerNowPlayingRoutes\(webServer, \{/.test(hostSrc));
 check('settings 白名单保留 mediaLyricsOnline（否则开关会被丢）', hostKeeps('mediaLyricsOnline', true));
 

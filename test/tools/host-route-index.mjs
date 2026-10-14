@@ -6,21 +6,30 @@
  * 哪些状态"只能靠读代码。这份索引把四件事机械地列出来：
  *   ① 路由 → 所在文件:行号 → 处理器形态（箭头/函数、是否 async）；
  *   ② 该处理器的块里**引用了哪些 apply 作用域的状态**（= 将来 context 对象的字段候选）；
- *   ③ 拆到 `lib/routes/*.js` 的族：**context 契约**（声明了哪些 `c` 字段、哪个声明了却没用）；
+ *   ③ 拆成独立模块的路由族（`lib/routes/*.js`，或组件目录里的直接子文件 —— 见 `routeModuleFiles()`）：
+ *      **context 契约**（声明了哪些 `c` 字段、哪个声明了却没用）；
  *   ④ 哪条路由在守卫/冒烟里被提到过（提到 ≠ 有断言，但零提及 = 拆分时没有安全网）。
  *
  * 两处**必须**在解析里做对，否则索引会静默少列路由：
  *   · **循环注册**：`for (const seg of ['media','preview']) { … register({ path: `${BASE}/${seg}` }) }`
  *     一个注册字面量产出 **2 条**路由。只按字面量计数会少一条，而"字面量数 == 索引行数"
  *     这种自比对照永远发现不了它（两边一起错）。这里展开成每条路由一行。
- *   · **路由模块**：族搬进 `lib/routes/*.js` 后，注册字面量不再出现在 `lib/index.js` 里 ——
+ *   · **路由模块**：族搬进独立模块后，注册字面量不再出现在 `lib/index.js` 里 ——
  *     解析器只扫主文件的话，搬走的路由就**从索引里消失**，而索引正是拆分的 context 设计稿。
  *     这里按 `registerXxxRoutes(webServer, …)` 调用点把模块的路由展开回原位置。
+ *   · **实现归属（P2-8）**：族的落点不再只有 `lib/routes/` —— 组件私有的实现随组件住进
+ *     `lib/components/<c>/`。所以文件面**从磁盘枚举**（`routeModuleFiles()`），认模块靠
+ *     **入口形态**（`export function register…Routes(webServer`）而不是目录名。
  *
  * 用法：
  *   node test/tools/host-route-index.mjs            # 打印索引（守卫用它比对）
  *   node test/tools/host-route-index.mjs --write    # 写入 docs/ROUTE-INDEX.md
  *   node test/tools/host-route-index.mjs --deps     # 额外打印四个巨石的闭包状态清单
+ *
+ * ⚠️ 生成物 `docs/ROUTE-INDEX.md` 是 **LF** 行尾（`--write` 写的是 `md.join('\n') + '\n'`），
+ *    与树里其余文本文件的 **CRLF** 口径不同 —— 这是刻意的（生成物不进 CRLF 归一）；
+ *    `docs/GUARD-MAP.md`（`test/tools/guard-targets.mjs --write` 生成）同理也是 LF。
+ *    `test/verify-route-index.mjs` 也是按"现算文本 vs 磁盘文本"逐字比对的，别顺手改行尾。
  */
 import { readFileSync, writeFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
@@ -162,49 +171,137 @@ export function parseRouteModuleText(raw, rel, fnName) {
   return { rel, fnName, L, st, at, end, fields, unused, routes: routesIn(L, st, depsOf) };
 }
 
-/** 读盘版本（`parseRouteModuleText` 的薄封装）。 */
-function parseRouteModule(rel, fnName) {
-  return parseRouteModuleText(readFileSync(join(ROOT, rel), 'utf8'), rel, fnName);
-}
+/** 路由族模块的**入口形态**：`export function register<X>Routes(webServer`。
+ *  认模块只认这个形态（不认目录名）—— 组件目录里的 `index.js`（导出 `apply` / `applyImpl`）
+ *  因此不会被误当成路由族，而搬进组件目录的族照样被认出来。 */
+const ROUTE_ENTRY_RE = /export\s+function\s+register[A-Za-z_$][\w$]*Routes\s*\(\s*webServer\b/;
 
-/** `lib/routes/*.js` 里每个导出函数名 → 文件（用于把调用点映射回模块）。 */
-function routeModules() {
-  const dir = join(ROOT, 'lib', 'routes');
-  if (!existsSync(dir)) return [];
+/** 路由族模块的**候选文件面**（从磁盘枚举，不写死组件清单 —— M5）：
+ *  `lib/routes/*.js` ∪ `lib/components/<c>/` 的**直接子文件**。
+ *  这是"可能住着路由族"的文件面；是否真是路由族由 `ROUTE_ENTRY_RE` 判定（见 `routeModuleFiles()`）。 */
+export function routeModuleCandidates() {
   const out = [];
-  for (const name of readdirSync(dir).filter((n) => n.endsWith('.js')).sort()) {
-    const rel = 'lib/routes/' + name;
-    const raw = readFileSync(join(ROOT, rel), 'utf8');
-    for (const m of raw.matchAll(/export\s+function\s+([A-Za-z_$][\w$]*)\s*\(/g)) {
-      out.push(parseRouteModule(rel, m[1]));
+  const push = (dir, prefix) => {
+    if (!existsSync(dir)) return;
+    for (const name of readdirSync(dir).filter((n) => n.endsWith('.js')).sort()) out.push(prefix + name);
+  };
+  push(join(ROOT, 'lib', 'routes'), 'lib/routes/');
+  const comps = join(ROOT, 'lib', 'components');
+  if (existsSync(comps)) {
+    for (const c of readdirSync(comps).sort()) {
+      const dir = join(comps, c);
+      if (!statSync(dir).isDirectory()) continue;
+      push(dir, 'lib/components/' + c + '/');
     }
   }
   return out;
 }
 
+/** 路由族模块的**文件面**：候选里**含注册入口**的那些（组件目录里的 `index.js` 导出的是
+ *  `apply` / `applyImpl`，没有这个形态 ⇒ 不会被误当成路由族）。 */
+export function routeModuleFiles() {
+  return routeModuleCandidates().filter((rel) => ROUTE_ENTRY_RE.test(readFileSync(join(ROOT, rel), 'utf8')));
+}
+
+/** 路由族模块：文件面里每个文件 × 它的导出函数（用于把调用点映射回模块）。 */
+function routeModules() {
+  const out = [];
+  for (const rel of routeModuleFiles()) {
+    const raw = readFileSync(join(ROOT, rel), 'utf8');
+    for (const m of raw.matchAll(/export\s+function\s+([A-Za-z_$][\w$]*)\s*\(/g)) {
+      out.push(parseRouteModuleText(raw, rel, m[1]));
+    }
+  }
+  return out;
+}
+
+/**
+ * 「行」的主模块清单：门面（= `package.json` 的 `main`）+ 出户的组件行入口。
+ * ⚠️ 合并的只有**路由与调用点**；`stateNames` / `applyStart` / `applyEnd` 仍只按门面算
+ *    （`analyze-host-apply.mjs` 用它们框出 `apply()` 的正文 —— 那是"门面还剩多少"，别混入组件行）。
+ *
+ * **清单数据驱动（P2-9 / 度量 M5）**：组件行由 `cordis.patch.yml` 的**行名**（`<包名>/<子路径>`，
+ * 按文件顺序）映射到 `lib/components/<子路径>/index.js`，且该文件必须在磁盘上存在 —— 两侧交叉才算一行：
+ *   · 只看磁盘 ⇒ 未登记的组件目录会被当成"运行时会注册的行"，索引说谎；
+ *   · 只看 patch ⇒ 缺文件的死行也会算一行。
+ * ⇒ **新增一个组件行不需要改本文件**（把目录建好 + patch 加一行即可）。
+ */
+export const PKG_MAIN = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).main;
+
+/** `cordis.patch.yml` 里的行名（按文件顺序；手写扫描 —— 构建/守卫链上不引 js-yaml，见 verify-package-files）。 */
+export function patchRowNames() {
+  const raw = readFileSync(join(ROOT, 'cordis.patch.yml'), 'utf8');
+  const out = [];
+  for (const line of raw.split('\n')) {
+    // 注释行以 `#` 起始 ⇒ 过不了 `^\s*` + 可选 `-` + `name:` 这条形态，不会被误收。
+    const m = /^\s*(?:-\s*)?name:\s*['"]?([^'"\s#]+)['"]?\s*$/.exec(line);
+    if (m) out.push(m[1]);
+  }
+  return out;
+}
+
+/** 出户的组件行入口（数据驱动）：patch 行名 `<pkg>/<sub>` → `lib/components/<sub>/index.js`（存在才算）。 */
+export function componentModules() {
+  const out = [];
+  for (const name of patchRowNames()) {
+    const i = name.indexOf('/');
+    if (i < 0) continue; // 裸包名行 = 门面那一行
+    const rel = 'lib/components/' + name.slice(i + 1) + '/index.js';
+    if (existsSync(join(ROOT, rel)) && !out.includes(rel)) out.push(rel);
+  }
+  return out;
+}
+
+export const MAIN_MODULES = [PKG_MAIN, ...componentModules()];
+
+/** 出户的组件行入口（= `MAIN_MODULES` 去掉门面）。守卫据此**数据驱动**地遍历组件行，不写死名字。 */
+export const COMPONENT_MODULES = MAIN_MODULES.filter((rel) => rel !== PKG_MAIN);
+
+/**
+ * 一个「行」模块里 `registerXxxRoutes(webServer, …)` 调用点 → **期望注册条数**（数据驱动判据用：
+ * 组件行出户后，"这一行注册几条"必须由它调用的路由族条数现算，不能写死 2）。
+ * 返回 `{ fns, expected, unknown }`：`unknown` 非空 = 调用点解析不到路由模块（判据要红，别静默算 0）。
+ */
+export function rowRegistrationCounts(rel, modules) {
+  const raw = readFileSync(join(ROOT, rel), 'utf8');
+  const byFn = new Map(modules.map((m) => [m.fnName, m.routes.length]));
+  const fns = [];
+  for (const line of raw.split('\n')) {
+    const hit = /^\s*([A-Za-z_$][\w$]*)\s*\(\s*webServer\s*,/.exec(line);
+    if (hit) fns.push(hit[1]);
+  }
+  return { fns, expected: fns.reduce((n, f) => n + (byFn.get(f) || 0), 0), unknown: fns.filter((f) => !byFn.has(f)) };
+}
+
 export function buildIndex() {
-  const main = parseMain('lib/index.js');
+  const main = parseMain(PKG_MAIN);
+  const mains = MAIN_MODULES.map((rel) => parseMain(rel));
   const modules = routeModules();
   const byFn = new Map(modules.map((m) => [m.fnName, m]));
 
-  // 调用点（`registerXxxRoutes(webServer, {…})`）在 apply 里的行号
+  // 调用点（`registerXxxRoutes(webServer, {…})`）在各行主模块里的行号
   const calls = [];
-  main.L.forEach((l, i) => {
-    const m = /^\s*([A-Za-z_$][\w$]*)\s*\(\s*webServer\s*,/.exec(l);
-    if (m && byFn.has(m[1])) calls.push({ line: i + 1, fn: m[1], mod: byFn.get(m[1]) });
-  });
-  // 孤儿模块：文件在、导出在，但 apply 里没有调用 ⇒ 它的路由既不在索引里也不在运行时
+  for (const m of mains) {
+    m.L.forEach((l, i) => {
+      const hit = /^\s*([A-Za-z_$][\w$]*)\s*\(\s*webServer\s*,/.exec(l);
+      if (hit && byFn.has(hit[1])) calls.push({ line: i + 1, fn: hit[1], mod: byFn.get(hit[1]), srcRel: m.rel });
+    });
+  }
+  // 孤儿模块：文件在、导出在，但没有任何一行调用 ⇒ 它的路由既不在索引里也不在运行时
   const calledFiles = new Set(calls.map((c) => c.mod.rel));
   const orphanModules = modules.filter((m) => !calledFiles.has(m.rel));
 
-  // 按文档顺序合并：调用点处展开该模块的路由
+  // 按文档顺序合并：逐行（先门面、再组件行）合并该行的字面量路由与调用点展开
   const ordered = [];
-  const byCall = new Map(calls.map((c) => [c.line, c]));
-  const lines = [...new Set([...main.routes.map((r) => r.line), ...calls.map((c) => c.line)])].sort((a, b) => a - b);
-  for (const ln of lines) {
-    const c = byCall.get(ln);
-    if (c) for (const r of c.mod.routes) ordered.push({ ...r, src: c.mod.rel });
-    for (const r of main.routes.filter((r) => r.line === ln)) ordered.push({ ...r, src: main.rel });
+  for (const m of mains) {
+    const mine = calls.filter((c) => c.srcRel === m.rel);
+    const byCall = new Map(mine.map((c) => [c.line, c]));
+    const lines = [...new Set([...m.routes.map((r) => r.line), ...mine.map((c) => c.line)])].sort((a, b) => a - b);
+    for (const ln of lines) {
+      const c = byCall.get(ln);
+      if (c) for (const r of c.mod.routes) ordered.push({ ...r, src: c.mod.rel });
+      for (const r of m.routes.filter((r) => r.line === ln)) ordered.push({ ...r, src: m.rel });
+    }
   }
 
   // 守卫覆盖（口径：路由片段在守卫/冒烟源码里被提到）
@@ -220,9 +317,20 @@ export function buildIndex() {
     .map((f) => [relative(ROOT, f), readFileSync(f, 'utf8')]);
   // 提及判定要**带尾边界**：`/media` 是 `/media-info` 的子串，纯 includes 会让
   // `/media` 凭空获得 14 次"提及"，把一条没人守的路由显示成已覆盖。
+  //
+  // ⚠️ 口径收口（本轮）：这一列答的是"**哪个文件的代码碰过这条路由**"，不是"哪个文件出现过这个
+  //   字符串"。所以先把源码里的**代码路径**（`lib/…` / `src/…` / `test/…` / `scripts/…` / `docs/…`，
+  //   含 `./` 与 `../` 前缀）遮掉，再用**两侧边界**判路由形状 —— 否则 `lib/media/mp4-probe.js`、
+  //   `lib/media/video-preview.js` 这类**源文件路径**会被算成 `/media`、`/video-preview` 路由的提及
+  //   （实测：判据的读点一改，这一列就跟着漂 3 次；那是口径假阳性，不是覆盖变化）。
+  //   左边界**不加**：路由在守卫里常带 `${BASE}` 前缀出现（`'/wallpaper-engine/media-origin'`），
+  //   加 `(?<![\w.-])` 会把这类**真提及**判成零（实测：`/media-origin` 与
+  //   `/scene-payload-progress` 立刻变 0）。遮代码路径已经足够消掉那一类假阳性。
+  const maskCodePaths = (t) => t.replace(
+    /(?:\.[./]*)?(?:lib|src|test|scripts|docs)\/[A-Za-z0-9._/-]+/g, ' ');
   const mentionRe = new Map(ordered.map((r) => [r.path,
     new RegExp(r.path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![\\w-])')]));
-  const mentions = (p) => guardTexts.filter(([, t]) => mentionRe.get(p).test(t)).length;
+  const mentions = (p) => guardTexts.filter(([, t]) => mentionRe.get(p).test(maskCodePaths(t))).length;
   // 提及数挂在路由上：`analyze-host-apply.mjs` 与本文件的表格共用同一口径，避免两处各算一遍
   for (const r of ordered) r.mentions = mentions(r.path);
 
@@ -233,11 +341,14 @@ export function buildIndex() {
   md.push('> （守卫会在索引与代码不一致时失败 —— 索引因此不会烂掉）。');
   md.push('>');
   md.push('> **依赖** = 该处理器块里引用到的 `apply` 作用域声明（缩进 ≤2）= **将来 context 对象的字段候选**；');
-  md.push('> 同一列里反复出现的名字，就是该提出来的字段。拆到 `lib/routes/*.js` 的族则列它的 **`c` 字段**。');
+  md.push('> 同一列里反复出现的名字，就是该提出来的字段。拆成独立模块的族（`lib/routes/*.js` 或');
+  md.push('> 组件目录里的实现文件）则列它的 **`c` 字段**。');
   md.push('> 循环里注册的路由（`for (const seg of [...])`）按**实际条数**逐条列出，不折叠成一行。');
   md.push('> 路径列省略 `${BASE}` 前缀；因此**看起来同名的两行**是同一路径同时挂了根路径与带前缀');
-  md.push('> 两条注册（渲染页按根路径上报，只挂一条会静默 404）。提及判定带尾边界，`/media` 不会被');
-  md.push('> `/media-info` 误算成已覆盖。');
+  md.push('> 两条注册（渲染页按根路径上报，只挂一条会静默 404）。**守卫提及**列的口径：该路由以');
+  md.push('> 路由形状（尾边界，`/media` 不被 `/media-info` 误算）出现在几个守卫/冒烟文件的**代码**里；');
+  md.push('> `lib/…`、`src/…`、`test/…` 这类**代码路径**先被遮掉 ⇒ 也不会被 `lib/media/mp4-probe.js`');
+  md.push('> 这类源文件路径误算（提及 ≠ 有断言；零提及 = 拆前无安全网）。');
   md.push('');
   md.push(`共 **${ordered.length}** 条路由。`);
   md.push('');
@@ -288,6 +399,10 @@ export function buildIndex() {
     ['lib/inventory.js', 'createInventoryBuilder'],
     ['lib/serve.js', 'createServeKit'],
     ['lib/faststart.js', 'createFaststartKit'],
+    ['lib/kernel/host-session.js', 'createHostSession'],
+    // 出户的组件行（P2-1 起）：`c` 由门面 `applyComponent` 的字面量对象注入（`= c;` 解构）。
+    // 清单**数据驱动**（`componentModules()`，P2-9）⇒ 新增组件行不必改本文件。
+    ...componentModules().map((rel) => [rel, 'applyImpl']),
   ];
   const fieldsOf = (headLine, body) => {
     const pick = (s) => s.split(',').map((p) => p.trim().split(':')[0].trim()).filter(Boolean);

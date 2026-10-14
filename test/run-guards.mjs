@@ -91,10 +91,27 @@ const npmStep = (script) => ({ file: null, npm: script, args: [], tier: 'hard', 
 // `verify` 与 `smoke` 里有依赖前一步副作用的守卫（如 `verify-client-sync` 重建产物后
 // `verify-client` 才读它），重排会改变结论。
 
-/** `npm run verify` —— 硬档（挡 PR）。旧链 43 条，其中软档 1 条（媒体桥，探测式 SKIP）。 */
+/**
+ * `npm run verify` —— 硬档（挡 PR）。旧链 43 条，其中软档 1 条（媒体桥，探测式 SKIP）。
+ *
+ * ⚠️ 为什么下面这 5 条是**重新挂回来**的（可信度审计 2026-10-14，`docs/wip/TEST-CREDIBILITY-AUDIT.md`）：
+ * 本分支侧的旧 `verify` 链（`3ed09abb` 的 47 步）里有
+ * `verify-inject-contracts` / `verify-component-face` / `verify-route-ownership` /
+ * `verify-settings-namespaces` 与 `js-text selftest`；合并「追版本 轮1」(`c43a9361`) 时
+ * **整条取了上游链** ⇒ 这 5 条静默脱链，CI 从不跑它们 —— 那正是本会话一直"必须单跑
+ * `verify-inject-contracts`（M8）/ `verify-component-face`（98 键）/ 两条命名空间与归属判据"的原因，
+ * 也是"契约类强判据没人守"的根因。此处按**旧链的相对次序**还原，并在干净检出（无 node_modules）
+ * 实测 5 条全部 exit 0 ⇒ 全部挂 **hard**，不需要 SKIP。
+ * 链成员一变，必须重算 `test/fixtures/verify-chain.json`（`node test/verify-guard-chain.mjs --write-fixture`）
+ * 并把 `test/verify-package-files.mjs` 的 `CHAIN_FLOOR` 收紧到实测值（那里有"删一步即红"的负对照）。
+ */
 const VERIFY_STEPS = [
   step('test/verify-client-sync.mjs'),
   step('test/verify-client.mjs'),
+  // ⚠️ 我们的 D3 可见面判据（本分支独有）—— 它此前**不在链里**，于是轮 4 取上游 panel-tabs.js
+  // 丢掉 D3 gate 之后，它红了近 30 轮却没人跑到（守卫链的短路特性会让"链外的强判据"变成摆设）。
+  // 归位后：只要 gate 落点与声明表对不上，链就在这里断。
+  step('test/verify-component-visibility.mjs'),
   step('test/verify-windows-caption.mjs'),
   step('test/verify-transcode-state.mjs'),
   step('test/verify-playback-controls.mjs'),
@@ -125,6 +142,7 @@ const VERIFY_STEPS = [
   step('test/verify-host-paint-scope.mjs'),
   step('test/verify-route-index.mjs'),
   step('test/verify-route-families.mjs'),
+  step('test/verify-inject-contracts.mjs'),   // ← 还原（旧链位：route-families 之后、cache-dir 之前）
   step('test/verify-cache-dir.mjs'),
   step('test/verify-cache-prune.mjs'),
   step('test/verify-we-install-probe.mjs'),
@@ -134,14 +152,17 @@ const VERIFY_STEPS = [
   step('test/verify-theme-layer.mjs'),
   step('test/verify-api-client.mjs'),
   step('test/verify-component-fonts.mjs'),
+  step('test/verify-component-face.mjs'),     // ← 还原（旧链位：component-fonts 之后、fontset 之前）
   step('test/verify-fontset.mjs'),
   step('test/verify-presets.mjs'),
+  step('test/verify-settings-namespaces.mjs'), // ← 还原（旧链位：presets 之后、system-fonts 之前）
   step('test/verify-system-fonts.mjs'),
   step('test/verify-picker-upload.mjs'),
   step('test/verify-picker-model.mjs'),
   step('test/verify-picker-props.mjs'),
   step('test/verify-about.mjs'),
   step('test/verify-token-contract.mjs'),
+  step('test/verify-route-ownership.mjs'),    // ← 还原（旧链位：token-contract 之后、链尾附近）
   step('test/verify-config-store.mjs'),
   step('test/verify-steam-discovery.mjs'),
   step('test/verify-child-kill.mjs'),
@@ -150,6 +171,9 @@ const VERIFY_STEPS = [
   step('test/verify-video-preview.mjs'),
   step('test/verify-asset-paths.mjs'),
   step('test/verify-settings-schema-exports.mjs'),
+  // ← 还原（旧链最末一步）：`js-text` 的**自检**（字符串感知的剥注释/作用域/函数体提取，
+  // 是上面一批"文本判据"的共同底座 ⇒ 它自己坏了会连带整批判据失真）。
+  step('test/tools/js-text.mjs', ['selftest']),
 ];
 
 /** `npm run verify:docs` —— 软档（只出声）。全部经 warn-only 降级。 */
@@ -158,6 +182,9 @@ const DOCS_STEPS = [
   step('test/verify-reachability.mjs', [], 'soft'),
   step('test/verify-retired-lines.mjs', [], 'soft'),
   step('test/verify-dead-declarations.mjs', [], 'soft'),
+  // 未定义引用普查（"用了但没 import/声明"）：先按软档出声若干轮，再有据可依地议升 hard
+  // （`da00a7b` 那一类；`node --check` 与聚焦判据都照不到它）。
+  step('test/verify-undefined-refs.mjs', [], 'soft'),
   step('test/verify-guard-map.mjs', [], 'soft'),
   step('test/verify-guard-chain.mjs', [], 'soft'),
 ];

@@ -37,6 +37,26 @@ const SETTINGS_URL = "/wallpaper-engine/settings";
 // 「壁纸属性」面板：host 把项目目录的 project.json 解析成 UI 描述后从这里取。
 const PROPS_URL = "/wallpaper-engine/props";
 const INVENTORY_URL = "/wallpaper-engine/inventory";
+// ── 组件行状态面（ADR-0013 D3②/D3③）────────────────────────────────────────
+// 「关掉一个组件行 ⇒ 该组件的浏览器可见面整块不渲染」的**唯一判据**。状态面就是宿主行状态
+// （`/inventory` 的 `components` 字段，产出点见 lib/routes/inventory.js）：浏览器半边**只读**，
+// 不写第二份"组件名 → UI"清单 —— 可见面落点由宿主侧的声明表 + 对账守卫双向钉住。
+// 三态口径（顺序即优先级）：
+//   ① `components` 整块读不到（字段缺席 / 不是对象：老宿主、探针没起来）⇒ **可用**
+//      —— 宁可显示、不可静默消失（D3③）；
+//   ② 该组件的键取不到（两个面都没这一行）⇒ **不可用**；
+//   ③ 值不是 `started` ⇒ **不可用**（`missing` 包含"行被 disable"这一支，`failed:<文案>` 是
+//      apply 抛错那一支）。
+// ②③ 合成一句 `=== "started"`：唯一算"可用"的值只有它。
+function weComponentVisible(components, name) {
+  if (!components || typeof components !== "object") return true;
+  return components[name] === "started";
+}
+
+// 把可见面判据**注入全局**：可单独 import / 可独立求值的模块（avatar-layer、panel-tabs 的页签函数）
+// 通过 `globalThis.__weComponentVisible` 取用它，而不裸引用本作用域里的符号（那些模块单独求值时会 ReferenceError）。
+// 契约与 `selection` / `apiUrl` 一致：模块输入一律走 globalThis。
+globalThis.__weComponentVisible = weComponentVisible;
 // Body attribute set while a wallpaper is active; CSS uses it to make the frame
 // background transparent so the behind-body layer shows through.
 const ACTIVE_ATTR = "data-we-wallpaper";
@@ -144,7 +164,7 @@ function fontFamilyStackConcrete(v) {
   return stack.replace(/var\(--we-host-font-family,\s*([^)]*)\)/, snapshot || "$1");
 }
 // 帧率上限 options (fps); 0 = 无限制. Mirror of the host whitelist.
-// 场景实时渲染（WebWallGL）帧率上限档位。Mirror of lib/index.js.
+// 场景实时渲染（WebWallGL）帧率上限档位。Mirror of lib/settings-schema.js 的 FPS_CAP_VALUES.
 
 // 配色 presets for the settings-page liquid-glass theme. The accent drives
 // buttons/sliders/selected cards/badges and the glass sheen via --we-accent;
@@ -821,6 +841,10 @@ async function loadInventory() {
       total: data.total || 0,
       portableCount: data.portableCount || 0,
       playlists: Array.isArray(data.playlists) ? data.playlists : [],
+      // 组件行状态面（ADR-0013 D3②）：原样透传，**不做归一化** —— 判据与失效口径都在
+      // `weComponentVisible` 一处（字段缺席 / 形状不对 ⇒ 按可用渲染）。失败分支（下面的
+      // catch）**有意不带这个键**：宿主不可达时可见面照常渲染，不许静默消失（D3③）。
+      components: data.components,
       error: null,
     };
   } catch (err) {
@@ -1843,6 +1867,19 @@ const PICKER_TAB_LEGACY = {
   wallpaper: "library", font: "appearance", effects: "playback",
   audio: "playback", mascot: "system", advanced: "system",
 };
+// ── 可见页签表（ADR-0013 D3① 的"页签安全"）──────────────────────────────────
+// 「关掉一个组件行」不许留下**空页签**：一个页签若**整页**都归某个组件行，那一行不可用时它必须
+// 退出导航，当前页签也要回落（否则用户点进去看到一块空白面板）。
+// 今天**没有**这样的页签：两个组件行都只占页签里的一块 ——「系统」= 吉祥物块（`renderMascotTab`，
+// mascot-avatar）+ 高级节；「关于」= 静态段落 + star 行 / 两张二维码 / 更新公告（about-notice）。
+// 所以这张表恒等于 `PICKER_TABS`，`activeTab` 的校验与回落照常走它：纪律不依赖"页签表永远不变"。
+// ⚠️ **不要**在这里接一张"组件名 → 页签"的表：那是浏览器侧的第二份可见面映射，D3② 明文禁止
+// （判据见 test/verify-component-visibility.mjs 的双向对账）。将来真出现"某组件独占一整页"时，
+// 三件事必须一起做：① 把该页签的**字面量** gate 写进下面的派生；② 在宿主侧可见面声明表
+// （lib/components/visibility.js）加这条落点；③ 让对账守卫强制①②同时发生。
+function visiblePickerTabs() {
+  return PICKER_TABS;
+}
 function readSavedPickerTab() {
   try {
     let v = localStorage.getItem(PICKER_TAB_KEY);
@@ -3946,6 +3983,12 @@ const onPickCard = (w) => {
 function WallpaperPicker() {
   useWeLocale(); // 设置页壁纸库：语言切换 → 整棵选择器（含 render* 渲染器）重渲染
   const sel = useStore();
+  // ── 组件行状态面（ADR-0013 D3②/D3③）──────────────────────────────────────
+  // 宿主行状态（`/inventory` 的 `components`，透传见 loadInventory）在这里读**一次**，之后
+  // 经 ctx 传进各渲染器（渲染器不得直接读 selection）；判定只有一处实现 —— 本文件的
+  // `weComponentVisible`。可见页签表（D3① 的"页签安全"）另见 visiblePickerTabs。
+  const components = sel.inventory && sel.inventory.components;
+  const visibleTabs = visiblePickerTabs();
   // 视频类壁纸（原生视频 + 内嵌 MP4 场景）: 只有它们有
   // 「真实播放态」的概念。实时渲染（live iframe）形态必须排除在外：它没有
   // <video> 元素可回写真实状态，且 sceneVideo 在 live 形态下非空（降级备用），
@@ -4112,7 +4155,9 @@ function WallpaperPicker() {
   //    localStorage，不进 config.json。useState 必须在下方早退分支之前调用（Rules of Hooks）。 ──
   const [activeTab, setActiveTab] = React.useState(readSavedPickerTab);
   const switchTab = (id) => {
-    if (!PICKER_TABS.some((t) => t.id === id) || id === activeTab) return;
+    // 校验走**可见页签表**（不是 PICKER_TABS）：组件行状态变化后被 gate 掉的页签不该再能被
+    // 切进去（那正是"点进一块空面板"的来源）。今天两者恒等，见 visiblePickerTabs 的注释。
+    if (!visibleTabs.some((t) => t.id === id) || id === activeTab) return;
     // 切页签 ⇒ 清掉待确认（不变量 3）：问句行随页签一起离屏，不能留着它等回来。
     disarmConfirm();
     // 下钻的库视图也随页签一起退出：否则切走再切回来，看到的还是库而不是该页内容。
@@ -4126,6 +4171,16 @@ function WallpaperPicker() {
   // 停在「关于」页刷新页面这条路径不走 switchTab（activeTab 直接从 localStorage 读出来），
   // 用一次订阅式 effect 补上；TTL 同日历口径，重复触发是空操作。
   React.useEffect(() => { if (activeTab === "about") loadStarCount(false); }, [activeTab]);
+
+  // 页签安全（ADR-0013 D3①）：可见页签表变了（组件行状态随 inventory 轮询回到本地）而当前
+  // 页签不在表里 ⇒ 回落到第一个可见页签，自愈、不用用户自己点走。表为空（今天不可能，空表
+  // 意味着一个页签都没有）时什么都不做 —— 绝不把 activeTab 设成空值。
+  // deps 用 `[activeTab, components]`：`visibleTabs` 每次渲染都是新数组，拿它当依赖会每帧触发；
+  // 而 `components` 只在 inventory 重新落地时换引用（`setTransient("inventory", next)`）。
+  React.useEffect(() => {
+    if (!visibleTabs.length || visibleTabs.some((t) => t.id === activeTab)) return;
+    switchTab(visibleTabs[0].id);
+  }, [activeTab, components]);
 
   // ── 外观页各节的折叠态（本档 = 设置页）──────────────────────────────────────────
   //    用户口径（2026-10-11 二次修订）：「设置页则是**全部开启**但也支持隐藏」⇒
@@ -4182,7 +4237,7 @@ function WallpaperPicker() {
   React.useEffect(() => {
     const req = selection.settingsTabRequest;
     if (!req) return;
-    if (req === activeTab || !PICKER_TABS.some((t) => t.id === req)) {
+    if (req === activeTab || !visibleTabs.some((t) => t.id === req)) {
       setTransient("settingsTabRequest", "");
       return;
     }
@@ -4280,9 +4335,14 @@ function WallpaperPicker() {
   // token 变了且不在加载中才重拉。
   // ── 页签面板内容（函数声明提升，renderActiveTab 在 return 里先调用）──────
   // 六页签 = 三个单渲染器（「外观」「扩展」「关于」）+ 两个合并渲染器（「播放」= 效果 + 声音，
-  // 「系统」= 吉祥物 + 高级）+ 壁纸库。「关于」不取任何 ctx 字段（静态页）；「扩展」自己也不读
-  // 字段，但要把 ctx **整包转交**给注册表里的模块（每个模块的控件由它自己的渲染器画）。
+  // 「系统」= 吉祥物 + 高级）+ 壁纸库。「关于」除组件行状态外不取任何 ctx 字段（其余是静态
+  // 内容）；「扩展」自己也不读字段，但要把 ctx **整包转交**给注册表里的模块（每个模块的控件
+  // 由它自己的渲染器画）。
+  // 组件行状态面（ADR-0013 D3②）：**经 ctx 传进渲染器**（渲染器不得直接读 selection）；
+  // 判定本身只有一处实现 —— 本文件的 `weComponentVisible(components, name)`。
+  // `components` 在本组件体上方读了一次，这里只是把它塞进各渲染器的 ctx。
   const extensionCtx = () => ({
+    components,
     sel: selection,
     onFxEnabled, onFxClick, onFxClickStyle, onFxClickSize, onFxClickGlow,
     onFxTrail, onFxTrailStyle, onFxTrailLength, onFxTrailWidth, onFxTrailGlow,
@@ -4306,7 +4366,7 @@ function WallpaperPicker() {
     onResetModule,
   });
   const renderActiveTab = () => {
-    if (activeTab === "about") return renderAboutTab({});
+    if (activeTab === "about") return renderAboutTab({ components });
     if (activeTab === "extensions") return renderExtensionsTab(extensionCtx());
     if (activeTab === "appearance") return renderAppearanceTab({
       setSetting, setTransient,
@@ -4346,6 +4406,7 @@ function WallpaperPicker() {
     );
     if (activeTab === "system") return React.createElement(React.Fragment, null,
       renderMascotTab({
+        components,
         onMascotClear, onMascotPick, onRopeFormChange, onMascotFormConfirm, onDisarmConfirm: disarmConfirm, onRopeScaleChange, onRopeVisibilityChange, sel,
         // ⚠️⚠️ 吉祥物环的等比缩放基准**必须接在这一档**（2026-10-11 实测「左右拉宽没生效」）：
         //   吉祥物控件由**系统**页签渲染（不是外观页签），我上一轮把它加进了外观档的 ctx
@@ -4366,7 +4427,7 @@ function WallpaperPicker() {
       INTERVALS, armedConfirm: sel.armedConfirm, cdMode, current, editing, editorPageView, group, groups, isLiveScene, onArmConfirm: armConfirm, onArmDeleteGroup, onCancelEditUploadDir, onCancelEditWeAssetsDir, onClear, onDeleteGroup, onDisarmConfirm: disarmConfirm, onEditInterval, onEditName, onEditOrder, onGroupChange, onGroupInterval, onOpenPicker, onOpenPickerDraft, onRefresh, onStartEditUploadDir, onStartEditWeAssetsDir, onSwitchTransition, onSwitchTransitionDir, onSwitchTransitionSpeed, onToggleAudio, onTogglePlay, onTogglePropsPanel, onToggleRotation, onUploadDirDraft, onWeAssetsDirDraft, pagerRow, playableCount, playableList, playbackLive, propsPanelOpen, renderUserPropsPanel, sel, setPickerOpener, uploadedList,
     });
   };
-  const tabIdx = Math.max(0, PICKER_TABS.findIndex((t) => t.id === activeTab));
+  const tabIdx = Math.max(0, visibleTabs.findIndex((t) => t.id === activeTab));
 
   return React.createElement("div", { className: "we-picker", "data-we-cards": sel.pickerLayout, ref: pickerRootRef },
     // ── Card header (mirrors the skin-center's pluginCard header): plugin
@@ -4378,17 +4439,17 @@ function WallpaperPicker() {
     ),
     // ── 页签栏（分段式）：六个页签互斥展示，替代三十控件的单列长滚动。
     //    指示胶囊随 activeTab 平移（transform 合成器属性，不引发布局）；宽度按
-    //    PICKER_TABS.length 现算 ⇒ 加页签只改那张表，这里零改动。 ──
+    //    **可见页签表**的长度现算 ⇒ 加页签只改那张表、组件行关闭只改可见性，这里零改动。 ──
     React.createElement("div", { className: "we-tabs", role: "tablist", "aria-label": weT("壁纸引擎设置分区") },
       React.createElement("span", {
         className: "we-tabs__pill",
         "aria-hidden": "true",
         style: {
-          width: "calc((100% - 6px) / " + PICKER_TABS.length + ")",
+          width: "calc((100% - 6px) / " + visibleTabs.length + ")",
           transform: "translateX(" + tabIdx * 100 + "%)",
         },
       }),
-      PICKER_TABS.map((t) => React.createElement("button", {
+      visibleTabs.map((t) => React.createElement("button", {
         key: t.id,
         type: "button",
         role: "tab",
@@ -4910,9 +4971,16 @@ function UpdateNotice() {
   // origin is empty (noticeSeen == "") and would briefly flash the notice before
   // the host GET merges the real value — wait for hostLoaded to avoid that.
   const eligible = sel.hostLoaded && sel.noticeSeen !== NOTICE_VERSION;
+  // 更新公告整块（含配图那条 `/about-qr/update-notice.jpg` 腿）归 `about-notice` 组件行
+  // （ADR-0013 D3②）：那一行关掉 ⇒ 公告**整块不弹**，探针也一个请求都不发（路由整族没了，
+  // 探到的是必然的 404）。判据只此一处实现 —— `weComponentVisible`。
+  const componentOn = weComponentVisible(sel.inventory && sel.inventory.components, "about-notice");
   React.useEffect(() => {
     // 已关过本版公告的用户一个请求都不发（每次开面板都探一遍是纯浪费）。
     if (!eligible) return undefined;
+    // 组件行（about-notice）不可用 ⇒ 它那一族路由整族没注册，探到的是必然的 404 —— 一个请求
+    // 都不发。与上面那句**分开写**：两条门挡的是两件不同的事（用户已关公告 / 组件行关了）。
+    if (!componentOn) return undefined;
     // 同一页面已有结论 ⇒ 直接采纳，一个请求都不再发（多开面板 / 来回切页不复探）。
     if (noticeArtVerdict) { setArt(noticeArtVerdict); return undefined; }
     let alive = true;
@@ -4930,8 +4998,8 @@ function UpdateNotice() {
     };
     timers.push(setTimeout(() => probe(0), schedule[0]));
     return () => { alive = false; for (const t of timers) clearTimeout(t); };
-  }, [eligible]);
-  const show = eligible && (art === "ready" || art === "timeout");
+  }, [eligible, componentOn]);
+  const show = eligible && componentOn && (art === "ready" || art === "timeout");
   const dismiss = () => {
     // Persist the dismissed version through the settings pipeline (localStorage
     // cache + host file). emit() re-renders this component (useStore) to hide it.
@@ -4944,7 +5012,14 @@ function UpdateNotice() {
     // 只有 ready 才渲染配图与说明行（timeout 降级态无图弹出，正文信息自足）。
     // 2026-10-12 配图换「星来」，但**求星路径指引保留**（用户口径）：图下那行
     // 「关于页一键直达」是用户找到点星入口的唯一指引，不随配图换血退场。
-    art === "ready" ? React.createElement("img", { className: "we-update-notice__art", src: apiUrl(NOTICE_ART_PATH), alt: weT("新朋友「星来」登场") }) : null,
+    art === "ready" ? React.createElement("img", {
+      className: "we-update-notice__art",
+      src: apiUrl(NOTICE_ART_PATH),
+      alt: weT("新朋友「星来」登场"),
+      // D3③ 的 `<img>` 兜底：探针过了（HEAD 通）但取字节时仍失败 ⇒ 就地退回那条**无图公告**
+      // （与等满时限的降级态同一个形态，正文信息自足），不留破图。
+      onError: () => setArt("timeout"),
+    }) : null,
     art === "ready" ? React.createElement("div", { className: "we-update-notice__art-cap" },
       React.createElement("strong", null, weT("在设置中的壁纸引擎页面中的关于中可一键直达，谢谢喵！"))) : null,
     React.createElement("div", { className: "we-update-notice__body" },

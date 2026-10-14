@@ -32,6 +32,8 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+// 取函数体：共享的字符串感知实现（跳注释/字符串/模板/正则字面量；P2-3A 归一到这里）。
+import { functionBodyOf } from './tools/js-text.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 let failed = 0;
@@ -70,29 +72,14 @@ function interfaceFields(src, name) {
 }
 
 /**
- * 函数体文本（含 {…}）。跳过字符串/模板字面量与注释，避免里面的括号干扰配对；
- * 配对失败返回 null —— 调用处会把它当"解析失败"判红，而不是静默放行。
+ * 函数体文本（含 {…}）。P2-3A：配对归一到 `test/tools/js-text.mjs` 的 `functionBodyOf`
+ * （跳注释、字符串、模板**与正则字面量**）；本函数只保留原来的"按函数名定位"口径 —— 找不到
+ * 函数、或配对失败返回 null，调用处把它当"解析失败"判红，而不是静默放行。
  */
 function functionBody(src, name) {
   const m = new RegExp('function[ \\t]+' + name + '[ \\t]*\\(').exec(src);
   if (!m) return null;
-  const open = src.indexOf('{', m.index + m[0].length);
-  if (open < 0) return null;
-  let depth = 0;
-  for (let i = open; i < src.length; i++) {
-    const c = src[i];
-    if (c === '/' && src[i + 1] === '/') { const nl = src.indexOf('\n', i); if (nl < 0) return null; i = nl; continue; }
-    if (c === '/' && src[i + 1] === '*') { const end = src.indexOf('*/', i + 2); if (end < 0) return null; i = end + 1; continue; }
-    if (c === '"' || c === "'" || c === '`') {
-      const q = c;
-      i++;
-      while (i < src.length && src[i] !== q) { if (src[i] === '\\') i++; i++; }
-      continue;
-    }
-    if (c === '{') depth++;
-    else if (c === '}') { depth--; if (depth === 0) return src.slice(open, i + 1); }
-  }
-  return null;
+  return functionBodyOf(src, m[0]);
 }
 
 /** 字段在文本里是否作为键（`name:`）或简写属性（`name,`）出现。 */

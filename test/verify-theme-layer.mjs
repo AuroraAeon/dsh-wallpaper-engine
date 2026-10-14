@@ -510,7 +510,7 @@ const fontTabsUi = panelText();
           && !!both.payload['--dsw-font-markdown-h1-font-weight']; })());
     check('不调字重时组合式仍用 DSH 的写死前缀（行为不变）',
       typo.buildTypePayload({ 'markdown-h1': 24 }, all).payload['--dsw-font-markdown-h1'].light.startsWith('700 '));
-    check('非法绝对值（低于 8 / 高于 48）被拒', 
+    check('非法绝对值（低于 8 / 高于 48）被拒',
       typo.buildTypePayload({ 'markdown-h1': 2, 'markdown-h2': 99 }, all).roles.length === 0);
   }
   // G4 字族（角色级）：只调字族时**只写字族令牌**，组合式引用它（族键 → CSS 栈由调用方解析）。

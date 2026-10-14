@@ -58,3 +58,6 @@ scene-layers-out/
 
 # npm 本地缓存（沙箱内 ~/.npm 不可写，改用仓内缓存）
 .npm-cache/
+
+# IDE 本地配置（.vscode/settings.json 等本机个性化设置，不入库；也未被 package.json files 收录）
+/.vscode/

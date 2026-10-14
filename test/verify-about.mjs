@@ -52,7 +52,19 @@ const read = (rel) => readFileSync(join(ROOT, rel), 'utf8');
 // ══ ① 仓库地址三边一致 ═══════════════════════════════════════════════════════
 console.log('① 仓库地址：package.json ⇄ 客户端 ⇄ 宿主解析');
 
-const hostSrc = read('lib/index.js');
+// P2-1：`/star-count` 与 `/about-qr` 的注册腿已出户到组件行 ⇒ 宿主侧「注册点声明了缓存路径与
+// 仓库地址」那条判据的读取源必须把组件入口拼上（字面量/正则/判据名一字未动，只扩读取面）。
+// P2-3D（D1 硬化）：这里必须喂**剥过注释的代码**。旧写法喂原文 ⇒ 下面被钉的注册点形态
+// （`registerGithubStarsRoutes(webServer, { … repoSlug: repoSlugFromPkg() … cachePath: … })`）
+// 只要**抄进一行注释**就能满足两条正则（p1b-recon 实验 E1 实测 = true）⇒ 真代码被删掉、注释里
+// 留一句样本，判据照样绿。剥注释走共享的字符串感知实现（本文件顶部已 import 的 `stripComments`），
+// **字面量 / 正则 / 判据名一字未动**，只把"看代码还是看注释"这一层补严。
+// 工具函数抽出来是**为了负对照能复用同一条"只看代码"的管道**（见下方 D1 负对照）；不改任何判据。
+const guardCode = (text) => stripComments(String(text));
+// P2-2b（拆环）：`hostKernel` / `BASE` / `PLUGIN_NAME` / `repoSlugFromPkg` 四个声明搬进了叶子
+// 模块 lib/host-boot.js ⇒ 读取面 + 该模块；**字面量 / 正则 / 判据名一字未动**。
+const hostSrc = guardCode(read('lib/index.js')) + '\n' + guardCode(read('lib/components/about-notice/index.js'))
+  + '\n' + guardCode(read('lib/host-boot.js'));
 /**
  * `owner/repo` 归一化：正则本体**从宿主实现里现抽**（`lib/index.js` 的 `repoSlugFromPkg`），
  * 不在测试里重打一份 —— 重打的那份一旦与产品漂移，判据就退化成"测试自己和自己一致"。
@@ -86,21 +98,51 @@ check('宿主没有把 owner/repo 写死成字面量',
 check('star 路由的注册点声明了缓存路径与仓库地址',
   /registerGithubStarsRoutes\(webServer, \{[\s\S]{0,240}repoSlug: repoSlugFromPkg\(\)/.test(hostSrc)
     && /cachePath: \(\) => join\(pluginDataDir\(\), 'star-count\.json'\)/.test(hostSrc));
+// P2-3D（D1）负对照：证明**旧的绕过手法**（把被钉住的注册点形态抄进一行注释）不再成立。
+// 谓词与上面那条判据的两条正则**逐字同形**；夹具是合成源码（不读真实文件）：
+//   · `starShapeIn(原文)` 为真 ⇒ 夹具确实含被钉的形态（证明判据不是恒假）；
+//   · `starShapeIn(guardCode(原文))` 为假 ⇒ 走"只看代码"的管道后，注释不再满足判据。
+// 若有人把 `guardCode`（或 `hostSrc` 的读取源）退回原文、即撤回 D1 硬化，这条当场变红。
+const starShapeIn = (src) =>
+  /registerGithubStarsRoutes\(webServer, \{[\s\S]{0,240}repoSlug: repoSlugFromPkg\(\)/.test(src)
+  && /cachePath: \(\) => join\(pluginDataDir\(\), 'star-count\.json'\)/.test(src);
+const commentedStarShape = [
+  "// registerGithubStarsRoutes(webServer, { repoSlug: repoSlugFromPkg(), cachePath: () => join(pluginDataDir(), 'star-count.json') })",
+  'export function nothingHere() {}',
+  '',
+].join('\n');
+check('negative control(硬化): 注册点形态只出现在注释里 ⇒ 判据不看它（旧写法此处为真）',
+  starShapeIn(commentedStarShape) === true && starShapeIn(guardCode(commentedStarShape)) === false);
 check('一键 star 不做：宿主侧没有任何写 GitHub 的调用',
-  !/user\/starred/.test(hostSrc) && !/method:\s*['"]PUT['"]/.test(read('lib/routes/github-stars.js')));
+  !/user\/starred/.test(hostSrc) && !/method:\s*['"]PUT['"]/.test(read('lib/components/about-notice/github-stars.js')));
 
 // ══ ② 路由行为（替身出站，不联网）════════════════════════════════════════════
 console.log('\n② /star-count 路由行为（替身 fetchJson）');
 
 const { registerGithubStarsRoutes } =
-  await import(pathToFileURL(join(ROOT, 'lib', 'routes', 'github-stars.js')).href);
-// 路由模块**只导出它的 register 函数**（`lib/routes/*.js` 的统一形状，verify-route-index
-// 按这个形状解析 context 契约）⇒ TTL 常量从源码里读，不去 import 一个不存在的导出。
-const starSrc = read('lib/routes/github-stars.js');
+  await import(pathToFileURL(join(ROOT, 'lib', 'components', 'about-notice', 'github-stars.js')).href);
+// 路由模块的**形状**：只许一个 exported function（= 那一个注册入口，verify-route-index 按它
+// 解析 context 契约）+ 一处**白名单**声明面导出 ⇒ TTL 常量仍从源码里读，不去 import 多余导出。
+// ⚠️ P2-7 起路由族模块（`lib/routes/*.js` ∪ 组件目录里的实现文件）带 `export const DEPS`（注入契约声明面，见 BUNDLE-SPLIT §8 P2-7
+// 与 §9 #17）⇒ 判据不能停在"export 数量 == 1"，但也不能退化成"随便多导都行"：只放行
+// `DEPS` / `OPTIONAL_DEPS` 两个具名常量，多导一个函数或多导一个普通 const 都要红（见负对照）。
+const starSrc = read('lib/components/about-notice/github-stars.js');
 const STAR_TTL_MS = Number((starSrc.match(/const STAR_TTL_MS = ([0-9_*\s]+);/) || [])[1].replace(/[\s_]/g, '').split('*').reduce((a, b) => a * Number(b), 1));
-check('路由模块只导出 register 函数（与其它路由模块同形）',
-  (starSrc.match(/^export /gm) || []).length === 1
-    && starSrc.includes('export function registerGithubStarsRoutes(webServer, c) {'));
+const routeShapeOk = (src) => {
+  const exportedFns = src.match(/^export\s+(?:async\s+)?function\s+\w+/gm) || [];
+  const otherExports = (src.match(/^export\s+[^\n]*/gm) || [])
+    .filter((line) => !/^export\s+(?:async\s+)?function\s/.test(line.trim()))
+    .filter((line) => !/^export\s+const\s+(DEPS|OPTIONAL_DEPS)\s*=/.test(line.trim()));
+  return exportedFns.length === 1
+    && src.includes('export function registerGithubStarsRoutes(webServer, c) {')
+    && otherExports.length === 0;
+};
+check('路由模块只导出 register 函数 + 白名单声明面（与其它路由模块同形）', routeShapeOk(starSrc));
+check('negative control: 多导一个函数 / 多导一个普通 const ⇒ 同一条判据判红',
+  routeShapeOk(starSrc) === true
+    && routeShapeOk(starSrc + '\nexport function extra() {}\n') === false
+    && routeShapeOk(starSrc + '\nexport const EXTRA = 1;\n') === false
+    && routeShapeOk(starSrc.replace(/^export const DEPS = \[[\s\S]*?\];\n/m, '')) === true);
 check('TTL 常量解析出来了（判据非空转）', Number.isFinite(STAR_TTL_MS) && STAR_TTL_MS > 0, String(STAR_TTL_MS));
 
 /** 隔离的数据目录：缓存写这里，绝不碰用户真实目录（同 DSH_WE_DATA_DIR 口径）。 */
@@ -274,9 +316,9 @@ check('TTL 常量在合理区间（几分钟量级，不是"永不刷新"也不�
 // ══ ③ 随包图：二维码 PNG + 公告配图 JPEG + 白名单路由 ══════════════════════════
 console.log('\n③ /about-qr 路由行为（白名单 / 304 / 405 / 404）');
 
-const { registerAboutQrRoutes } = await import(pathToFileURL(join(ROOT, 'lib', 'routes', 'about-qr.js')).href);
+const { registerAboutQrRoutes } = await import(pathToFileURL(join(ROOT, 'lib', 'components', 'about-notice', 'about-qr.js')).href);
 const ABOUT_DIR = join(ROOT, 'lib', 'about');
-const aboutSrc = read('lib/routes/about-qr.js');
+const aboutSrc = read('lib/components/about-notice/about-qr.js');
 const pkgFiles = JSON.parse(read('package.json')).files || [];
 
 /** 装一台只含 QR 路由的 mock webServer；serveFile 用**真实现**（在 lib/index.js 里是内联函数，

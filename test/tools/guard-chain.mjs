@@ -10,6 +10,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
+import { openSync, closeSync, readFileSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -34,9 +35,20 @@ export const TIER_FLOOR = { verify: 24, docs: 0, smoke: 5, all: 29 };
 
 /** 读某一组的 `--list-json`。runner 起不来 / 输出不是 JSON ⇒ 抛（调用方转成判据失败）。 */
 export function readChain(group) {
-  const out = execFileSync(process.execPath, [join(ROOT, 'test', 'run-guards.mjs'), group, '--list-json'], {
-    cwd: ROOT, encoding: 'utf8',
-  });
+  // ⚠️ 子进程的 stdout **落到文件**再读，不用管道捕获：某些沙箱（本会话实测）禁止子进程管道
+  // （`execFileSync` 默认 pipe ⇒ EPERM），那样本判据会因环境限制而**读不出链**，而不是链真的坏了。
+  // 换成文件传输后行为完全不变（拿到的仍是 `--list-json` 的逐字输出），判据在沙箱内外都能真跑。
+  const tmp = join(ROOT, '.test-cache', 'guard-chain-out-' + process.pid + '-' + Date.now() + '.json');
+  const fd = openSync(tmp, 'w');
+  try {
+    execFileSync(process.execPath, [join(ROOT, 'test', 'run-guards.mjs'), group, '--list-json'], {
+      cwd: ROOT, stdio: ['ignore', fd, 'inherit'],
+    });
+  } finally {
+    closeSync(fd);
+  }
+  const out = readFileSync(tmp, 'utf8');
+  try { rmSync(tmp, { force: true }); } catch { /* 清理失败不影响判据 */ }
   return JSON.parse(out);
 }
 

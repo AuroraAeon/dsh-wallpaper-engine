@@ -78,7 +78,7 @@ const hostMod = await import(pathToFileURL(join(root, 'lib', 'index.js')).href);
 const host = hostMod.default || hostMod;
 // 期望的中间件版本从产物钉推导，不写字面量 —— 否则每次升 TAG 都要回来改断言
 // （**实测**：只改产物不改断言时，跑的是新产物、断言还钉着上一个版本号 ⇒ 假红）。
-const { MEDIA_BRIDGE_TAG } = await import(pathToFileURL(join(root, 'lib', 'media', 'provision.js')).href);
+const { MEDIA_BRIDGE_TAG } = await import(pathToFileURL(join(root, 'lib', 'components', 'media-bridge', 'provision.js')).href);
 const WANT_BRIDGE_VERSION = MEDIA_BRIDGE_TAG.replace(/^v/, '');
 const dispose = (host.apply || host.inject)(ctx);
 
@@ -547,7 +547,7 @@ check('音频未启用时状态明确为 off（不申请授权、不装音频桥
 check('中间件版本/后端可查（排查时能一眼看出跑的是哪个产物）',
   Boolean(mstat && mstat.bridge) && mstat.bridge.version === WANT_BRIDGE_VERSION && mstat.bridge.protocol === 1,
   mstat && mstat.bridge ? `${mstat.bridge.version} ${mstat.bridge.provider}（期望 ${WANT_BRIDGE_VERSION}）` : '?');
-// 独立地板（与上面那条解耦）：期望值取自产品自己的常量（lib/media/provision.js 的
+// 独立地板（与上面那条解耦）：期望值取自产品自己的常量（lib/components/media-bridge/provision.js 的
 // MEDIA_BRIDGE_TAG），所以它能抓"产物陈旧/下载被挡"，抓不到"tag 该升没升"——那是有意的
 // 取舍（见 :78 注释）。但"观测点本身不在场"（mstat.bridge 空）绝不允许静默：否则取值为空
 // 时上面那条只是变成一条普通的红，没人分得清是"版本不对"还是"根本没有版本可查"。
@@ -837,3 +837,8 @@ if (failed > 0) {
   process.exit(1);
 }
 console.log(`ALL E2E CHECKS PASSED (${passed})`);
+// ⚠️ 显式退出：成功路径原先"裸落"到文件尾，靠事件循环自然排空。这条路径上有三类句柄：
+//    两个 SIGKILL 过的 Chromium 子进程（`kill()` 之后要等它真的退出）、`appServer.close()`
+//    （不主动断开 keep-alive 连接）、以及宿主 media origin 的 loopback 监听（由 `dispose()`
+//    收）。任何一处没排空就是"绿了却永远不返回"——那比红更坏（人以为在跑）。这里显式退出。
+process.exit(0);

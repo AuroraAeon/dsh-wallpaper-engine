@@ -3771,11 +3771,19 @@ setTimeout(async () => {
       //    输出**（补键时按「引入时行为」重钉），
       //    所以它只证明「输出没有无理由地变化」，**不证明这些取值本身正确** —— 取值该不该
       //    是这样，看 `lib/settings-schema.js` 的 DEFAULTS / KINDS 与各键的设计意图。
-      //    ⚠️ 本段只比对 **host** 侧的值；夹具里 `client` 侧的值**没有任何判据比对**
-      //    （④ 在活值上钉住 client == host、⑥ 只用键集）⇒ client 侧与当前 schema 的差异
-      //    是提示、不是失败。重录走 `node test/tools/regen-golden.mjs`：不带
-      //    `--write --intend <侧>:<键>` 只能报告，且除声明键外的漂移会被拒绝写入
-      //    （期望值不许与被测对象同源 —— 重录 = 承认漂移，提交信息里要写明意图）。
+      //    ⚠️ **两侧都逐用例比对值**（本轮补上 client 侧）：
+      //      · **host 侧** = 宿主 `lib/index.js` 的 `sanitizeSettings`（落盘形状；整侧 null 用
+      //        夹具哨兵 `__null__` 表示）；
+      //      · **client 侧** = 浏览器 `src/client.js` 的 `sanitizeSettings`（含 CLIENT_ONLY 键，
+      //        如 `frameVariants`/`customFrames` —— 键集与 host **不同**，所以两侧必须各自比对，
+      //        不能只守半边）。
+      //      ⚠️ 为什么此前只守 host：夹具自述写着"client 侧的值没有任何判据比对"（④ 只在活值上
+      //      钉 client == host、⑥ 只用键集）。实测把夹具里 **18 个用例的 client 值全部改坏**后
+      //      `verify-client` 与 `verify-glass-surfaces` **双绿** ⇒ 那半数据是**死的**
+      //      （docs/wip/TEST-CREDIBILITY-AUDIT.md §B3）。现在它同样被棘轮住：client 侧漂移 = 红。
+      //    重录走 `node test/tools/regen-golden.mjs`：不带 `--write --intend <侧>:<键>` 只能报告，
+      //    且除声明键外的漂移会被拒绝写入（期望值不许与被测对象同源 —— 重录 = 承认漂移，
+      //    提交信息里要写明意图）。
       //    键的**存在性**另有 `test/verify-glass-surfaces.mjs` 的 ⑥ 键集快照管：它比的是
       //    夹具自身逐用例的自洽（某用例漏补会红），**一个键在所有用例里都没补则抓不到**
       //    —— 那一类只有 `test/tools/regen-golden.mjs` 报。
@@ -3783,15 +3791,40 @@ setTimeout(async () => {
         new URL('../test/fixtures/settings-sanitize-golden.json', import.meta.url), 'utf8'));
       const canon = (o) => JSON.stringify(o && typeof o === 'object' && !Array.isArray(o)
         ? Object.fromEntries(Object.keys(o).sort().map((k) => [k, o[k]])) : o);
-      const goldenDrift = [];
+      const goldenDrift = { host: [], client: [] };
       for (const c of golden.cases) {
         const want = c.host === '__null__' ? null : c.host;
-        if (canon(sanitizeFromSchema(c.input, 'host')) !== canon(want)) goldenDrift.push(c.name);
+        if (canon(sanitizeFromSchema(c.input, 'host')) !== canon(want)) goldenDrift.host.push(c.name);
+        if (canon(sanitizeFromSchema(c.input, 'client')) !== canon(c.client)) goldenDrift.client.push(c.name);
       }
-      assert.deepEqual(goldenDrift, [],
+      assert.deepEqual(goldenDrift.host, [],
         '宿主设置规范化与夹具快照不一致 —— 夹具是**漂移棘轮**（期望值录自录制当时的实现输出，'
         + '只证明"没有无理由地变化"、不证明取值正确）：先判断这次漂移是不是有意的，'
-        + '有意则连同夹具一起更新并写明意图。漂移用例：' + goldenDrift.join(', '));
+        + '有意则连同夹具一起更新并写明意图。漂移用例：' + goldenDrift.host.join(', '));
+      assert.deepEqual(goldenDrift.client, [],
+        '**客户端**设置规范化与夹具快照不一致 —— client 侧同样是漂移棘轮（本轮补上；'
+        + '此前它没有任何判据比对 ⇒ 那半数据是死的）：有意则 `node test/tools/regen-golden.mjs '
+        + '--write --intend client:<键>` 重录并写明意图。漂移用例：' + goldenDrift.client.join(', '));
+      // 地板与两条负对照：证明上面那条 client 比对**不是空对空**、也确实有牙。
+      {
+        const withClient = golden.cases.filter((c) => c.client && typeof c.client === 'object'
+          && Object.keys(c.client).length > 0);
+        assert.ok(golden.cases.length >= 10 && withClient.length === golden.cases.length,
+          '两侧夹具都必须非空：' + golden.cases.length + ' 个用例里 client 侧非空的有 ' + withClient.length + ' 个');
+        // 负对照 1：拿**真实现输出**改一个键 ⇒ 必须与夹具不等（同一条 canon 比对判出）
+        const c0 = withClient[0];
+        const got = sanitizeFromSchema(c0.input, 'client');
+        const key = Object.keys(got)[0];
+        const v = got[key];
+        const bumped = (typeof v === 'number' ? v + 1
+          : typeof v === 'string' ? v + '__nc__'
+            : Array.isArray(v) ? [...v, '__nc__'] : { ...(v || {}), __nc__: true });
+        assert.ok(canon({ ...got, [key]: bumped }) !== canon(got),
+          'negative control: client 侧改坏一个键必须被同一条比对判出（否则这条棘轮没牙）');
+        // 负对照 2：client 侧不是 host 侧的复制品（否则"两份独立比对"是假的）
+        assert.ok(golden.cases.some((c) => canon(c.client) !== canon(c.host === '__null__' ? null : c.host)),
+          'negative control: 夹具里 client 与 host 必须至少有一例不同（证明两侧是两份独立数据）');
+      }
 
       // ③b #159② 玻璃色的形状规则（迁移 + 读容忍 + 半对补齐）。每条各钉一条真实的
       //     静默失败路径，而不是"函数返回了个对象"：
@@ -3979,7 +4012,7 @@ setTimeout(async () => {
     }
   }
   assert.ok(effects.length > 0, '效果链至少要跑过一次（effects 记录 ' + effects.length + ' 条）');
-  
+
 // ⑦ 条件求值器住在独立模块（src/we-cond.js），因此可以直接 import 做**行为**测试
 // —— 这是抽模块的核心收益（不必对 src/client.js 做文本断言）。
 // 期望值是**行为快照**：抽模块只允许"行为不动"。
@@ -4869,10 +4902,11 @@ setTimeout(async () => {
   assert.equal(bare.listeners.length, 0, '#148 宿主半：退场时不许留下半个监听器');
 
   // 变异负对照（判据真的在判"手势"与"落点"）：喂同一份源码的两个改写版，各拆掉一条判据。
-  // ⚠️ A3-F2 之后手势分支的正文变了（里面多了一段补交）⇒ 这里只替换**判断头**；并且断言
-  // 改写确实生效（`replace` 落空会得到一个和原版逐字相同的"变异体"，那种绿是假绿）。
+  // ⚠️ 锚点必须与源码**逐字**相同（含行尾注释）：上游在判断头后面补过 `// ③ 是用户自己点的`，
+  // 少一个字符 `replace` 就落空 ⇒ 变异体与原版逐字相同 ⇒ 那抹绿是假的（下面那条 assert 就是防这个）。
   const mutGestureSrc = fhSrc.replace(
-    'if (now - state.gestureAt <= GESTURE_WINDOW_MS) {', 'if (false) { /* 去掉手势判定 */');
+    'if (now - state.gestureAt <= GESTURE_WINDOW_MS) { // ③ 是用户自己点的',
+    'if (false) { /* 去掉手势判定 */');
   assert.ok(mutGestureSrc !== fhSrc,
     'negative control 的改写必须真的命中源码（否则变异体 = 原版，绿是假的）');
   const mutGesture = buildFh(mutGestureSrc);
@@ -4939,19 +4973,32 @@ setTimeout(async () => {
   assert.ok(mutNoRetry.afterWindow === 0 && mutNoRetry.handbacks === 0 && mutNoRetry.pendingBeforeDispose === 0,
     'negative control（变异①去掉补交分支）：`窗口关闭后必须补一次`要判红 —— 实测 ' + JSON.stringify(mutNoRetry));
   // 变异②：窗口里跳过了却不记账 ⇒ `skipped` 自证面骗人（真机分不清"没触发"与"没装上"）。
-  const mutNoSkipSrc = fhSrc.replace('      state.skipped += 1;\n      // 跳过一次', '      // 跳过一次');
+  // ⚠️ 锚点**不跨行**：跨行（`;\n      //`）会踩 CRLF 检出（本仓全仓 LF 契约，但工作区可能是 CRLF）⇒
+  // `replace` 落空 ⇒ 变异体 = 原版 ⇒ 下面那条 assert 判红。只改顶格那一行即可达到同样效果。
+  const mutNoSkipSrc = fhSrc.replace('state.skipped += 1;', '/* 变异②：不记账 */');
   assert.ok(mutNoSkipSrc !== fhSrc, 'negative control 的改写必须真的命中源码（变异②skipped 不自增）');
   const mutNoSkip = replayA3F2(mutNoSkipSrc);
   assert.ok(mutNoSkip.skipped === 0,
     'negative control（变异②skipped 不自增）：`每次跳过都记账`要判红 —— 实测 skipped=' + mutNoSkip.skipped);
-  // 变异③：补交不等窗口（挂上定时器就把手势窗口当过去）⇒ 用户在窗口里刚点的壁纸被抢回焦点。
+  // 变异③：补交**不等窗口**（"挂上定时器就把手势窗口当过去"）⇒ 用户在窗口里刚点的壁纸被抢回焦点。
+  // ⚠️ 这个变异与 `GESTURE_WINDOW_MS` 的边界是**互相咬合**的：把延迟表达式换成 `0` 会让
+  // "跳过 ⇒ 补交 ⇒ 仍判定在窗口内 ⇒ 再跳过" 变成 **0ms 自旋** —— 夹具的虚拟时钟会在 10000 个任务处
+  // 抛 `同一段 advance 里跑了超过 10000 个任务（疑似 0ms 自旋）`。那是**夹具的自保在响**，不是判据在响；
+  // 但它同样构成"这个改写是有害的"证据。因此：把自旋**当作被拦住**记账（并断言它确实是自旋，不是别的错）。
+  // 生产侧正是靠 `+ 1` 避开这个自洽边界的 —— 这条注释与下面的兜底一起把该事实钉住。
   const mutEarlySrc = fhSrc.replace(
-    'retryTimer = setTimeout(() => { retryTimer = null; state.retrying = false; handBack(); },\n          Math.max(state.gestureAt + GESTURE_WINDOW_MS - now, 0) + 1);',
-    'retryTimer = setTimeout(() => { retryTimer = null; state.retrying = false; state.gestureAt = 0; handBack(); }, 0);');
+    'Math.max(state.gestureAt + GESTURE_WINDOW_MS - now, 0) + 1);', '0);');
   assert.ok(mutEarlySrc !== fhSrc, 'negative control 的改写必须真的命中源码（变异③提前补交）');
-  const mutEarly = replayA3F2(mutEarlySrc);
-  assert.ok(mutEarly.atWindowEdge === 1,
-    'negative control（变异③提前补交）：`窗口未到点不许补交`要判红 —— 实测 999ms 时已经补交 ' + mutEarly.atWindowEdge + ' 次');
+  let mutEarly = null;
+  let spun = null;
+  try { mutEarly = replayA3F2(mutEarlySrc); } catch (err) { spun = String(err && err.message); }
+  assert.ok(mutEarly !== null || /0ms 自旋/.test(spun || ''),
+    'negative control（变异③提前补交）：要么判红（窗口未到点就补交），要么被虚拟时钟的 0ms 自旋护栏拦下；'
+    + '实测抛的是别的错：' + spun);
+  if (mutEarly !== null) {
+    assert.ok(mutEarly.atWindowEdge === 1,
+      'negative control（变异③提前补交）：`窗口未到点不许补交`要判红 —— 实测 999ms 时已经补交 ' + mutEarly.atWindowEdge + ' 次');
+  }
 }
 
 // ── 滑块的取值域必须**同源于 schema**（为一个真实事故补的判据）────────────────────
@@ -5031,7 +5078,9 @@ setTimeout(async () => {
   //     `<DSH_WE_DATA_DIR || ~/.dsh-wallpaper-engine>/config.json` 的 `settings.id`
   //     （非空 ⇒ 首帧不画皮肤）。路径 / 环境变量名 / 键名是**双边契约**，单方面改动会把
   //     首帧预判打回"皮肤先闪一下"。
-  const hostSrc = readFileSync(new URL('../lib/index.js', import.meta.url), 'utf8');
+  // 数据目录内核已纯搬移到 lib/kernel/data-dir.js（P0 库化）⇒ 读取面 = 门面 + 该模块。
+  const hostSrc = readFileSync(new URL('../lib/index.js', import.meta.url), 'utf8')
+    + '\n' + readFileSync(new URL('../lib/kernel/data-dir.js', import.meta.url), 'utf8');
   assert.ok(hostSrc.includes('process.env.DSH_WE_DATA_DIR')
     && hostSrc.includes("join(pluginDataDir(), 'config.json')"),
     '首屏预判契约：数据目录环境变量名与 config.json 路径不能被单方面改名');

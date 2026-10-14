@@ -23,6 +23,8 @@ import { join, relative, sep, dirname, resolve } from 'node:path';
 import { builtinModules } from 'node:module';
 // 剥注释：共享的字符串感知实现（test/tools/js-text.mjs）。
 import { stripComments } from './tools/js-text.mjs';
+// 拿子进程输出的唯一方式（沙箱禁管道 ⇒ 走文件）：见该文件头。
+import { runNodeCaptured } from './tools/child-out.mjs';
 
 const results = [];
 function check(name, ok, detail) {
@@ -279,21 +281,28 @@ async function main() {
       return null;
     };
     const GROUPS = [['verify', 'verify'], ['verify:docs', 'docs'], ['smoke', 'smoke'], ['verify:all', 'all']];
-    // 地板 = 本轮实测步数（新增不受限，**删或改名即判红**）。`docs` 整组软档也设 1：
-    // 设 0 的话"整组被删空"会和"设计如此"无法区分。
-    const CHAIN_FLOOR = { verify: 24, docs: 1, smoke: 5, all: 29 };
+    // 地板 = **实测步数**（新增不受限，**删或改名即判红**）。`docs` 整组软档也设 1 位数级别的值时
+    // "整组被删空"会和"设计如此"无法区分，所以按实测收紧。
+    // 2026-10-14 收紧：verify 58→63（重新挂回 inject-contracts / component-face /
+    // route-ownership / settings-namespaces / js-text selftest 这 5 条，见 run-guards.mjs 的清单注释）、
+    // docs 1→7、smoke 5→6、all 29→77。收紧后"删一步即红"由下面的负对照钉住。
+    const CHAIN_FLOOR = { verify: 63, docs: 7, smoke: 6, all: 77 };
     /** 地板表与 GROUPS 的对齐体检：键名必须与**组名**逐一对齐（纯函数 ⇒ 负对照可直接喂）。 */
     const floorGaps = (groups, floors) => groups.map(([, g]) => g).filter((g) => !Number.isInteger(floors[g]));
     const problems = floorGaps(GROUPS, CHAIN_FLOOR).map((g) => '地板表缺组 ' + g
       + '（键名要写**组名**：`verify`/`docs`/`smoke`/`all`，不是脚本键名 `verify:docs`/`verify:all`）');
+    /** 地板判据（纯函数：主判据与"删一步即红"的负对照**共用这一份口径**，不另抄）。 */
+    const belowFloor = (steps, floor) => steps < floor;
     const scripts = new Set();
     const counts = [];
+    /** 组名 → 实测步数（负对照要拿它和地板比，证明紧到"删一步即红"）。 */
+    const measured = {};
     for (const [key, group] of GROUPS) {
       const bad = shapeError((pkg.scripts || {})[key], key, group);
       if (bad) { problems.push(bad); continue; }
       let listed;
       try {
-        const out = execFileSync(process.execPath, [join(ROOT, 'test/run-guards.mjs'), group, '--list-json'], { cwd: ROOT, encoding: 'utf8' });
+        const out = runNodeCaptured([join(ROOT, 'test/run-guards.mjs'), group, '--list-json'], { cwd: ROOT });
         listed = JSON.parse(out);
       } catch (err) {
         problems.push(key + ' ⇒ runner 跑不起来：' + String((err && err.message) || err).split('\n')[0]);
@@ -305,7 +314,8 @@ async function main() {
       // 地板按**组名**取（不是脚本键名：`verify:docs` 的组是 `docs`）—— 键名取错会得到
       // `undefined`，`n < undefined` 恒 false，地板静默失效、这条判据变成永真。
       counts.push(key + '=' + steps.length + '/' + CHAIN_FLOOR[group]);
-      if (steps.length < CHAIN_FLOOR[group]) problems.push(key + ' 步数 ' + steps.length + ' < 地板 ' + CHAIN_FLOOR[group]);
+      measured[group] = steps.length;
+      if (belowFloor(steps.length, CHAIN_FLOOR[group])) problems.push(key + ' 步数 ' + steps.length + ' < 地板 ' + CHAIN_FLOOR[group]);
       for (const s of steps) if (s.file) scripts.add(s.file);
     }
     // `build` / `prepack` 仍是**直连**的一行（不在 runner 里）：按老口径从脚本字符串取，
@@ -353,9 +363,16 @@ async function main() {
       && shapeError('node test/other.mjs verify', 'verify', 'verify') !== null);
     check('P5 negative control: a floor table that keys by script name instead of group name is detected',
       // 真实踩过的形态：表里写 `'verify:all': 29` 而查表用组名 `all` ⇒ `undefined` ⇒ 地板永真。
-      floorGaps(GROUPS, { verify: 24, docs: 1, smoke: 5, 'verify:all': 29 }).length === 1
-      && floorGaps(GROUPS, { verify: 24, docs: 1, smoke: 5 }).length === 1
+      floorGaps(GROUPS, { verify: 63, docs: 7, smoke: 6, 'verify:all': 77 }).length === 1
+      && floorGaps(GROUPS, { verify: 63, docs: 7, smoke: 6 }).length === 1
       && floorGaps(GROUPS, CHAIN_FLOOR).length === 0);
+    // 地板"紧到位"的负对照：拿**实测步数**喂同一条比较口径 —— 实测-1 必须判红、实测必须不红。
+    // 没有这条的话，地板写成 24（实测 63）也能"通过"，等于给"整条链被删掉 39 步"发合格证。
+    check('P5 negative control: 地板紧到「删一步即红」（同一 belowFloor 口径，喂 实测-1 / 实测）',
+      GROUPS.every(([, g]) => Number.isInteger(measured[g])
+        && belowFloor(measured[g] - 1, CHAIN_FLOOR[g]) && !belowFloor(measured[g], CHAIN_FLOOR[g]))
+      && belowFloor(77, 78) && !belowFloor(78, 78),
+      GROUPS.map(([, g]) => g + ' 实测=' + measured[g] + '/地板=' + CHAIN_FLOOR[g]).join(' · '));
   }
 
   // ── P8: 发布面文件不得带 UTF-8 BOM ─────────────────────────────────────────

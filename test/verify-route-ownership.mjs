@@ -1,0 +1,274 @@
+#!/usr/bin/env node
+/**
+ * verify-route-ownership.mjs —— **实现归属唯一性**守卫（度量 M10；ADR-0013 D14 / BUNDLE-SPLIT §8 P2-8、§9 #18）。
+ *
+ * 为什么需要它（M10 的由来）：组件出户（P2-1 / P2-2）搬走的是**注册点**，而组件的私有路由实现
+ * 当时仍留在主包 `lib/routes/` ⇒ "这个组件由哪些文件构成"只能靠文档说明，不能靠**位置**回答。
+ * P2-8 把四个实现文件搬进所属组件目录后，边界从"注册点"落到"文件归属"；这条守卫就是那个边界的
+ * 机械判据 —— 它让归属**搬家以后不会再漂回去**（否则下一次改动把它们放回去也没人拦）。
+ *
+ * 判据（全部**数据驱动**：组件清单与"谁拥有哪个文件"都现算，不写死组件名，也不维护
+ * "组件名 → 目录"的硬编码清单 —— M5）：
+ *   ① **M10 → 0**：patch 里有自己那一行的组件（= `MAIN_MODULES` 去掉门面 = `COMPONENT_MODULES`），
+ *      其**拥有**的路由实现模块**不得**位于 `lib/routes/`。"拥有"由**调用点派生**：组件入口调用
+ *      哪个 `register…Routes(webServer, …)`，那个注册入口所在的文件就是它的实现。
+ *   ② 组件目录下的**每一个文件**都必须被 `package.json` 的 `files` 覆盖（否则打包时静默漏发，
+ *      装到用户机器上才炸成 `ERR_MODULE_NOT_FOUND`）。口径与 `verify-package-files.mjs` 的
+ *      `coveredBy` 一致（目录条目 / 精确路径 / glob 三类）。
+ *   ③ `lib/routes/` 下每个文件仍必须**是**可解析的路由族模块、且**被某个行模块调用** ——
+ *      搬家最容易留下的两种残渣都在这里现形：①复制而不是删除（旧文件成了没人调用的孤儿）；
+ *      ②文件没了注册入口（认不出来 ⇒ 从路由索引里静默消失）。
+ *
+ * ── 判据必须有牙 ───────────────────────────────────────────────────────────────
+ * 只断言"今天干净"不够：解析器一旦静默返回空表，①的"零违规"会变成空对空。因此：
+ *   · 覆盖面地板（≥2 个组件行、每行都解析到 ≥1 个实现模块、`lib/routes/` 非空）；
+ *   · 负对照喂**同一条判据函数**：合成一个"实现留在 `lib/routes/`"的组件 ⇒ 必须判红；
+ *     把真实组件行的第一个实现文件改写成 `lib/routes/` 下的同名文件 ⇒ 同样判红。
+ * 真实世界的负对照（报告里复算）：把某个已出户组件的实现文件**临时复制回** `lib/routes/`
+ * ⇒ 本守卫判红（③ 的孤儿 + ① 的归属违规），删除临时文件 ⇒ 复绿。
+ *
+ * Usage:  node test/verify-route-ownership.mjs
+ */
+import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
+import { dirname, join, relative, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import {
+  buildIndex, routeModuleCandidates, COMPONENT_MODULES, rowRegistrationCounts, patchRowNames,
+} from './tools/host-route-index.mjs';
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const toRel = (abs) => relative(ROOT, abs).split(sep).join('/');
+
+let failed = 0;
+const check = (name, ok, detail) => {
+  if (ok) console.log('  ✓ ' + name + (detail ? ' — ' + detail : ''));
+  else { console.log('  ✗ ' + name + (detail ? ' — ' + detail : '')); failed++; }
+};
+
+/** 递归枚举目录下的**文件**（相对仓库根，`/` 分隔，已排序）。目录不存在时返回空表。 */
+function walkFiles(dir, out = []) {
+  // ⚠️ 两个 `let` 都**不带初值**：初值永远不会被读到（catch 里早退 / continue）
+  //    ⇒ 会被 `no-useless-assignment` 判红（本仓基线是空棘轮，只能减不能增）。
+  let names;
+  try { names = readdirSync(dir); } catch { return out; }
+  for (const name of names) {
+    const abs = join(dir, name);
+    let st;
+    try { st = statSync(abs); } catch { continue; }
+    if (st.isDirectory()) walkFiles(abs, out);
+    else if (st.isFile()) out.push(toRel(abs));
+  }
+  return out.sort();
+}
+
+/** npm `files` 条目里的 glob → 正则（`*` 不跨 `/`，`**` 跨）—— 与 verify-package-files 同口径。 */
+function globRe(pattern) {
+  let re = '';
+  for (let i = 0; i < pattern.length; i++) {
+    const c = pattern[i];
+    if (c === '*') {
+      if (pattern[i + 1] === '*') { re += '.*'; i++; } else re += '[^/]*';
+    } else if (c === '?') re += '[^/]';
+    else if ('\\^$+.[]{}()|'.includes(c)) re += '\\' + c;
+    else re += c;
+  }
+  return new RegExp('^' + re + '$');
+}
+
+/** 条目 `entry` 是否覆盖相对路径 `rel`（目录条目可带尾斜杠，也可指磁盘上真实存在的目录）。 */
+function coveredBy(rel, entry) {
+  const e = String(entry).replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
+  if (!e) return false;
+  let isDir = String(entry).endsWith('/');
+  if (!isDir) {
+    try { isDir = statSync(join(ROOT, e)).isDirectory(); } catch { /* 非目录 / 不存在 */ }
+  }
+  if (isDir) return rel.startsWith(e + '/');
+  if (/[*?]/.test(e)) return globRe(e).test(rel);
+  return rel === e;
+}
+
+// ── 判据函数（生产输入与负对照走**同一份**）────────────────────────────────────
+
+/**
+ * 一个组件行**拥有**的路由实现模块：由调用点派生（它调用了哪个 `register…Routes(webServer, …)`）。
+ * `modules` = `buildIndex().modules`（每个 `{rel, fnName, routes, …}`）。
+ * 返回 `{ owned, fns, unknown }`：`owned` 是实现文件的 rel（去重保序）；`unknown` 非空 = 调用点
+ * 解析不到路由族（判据要红，不能静默算 0 个实现）。
+ */
+export function ownedRouteModules(rel, modules) {
+  // ⚠️ 归属按**函数名**算，且**同名实现的每一份都算被拥有** —— 不能用"最后写入者赢"的 Map：
+  // 否则把组件实现**又复制一份**回 `lib/routes/` 时（复制而非搬移的残渣），`owned` 仍指向组件目录
+  // 那一份，① 会报 `M10 = 0`（假绿），只有 ③ 的孤儿判据红。P2-8V 独立复核实测过这个状态。
+  const byFn = new Map();
+  for (const m of modules) {
+    if (!byFn.has(m.fnName)) byFn.set(m.fnName, []);
+    byFn.get(m.fnName).push(m.rel);
+  }
+  const { fns, unknown } = rowRegistrationCounts(rel, modules);
+  const owned = [];
+  for (const f of fns) {
+    for (const r of byFn.get(f) || []) if (!owned.includes(r)) owned.push(r);
+  }
+  return { owned, fns, unknown };
+}
+
+/** M10 的违规对：已出户组件拥有的实现文件仍住在 `lib/routes/`。空 = M10 → 0。 */
+export function outOfHouseViolations(entries) {
+  return entries.flatMap((e) => (e.owned || [])
+    .filter((r) => r.startsWith('lib/routes/'))
+    .map((r) => e.rel + ' 拥有 ' + r));
+}
+
+/** `files` 对一组相对路径的漏覆盖（空 = 全覆盖）。 */
+export function fileCoverageGaps(files, rels) {
+  return rels.filter((rel) => !files.some((e) => coveredBy(rel, e)));
+}
+
+/** `lib/routes/` 文件里"认不出注册入口"的那些（空 = 每个文件都能被索引认成路由族模块）。 */
+export function unrecognizedRouteFiles(rels, moduleRels) {
+  return rels.filter((rel) => !moduleRels.has(rel));
+}
+
+/** `lib/routes/` 文件里的孤儿：文件在、没有任何行模块调用它（复制而非搬移的残渣）。 */
+export function orphanRouteFiles(rels, orphanRels) {
+  return rels.filter((rel) => orphanRels.has(rel));
+}
+
+/** 覆盖对账：`theirs` 里没有被 `ours` 覆盖的成员（空 = 覆盖完整）。生产与下面三条负对照共用。 */
+export function uncoveredMembers(ours, theirs) {
+  const have = new Set(ours);
+  return [...new Set(theirs)].filter((x) => !have.has(x));
+}
+
+/** 组件行 → 入口文件的覆盖缺口（存在性由调用方注入 ⇒ 负对照能喂合成输入，不用碰磁盘）。 */
+export function rowEntryGaps(rows, entryList, existsOnDisk) {
+  const have = new Set(entryList);
+  return rows.filter((rel) => !have.has(rel) || !existsOnDisk(rel));
+}
+
+const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
+const files = Array.isArray(pkg.files) ? pkg.files : [];
+const built = buildIndex();
+const modules = built.modules;
+const orphanRels = new Set(built.orphanModules.map((m) => m.rel));
+
+// ═══ ① M10 → 0：组件的实现文件不得留在 lib/routes/ ══════════════════════════════
+console.log('\n① 实现归属：已出户组件拥有的实现不得留在 `lib/routes/`（M10 → 0）');
+{
+  // 覆盖面：组件行清单**数据驱动**（`MAIN_MODULES` 去掉门面），每个组件行都要解析到自己的实现。
+  const entries = COMPONENT_MODULES.map((rel) => ({ rel, ...ownedRouteModules(rel, modules) }));
+  const unresolved = entries.filter((e) => e.unknown.length || e.owned.length === 0);
+  // ⚠️ 原先这里是 `COMPONENT_MODULES.length >= 2`（**快照地板**：上游加一行 ⇒ 无判别力的绿；
+  //    合并掉一行 ⇒ 无判别力的红）。改成对账 patch 真源：**patch 里每一个组件行**都必须映射到
+  //    磁盘上真实存在的入口文件、且出现在组件行清单里（少一个都点名）—— 这是"行 → 入口"不变量。
+  const patchSubRows = patchRowNames().filter((n) => n.includes('/'))
+    .map((n) => 'lib/components/' + n.slice(n.indexOf('/') + 1) + '/index.js');
+  const rowGaps = rowEntryGaps(patchSubRows, COMPONENT_MODULES, (rel) => existsSync(join(ROOT, rel)));
+  check('覆盖面：patch 的每个组件行都解析到磁盘上的入口文件（数据驱动，不写死组件名 / 数量）',
+    patchSubRows.length > 0 && rowGaps.length === 0,
+    patchSubRows.join(' ') || '（patch 里一个组件行都没有）' + (rowGaps.length ? ' · 缺入口 ' + rowGaps.join(' ') : ''));
+  // 负对照（调上面同一份 `rowEntryGaps`）：行名不存在 / 磁盘上没有 / 不在清单里 —— 三个方向各一条。
+  check('negative control：patch 行指向磁盘上不存在的入口、或不在组件行清单里 ⇒ 同一条判据点名',
+    rowEntryGaps(['lib/components/zzz-not-on-disk/index.js'], COMPONENT_MODULES, () => true)
+      .join() === 'lib/components/zzz-not-on-disk/index.js'
+    && rowEntryGaps([patchSubRows[0]], COMPONENT_MODULES, () => false).length === 1
+    && rowEntryGaps(patchSubRows, COMPONENT_MODULES, () => true).length === 0);
+  check('覆盖面：每个组件行都解析到了自己的路由实现（组件清单数据驱动，不写死组件名）',
+    COMPONENT_MODULES.length > 0 && unresolved.length === 0,
+    entries.map((e) => e.rel.replace(/^lib\/components\//, '').replace(/\/index\.js$/, '')
+      + '=' + e.owned.length).join(' · ') || '（一个组件行都没有）');
+  for (const e of unresolved) {
+    console.log('    ↳ ' + e.rel + '：调用点 ' + e.fns.join(' ') + ' / 解析不到 ' + e.unknown.join(' '));
+  }
+
+  const violations = outOfHouseViolations(entries);
+  const m10 = entries.reduce((n, e) => n + e.owned.filter((r) => r.startsWith('lib/routes/')).length, 0);
+  check('M10 = 0：组件拥有的实现全部住在组件目录里（`lib/routes/` 里零残留）',
+    violations.length === 0 && m10 === 0,
+    violations.length ? violations.join('；') : 'M10=' + m10 + '（' + entries.reduce((n, e) => n + e.owned.length, 0) + ' 个实现文件全部有主）');
+
+  // 负对照（同一条判据函数）：合成"实现留在 lib/routes/"的组件 ⇒ 红；实现随组件走 ⇒ 绿。
+  const syntheticBad = [{ rel: 'lib/components/probe/index.js', owned: ['lib/routes/probe.js'] }];
+  const syntheticGood = [{ rel: 'lib/components/probe/index.js', owned: ['lib/components/probe/probe.js'] }];
+  check('负对照：实现留在 `lib/routes/` 的组件被同一条判据判红（且随组件走时不报）',
+    outOfHouseViolations(syntheticBad).length === 1 && outOfHouseViolations(syntheticGood).length === 0,
+    outOfHouseViolations(syntheticBad).join('；') || '（没判出来）');
+
+  // 负对照（真实模块表）：拿真实组件行的实现文件名拼回 `lib/routes/` —— 必须判红。
+  const real = entries.find((e) => e.owned.length);
+  const realProbe = real
+    ? [{ rel: real.rel, owned: ['lib/routes/' + real.owned[0].split('/').pop()] }]
+    : [];
+  check('负对照（真实输入）：把真实组件行的一个实现改写成 `lib/routes/<同名>` ⇒ 判红',
+    Boolean(real) && outOfHouseViolations(realProbe).length === 1,
+    real ? real.rel + ' 的 ' + real.owned[0] + ' → lib/routes/' + real.owned[0].split('/').pop() : '（没有可用的组件行）');
+
+  // 实现文件必须真的在磁盘上（归属判据不许指向幽灵文件）。
+  const missing = entries.flatMap((e) => e.owned).filter((rel) => !existsSync(join(ROOT, rel)));
+  check('组件拥有的实现文件都在磁盘上（归属不是幽灵路径）', missing.length === 0,
+    missing.join(' ') || entries.reduce((n, e) => n + e.owned.length, 0) + ' 个路径都存在');
+}
+
+// ═══ ② 组件目录下的文件逐条被 package.json 的 files 覆盖 ═════════════════════════
+console.log('\n② 组件目录下的文件逐条进 `package.json` 的 `files`');
+{
+  const componentFiles = walkFiles(join(ROOT, 'lib', 'components'));
+  const gaps = fileCoverageGaps(files, componentFiles);
+  // ⚠️ 原先这里是 `componentFiles.length >= 4`（快照）。改成"每个行入口都在这个文件面里"
+  //    （由 `COMPONENT_MODULES` 派生，行数变了它跟着变；面塌陷则行入口必然不在面内 ⇒ 红）。
+  const missingEntries = uncoveredMembers(componentFiles, COMPONENT_MODULES);
+  check('覆盖面：磁盘枚举出的组件文件面包含全部行入口（防扫描面为空而恒真；不写死文件数）',
+    COMPONENT_MODULES.length > 0 && componentFiles.length > 0 && missingEntries.length === 0,
+    componentFiles.length + ' 个文件 · 行入口 ' + COMPONENT_MODULES.length + ' 个'
+      + (missingEntries.length ? ' · 不在面内 ' + missingEntries.join(' ') : ''));
+  check('negative control：文件面里少一个行入口 ⇒ 同一条 uncoveredMembers 判出（不写死文件数的代价是有牙）',
+    uncoveredMembers(componentFiles.filter((r) => r !== COMPONENT_MODULES[0]), COMPONENT_MODULES).length === 1
+    && uncoveredMembers(componentFiles, COMPONENT_MODULES).length === 0);
+  check('`lib/components/**` 每个文件都被 `files` 覆盖（含搬进来的路由实现）', gaps.length === 0,
+    gaps.length ? '漏发：' + gaps.join(', ') : componentFiles.length + ' 个文件全部覆盖（条目 `lib/components/`）');
+  // 负对照（同一条判据函数）：没有目录条目时，组件文件必须被判漏发。
+  // ⚠️ 这里**不用**一个真实存在的入口路径（如 `lib/index.js`）当夹具：`guard-targets` 按路径字面量
+  //    派生"守卫 ↔ 模块"映射，写一个真模块会让本守卫被算成"读它"（本守卫不读任何具体模块）。
+  const bare = fileCoverageGaps(['lib/no-such-entry.js'], ['lib/components/probe/probe.js']);
+  check('负对照：`files` 里丢掉组件目录条目 ⇒ 同一条判据判出漏发',
+    bare.length === 1 && bare[0] === 'lib/components/probe/probe.js',
+    bare.join(', ') || '（没判出来）');
+}
+
+// ═══ ③ lib/routes/ 下每个文件仍必须被某个行模块调用 ═════════════════════════════
+console.log('\n③ `lib/routes/` 下每个文件仍必须被某个行模块调用（没有孤儿 / 没有认不出的文件）');
+{
+  const routeFiles = routeModuleCandidates().filter((rel) => rel.startsWith('lib/routes/'));
+  const moduleRels = new Set(modules.map((m) => m.rel));
+  const unrecognized = unrecognizedRouteFiles(routeFiles, moduleRels);
+  const orphans = orphanRouteFiles(routeFiles, orphanRels);
+  // ⚠️ 原先这里是 `routeFiles.length >= 15`（快照：上游合并路由族 ⇒ 无判别力的红）。
+  //    改成**跨列举面覆盖对账**：`lib/routes/` 下每个 `buildIndex()` 认作路由族的文件都必须在
+  //    本守卫的候选文件面里（两个列举面互相兜底；面塌陷 / 过滤条件写错都会点名）。
+  const builtRouteRels = built.modules.filter((m) => m.rel.startsWith('lib/routes/')).map((m) => m.rel);
+  const notScanned = uncoveredMembers(routeFiles, builtRouteRels);
+  check('覆盖面：`buildIndex()` 的路由族文件面 ⊆ 本守卫的 `lib/routes/` 候选面（不写死文件数，防空集恒真）',
+    builtRouteRels.length > 0 && notScanned.length === 0,
+    '候选 ' + routeFiles.length + ' 个 · 索引认作路由族 ' + builtRouteRels.length + ' 个'
+      + (notScanned.length ? ' · 漏扫 ' + notScanned.join(' ') : ''));
+  check('negative control：索引认得、本守卫候选面里没有的文件 ⇒ 同一条 uncoveredMembers 判出',
+    uncoveredMembers(routeFiles, [...builtRouteRels, 'lib/routes/zzz-not-scanned.js']).length === 1
+    && uncoveredMembers(routeFiles, builtRouteRels).length === 0);
+  check('`lib/routes/` 每个文件都是可解析的路由族模块（文件在、入口认不出来 ⇒ 从索引静默消失）',
+    unrecognized.length === 0, unrecognized.join(', ') || '全部有注册入口');
+  check('`lib/routes/` 每个文件都被某个行模块调用（复制而非搬移会在此处现形）',
+    orphans.length === 0, orphans.join(', ') || '零孤儿（行模块 ' + moduleRels.size + ' 个）');
+  // 负对照（同一条判据函数）：喂合成输入 —— 无入口 / 孤儿都必须被判出，干净输入不报。
+  const fakeOrphans = new Set(['lib/routes/probe.js']);
+  check('负对照：无注册入口的文件与孤儿文件都被同一条判据判出（干净输入不报）',
+    unrecognizedRouteFiles(['lib/routes/probe.js'], new Set()).length === 1
+    && orphanRouteFiles(['lib/routes/probe.js', 'lib/routes/ok.js'], fakeOrphans).join() === 'lib/routes/probe.js'
+    && unrecognizedRouteFiles(['lib/routes/ok.js'], new Set(['lib/routes/ok.js'])).length === 0
+    && orphanRouteFiles(['lib/routes/ok.js'], new Set()).length === 0);
+}
+
+console.log('');
+if (failed) { console.log(`ROUTE OWNERSHIP CHECKS FAILED — ${failed} failed`); process.exit(1); }
+console.log('ALL ROUTE OWNERSHIP CHECKS PASSED (M10 = 0)');
+process.exit(0);

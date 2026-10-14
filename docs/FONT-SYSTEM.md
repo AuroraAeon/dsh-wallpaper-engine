@@ -64,9 +64,9 @@
   本地化名（`苹方-简`）与规范名（`PingFang SC`）**都在**清单里 —— 两条腿并行、名字取并集，
   这是刻意的（用户可能只认得其中一种；原生 `<select>` 的首字母跳转按**选项文本**匹配，
   合成一行反而两边都跳不到）。
-   ⚠️ 而**系统列出的族名 ≠ 浏览器能匹配的族名**：本机实测 309 个里有 64 个取不到
-  （系统保留字体 `Apple Color Emoji` / `Symbol` / `Zapf Dingbats`、以及 `苹方-繁` 这类同一字体的
-  另一种写法）。⇒ 客户端在**渲染下拉时**过一道 `filterUsableSystemFonts`（`src/system-fonts.js`：
+   ⚠️ 而**系统列出的族名 ≠ 浏览器能匹配的族名**：系统保留字体（`Apple Color Emoji` / `Symbol` /
+  `Zapf Dingbats`）与同一字体的另一种写法（`苹方-繁`）都可能取不到 —— 面板会**如实报出略过了几个**。
+  ⇒ 客户端在**渲染下拉时**过一道 `filterUsableSystemFonts`（`src/system-fonts.js`：
   同名分别配 monospace / serif 量同一段拉丁文字，宽度相同才算能匹配），只把**真的能用**的名字
   摆出来；量不到（替身 DOM）时**原样放行**。
 - **两类都只存"键"，不存 CSS 栈**：栈（引号 + fallback 链）由客户端的 `fontFamilyStack` 现拼

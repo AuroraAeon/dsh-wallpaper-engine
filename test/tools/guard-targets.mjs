@@ -6,7 +6,7 @@
  * 于是"改了 `src/x.js` 该跑哪几条"只能靠猜。本工具从**守卫自己的代码**里派生这张映射，
  * 而不是让作者维护一份清单：清单漏一行只会让那个文件**静默脱离**（[`DEV-GUIDE.md`] §4.7 约定 4）。
  *
- * 覆盖本仓实际出现的六种写法：
+ * 覆盖本仓实际出现的七种写法：
  *   A) 字面量路径      `'src/picker-model.js'` / `'../src/client.js'`
  *   B) 目录拼接        `join(root, 'src', 'quick-panel.js')`（含嵌套如 `'font','apply.js'`）
  *   C) 纯文件名        `'quick-panel.js'`（切片 / 读源码用）—— 只在 basename **唯一**时认
@@ -18,6 +18,12 @@
  *      —— 守卫常常不写前缀字面量，而是调助手（`panelText()` / `styleText()` …），
  *      族口径封在 `test/tools/src-scope.mjs` 里。那个库**同时是守卫的库**（DEV-GUIDE §4.6：
  *      改它等于改判据），所以判据跟着走一层：解析助手体里的字面量前缀。
+ *   G) **真源定位读**  `locate('COMPONENT_VISIBILITY')` / `locateFile('cordis.patch.yml')`
+ *      / `locateCallSites('registerSettingsRoutes')`（`test/tools/source-locator.mjs` 的 API）
+ *      —— 判据不再写死"实现在哪个文件"，而是问真源定位器"这个符号唯一声明在哪 / 这个调用点在哪"。
+ *      **映射必须跟着认这种写法**，否则"把写死路径改成符号锚点"会让那个模块的守卫覆盖
+ *      **静默消失**（本类正是为了堵这个洞）。解析不到（符号 0 处 / 多处同名 / 解析到的文件
+ *      不在模块面）⇒ **零命中**，不许当覆盖。
  *
  * ⚠️ 判据只看**代码**（先剥注释）：模块名出现在散文里不算"管它"——
  * 否则每个头注释提到 `src/client.js` 的守卫都会被算成 client 的守卫。
@@ -32,6 +38,8 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 // 剥注释走共享实现（§4.7 约定 3）：本文件自己的头注释里就写着 `'src/…'` 字面量。
 import { stripComments } from './js-text.mjs';
+// G) 真源定位：`locate('SYM')` 的解析要用**同一份**索引（符号 → 唯一声明文件）。
+import { index as sourceIndex, locateCallSites } from './source-locator.mjs';
 
 // `test/tools/` 比 `test/` 深一层 ⇒ 推仓库根退**两层**（CODE-STRUCTURE §4 第 5 条）。
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -102,7 +110,48 @@ function familyHelpers(root = ROOT) {
   return out;
 }
 
-function targetsOf(srcText, modules, helpers = familyHelpers()) {
+/**
+ * G) 的解析层：**锚点表**（符号名 → 唯一声明文件；文件名 → 唯一命中文件），只保留
+ * `modules`（模块面）里的那些 —— 锚点落在模块面之外时**零命中**（不是覆盖）。
+ *
+ * 与 F 同一条纪律：`locate()` 命中多处 / 零处的符号**不进表**，于是"判据引用了一个
+ * 已经不唯一的名字"在映射上表现为**零覆盖**（红），而不是静默认成"管了那个模块"。
+ */
+function anchorTable(root = ROOT, modules = moduleSurface(root), guardTexts = []) {
+  const symbols = new Map();
+  const files = new Map();
+  const callSites = new Map();
+  // ⚠️ 声明**不带初值**：`let idx = {…}` 的初值读不到（catch 里直接 return）⇒
+  //    静态门禁的 `no-useless-assignment` 会红（本仓基线是空棘轮，只能减不能增）。
+  let idx;
+  try { idx = sourceIndex(root); } catch { return { symbols, files, callSites }; }
+  for (const [sym, hits] of idx.bySymbol) {
+    if (hits.length !== 1) continue;
+    if (modules.includes(hits[0].rel)) symbols.set(sym, hits[0].rel);
+  }
+  for (const [base, rels] of idx.files || []) {
+    const uniq = [...new Set(rels)];
+    if (uniq.length === 1 && modules.includes(uniq[0])) files.set(base, uniq[0]);
+  }
+  // `locateCallSites('SYM')`：**按需**解析（只在守卫真的写了这个调用时才算；全量扫会白烧）。
+  const wanted = new Set();
+  for (const raw of guardTexts) {
+    const code = stripComments(String(raw));
+    for (const m of code.matchAll(/locateCallSites\s*\(\s*['"]([^'"]+)['"]/g)) wanted.add(m[1]);
+  }
+  for (const sym of wanted) {
+    try {
+      const r = locateCallSites(sym, { root });
+      if (r.ok && modules.includes(r.hit.rel)) callSites.set(sym, r.hit.rel);
+    } catch { /* 解析失败 ⇒ 不进表 ⇒ 零命中（不是覆盖） */ }
+  }
+  return { symbols, files, callSites };
+}
+
+/** 无锚点表（合成夹具的缺省：G 类写法**零命中** —— 负对照就靠这个证明"表格外的名字不算覆盖"）。 */
+const NO_ANCHORS = { symbols: new Map(), files: new Map(), callSites: new Map() };
+
+function targetsOf(srcText, modules, helpers = familyHelpers(), anchors = NO_ANCHORS) {
   // 相对说明符的 `../` 前缀先剥掉：`'../lib/routes/system-fonts.js'` 里模块路径左邻是 `/`
   //（在下方的左边界排除类里）⇒ 直接匹配会漏（实测：verify-system-fonts 直接 import 的
   // 路由文件被判成零覆盖）。剥前缀只影响字符串开头的点斜杠段，不会把 `assets/../src/x.js`
@@ -185,6 +234,29 @@ function targetsOf(srcText, modules, helpers = familyHelpers()) {
       for (const mod of modules) if (mod.startsWith(prefix)) hits.add(mod);
     }
   }
+  // G) **真源定位读**：`import { locate, locateFile } from './tools/source-locator.mjs'` + 真调用。
+  //    四条边界（与 F 对称，负对照见 `verify-guard-map.mjs` ⑥d）：
+  //      ① 只认 `test/tools/source-locator.mjs` 这一个库（别的文件里同名函数不算）；
+  //      ② 实参必须是**字符串字面量**（`locate(sym)` 用变量 ⇒ 解析不出 ⇒ 不认）；
+  //      ③ 只认裸调用（前邻不许是 `.` ⇒ `x.locate(…)` 不算）；
+  //      ④ **解析不到锚点 ⇒ 零命中**（符号 0 处 / 多处 / 落在模块面之外都不算覆盖）。
+  const located = new Map();
+  for (const m of code.matchAll(/import\s*\{([^}]*)\}\s*from\s*['"][^'"]*tools\/source-locator\.mjs['"]/g)) {
+    for (const raw of m[1].split(',')) {
+      const parts = raw.trim().split(/\s+as\s+/).map((s) => s.trim()).filter(Boolean);
+      if (parts.length === 2) located.set(parts[1], parts[0]);
+      else if (parts.length === 1) located.set(parts[0], parts[0]);
+    }
+  }
+  for (const [local, orig] of located) {
+    const re = new RegExp('(?<![\\w$.])' + esc(local) + '\\s*\\(\\s*([\'"])([^\'"]+)\\1', 'g');
+    for (const m of code.matchAll(re)) {
+      const table = orig === 'locateFile' ? anchors.files
+        : (orig === 'locateCallSites' ? anchors.callSites : anchors.symbols);
+      const rel = table && table.get(m[2]);
+      if (rel && modules.includes(rel)) hits.add(rel);
+    }
+  }
   return [...hits].sort();
 }
 
@@ -194,9 +266,11 @@ function buildMap(root = ROOT) {
   const helpers = familyHelpers(root); // F 的族助手表（解析一次，别在循环里反复读盘）
   const guards = guardSurface(join(root, 'test'))
     .filter((g) => !SELF_REFERENTIAL.includes(g)); // 结构性自指见上面的说明
+  const texts = new Map(guards.map((g) => [g, readFileSync(join(root, 'test', g), 'utf8')]));
+  const anchors = anchorTable(root, modules, [...texts.values()]); // G 的锚点表（符号/文件/调用点 → 唯一落点）
   const rows = guards.map((g) => {
-    const raw = readFileSync(join(root, 'test', g), 'utf8');
-    const targets = targetsOf(raw, modules, helpers);
+    const raw = texts.get(g);
+    const targets = targetsOf(raw, modules, helpers, anchors);
     // `viaBundle` 只作为**注释性**列：真源是 `targets` 里有没有 `lib/client.js`
     // （只用 `code.includes` 会与 targets 口径漂开 —— 实测踩过一次）。
     return { guard: g, targets, viaBundle: targets.includes('lib/client.js') };
@@ -218,7 +292,7 @@ function render(map) {
   out.push('> 由 `node test/tools/guard-targets.mjs --write` 重算；`test/verify-guard-map.mjs` 会重算并逐字比对。');
   out.push('> **怎么用**：改了 `src/` 或 `lib/` 的某个模块，在「模块 → 守卫」那张表里查该跑哪几条。');
   out.push('> 口径：只统计守卫**代码**里真正碰到的模块（先剥注释），并区分"直接读源文件"与"隔着产物 `lib/client.js`"。');
-  out.push('> 写法：字面量路径 / `join(...)` 拼接 / 唯一 basename / 产物配方 / **前缀族读法** `scopeFiles|scopeText(<前缀>)` / **经共享族助手读**（`import { panelText } from \'./tools/src-scope.mjs\'` + 真调用；族口径封在那个库里，见 DEV-GUIDE §4.6「同时是守卫的库」）。');
+  out.push('> 写法：字面量路径 / `join(...)` 拼接 / 唯一 basename / 产物配方 / **前缀族读法** `scopeFiles|scopeText(<前缀>)` / **经共享族助手读**（`import { panelText } from \'./tools/src-scope.mjs\'` + 真调用；族口径封在那个库里，见 DEV-GUIDE §4.6「同时是守卫的库」）/ **真源定位读**（`locate(\'符号\')` / `locateFile(\'文件名\')`，`test/tools/source-locator.mjs`：符号唯一声明在哪就是读了哪个模块）。');
   out.push('');
   out.push(`模块面 ${map.modules.length} 个 · 守卫 ${map.rows.length} 个`);
   out.push('');
@@ -243,7 +317,7 @@ function render(map) {
   return out.join('\n');
 }
 
-export { moduleSurface, guardSurface, targetsOf, buildMap, render, familyHelpers };
+export { moduleSurface, guardSurface, targetsOf, buildMap, render, familyHelpers, anchorTable };
 
 // 作为脚本直接跑时才输出（被 import 时不得有副作用 —— 守卫要 import 本模块）
 const invokedDirectly = Boolean(process.argv[1]) && import.meta.url === new URL('file://' + process.argv[1].replace(/\\/g, '/')).href.replace(/^file:\/\/\//, 'file:///');

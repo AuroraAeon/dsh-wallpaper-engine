@@ -1,0 +1,6 @@
+{
+  "name": "dsh-plugin-wallpaper-engine-media-bridge",
+  "description": "System media bridge host half: now-playing / spectrum / artwork / media control, plus the media-bridge child-process backend and its legacy fallback.",
+  "icon": "./icon.png",
+  "type": "module"
+}

@@ -25,7 +25,8 @@
  *     （`upload.js` / `scene-frame.js` 各一处）—— 抹掉样板后还剩 `if (failed) return;` 等语句。
  * 判据面 = `lib/` 下**除共享实现外**的 `.js`：命中必须为 **0**。
  *
- * 调用点不做"名单"：从磁盘枚举 `lib/routes/*.js`，凡是出现 `sendJson(` 的文件都必须
+ * 调用点不做"名单"：从磁盘枚举路由族文件（`lib/routes/*.js` ∪ 组件目录直接子文件 —— P2-8 起
+ * 实现随组件走），凡是出现 `sendJson(` 的文件都必须
  * `import … from '../json-response.js'`（防"另一个同名东西"），并设**棘轮**（调用点只许增，
  * 防"只剩一份实现"靠删调用点达成 —— 与 verify-body-caps 的 `READER_FLOOR` 同源）。
  *
@@ -49,6 +50,8 @@ import { dirname, join, relative } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { gunzipSync } from 'node:zlib';
 import { stripComments } from './tools/js-text.mjs';
+// 路由族文件面（`lib/routes/*.js` ∪ 组件目录直接子文件）的**同一份**枚举真源。
+import { routeModuleFiles } from './tools/host-route-index.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const LIB = join(ROOT, 'lib');
@@ -61,7 +64,7 @@ const EXCLUDE_FILES = new Set(['client.js']);
 const SOLE_IMPLEMENTATION = 'lib/json-response.js';
 
 /**
- * 棘轮：`lib/routes/` 下 `sendJson(` 的调用点下限。
+ * 棘轮：路由族文件（`lib/routes/*.js` ∪ 组件目录直接子文件）下 `sendJson(` 的调用点下限。
  * P4-14 迁移后实测 16 处（10 个文件的薄别名 + `fontsets`/`presets` 里各 2 处直呼）。
  * **只许增**：它防的是"靠删调用点凑出一份实现"这种假收敛。
  */
@@ -252,10 +255,9 @@ check(`唯一实现：${SOLE_IMPLEMENTATION} 之外**零**份内联 JSON 应答�
 
 // ── ④ 每个调用点都必须来路正当（`sendJson(` ⇒ 必须 import 自共享实现）────────
 {
-  const ROUTES = join(LIB, 'routes');
-  const routeFiles = existsSync(ROUTES)
-    ? readdirSync(ROUTES).filter((n) => n.endsWith('.js')).sort().map((n) => 'lib/routes/' + n)
-    : [];
+  // 路由族文件面走 `host-route-index.mjs` 的同一份枚举真源：P2-8 把四个族搬进组件目录后，
+  // 只扫 `lib/routes/` 会让它们**静默脱离**本判据（§10 风险 12 的同款形态）。
+  const routeFiles = routeModuleFiles();
   const callers = [];
   for (const rel of routeFiles) {
     const raw = readFileSync(join(ROOT, rel), 'utf8');

@@ -25,8 +25,8 @@ with the document.
   once per second, auto-`resume()`s once at `LIVE_STALL_TICKS` ticks as a self-rescue, and only declares
   `stall` at twice that). It then falls back to the **out-figure
   chain** below (which is allowed to come up honestly empty).
-  ⚠️ **A loose `scene.json` directory is no longer a reason to skip live rendering** (since v1.3.0):
-  WebWallGL 2.1.0 supports the loose form natively — the site root is identical for both forms and the
+  ⚠️ **A loose `scene.json` directory is not a reason to skip live rendering**:
+  WebWallGL supports the loose form natively — the site root is identical for both forms and the
   renderer decides from `project.json`'s `file` suffix, so the host only has to answer "is this a scene".
   **The first-frame timeout is not a fixed wall clock**: the first
   frame **cannot exist before the whole package has arrived**, so the budget is computed from the
@@ -310,7 +310,7 @@ Besides the built-in family keys, the "default font (global)" and "terminal font
 of those answers, names are derived from **font file names** and the result is
 **honestly marked as a guess** (the panel says so). A single scan is expensive (seconds to tens of seconds
 on macOS) ⇒ two cache layers, stale values served first with a background rescan, and a "Rescan" button in
-the panel; **nothing is scanned at startup** (the first real use triggers it). ⚠️ **The names a system lists are not necessarily names a browser can match** (64 of 309 resolve to nothing on this machine: system-reserved faces such as `Apple Color Emoji` / `Symbol` / `Zapf Dingbats`, plus alternate spellings like `苹方-繁`) — when the panel renders it probes whether each name actually works in this browser, skips the ones that do not, and **says how many were skipped**, so a dead option is never mistaken for a broken feature. The decision and its costs
+the panel; **nothing is scanned at startup** (the first real use triggers it). ⚠️ **The names a system lists are not necessarily names a browser can match** (system-reserved faces such as `Apple Color Emoji` / `Symbol` / `Zapf Dingbats`, plus alternate spellings like `苹方-繁`, can all resolve to nothing) — when the panel renders it probes whether each name actually works in this browser, skips the ones that do not, and **says how many were skipped**, so a dead option is never mistaken for a broken feature. The decision and its costs
 are in [ADR-0009](../adr/0009-system-fonts-from-the-os.md); the mechanism invariants live in the headers of
 `lib/routes/system-fonts.js` and `src/system-fonts.js`.
 
