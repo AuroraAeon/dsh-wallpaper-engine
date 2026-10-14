@@ -123,8 +123,8 @@ const { registerGithubStarsRoutes } =
   await import(pathToFileURL(join(ROOT, 'lib', 'components', 'about-notice', 'github-stars.js')).href);
 // 路由模块的**形状**：只许一个 exported function（= 那一个注册入口，verify-route-index 按它
 // 解析 context 契约）+ 一处**白名单**声明面导出 ⇒ TTL 常量仍从源码里读，不去 import 多余导出。
-// ⚠️ P2-7 起路由族模块（`lib/routes/*.js` ∪ 组件目录里的实现文件）带 `export const DEPS`（注入契约声明面，见 BUNDLE-SPLIT §8 P2-7
-// 与 §9 #17）⇒ 判据不能停在"export 数量 == 1"，但也不能退化成"随便多导都行"：只放行
+// ⚠️ 路由族模块（`lib/routes/*.js` ∪ 组件目录里的实现文件）带 `export const DEPS`（注入契约声明面，见
+// ADR-0013 的 D12②「每个路由族带一份显式声明键集，与调用点双向对账」；判据 = test/verify-inject-contracts.mjs）⇒ 判据不能停在"export 数量 == 1"，但也不能退化成"随便多导都行"：只放行
 // `DEPS` / `OPTIONAL_DEPS` 两个具名常量，多导一个函数或多导一个普通 const 都要红（见负对照）。
 const starSrc = read('lib/components/about-notice/github-stars.js');
 const STAR_TTL_MS = Number((starSrc.match(/const STAR_TTL_MS = ([0-9_*\s]+);/) || [])[1].replace(/[\s_]/g, '').split('*').reduce((a, b) => a * Number(b), 1));

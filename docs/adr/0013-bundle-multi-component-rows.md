@@ -13,7 +13,7 @@
 - **Revises（就地改写，2026-10-14）**: **D6 与 D8**（终态从「单包多行」改为「**多包**」）与 **D17 的理由**
   （结论不变）。**按用户口径就地改写正文、不新开 ADR**；原决定的两条理由与代价**全部保留在新正文里**
   （不粉饰：发布面 ×N、踩 `dsh.client.*`、构建/守卫/生成物重写）。实施计划见
-  [`BUNDLE-SPLIT.md`](../wip/BUNDLE-SPLIT.md)（其 §13 D-1 / D-8 / D-10 与本节同步）。
+  [`BUNDLE-SPLIT.md`](../wip/BUNDLE-SPLIT.md)（其 §14 D-1 / D-8 / D-10 与本节同步）。
 - **Related**: [ADR-0002](./0002-settings-schema-single-source.md)（设置的单一真源）、
   [ADR-0003](./0003-build-time-module-inlining.md)（浏览器半边靠构建期内联）、
   [ADR-0004](./0004-two-tier-guard-verification.md)（守卫分两档）、

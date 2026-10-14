@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * verify-inject-contracts.mjs — **注入契约双向对账**（ADR-0013 D12① / BUNDLE-SPLIT §8 P2-7 动作 1、§9 #17）。
+ * verify-inject-contracts.mjs — **注入契约双向对账**（ADR-0013 的 D12②「每个路由族带一份显式声明键集、与调用点双向对账」；度量 M8）。
  *
  * 为什么必须有它（度量 M8 的现状）：`lib/index.js` 的 `apply()` 是**手工 DI 组合根** —— 每个
  * `registerXxxRoutes(webServer, { … })` 的键集就是那个族的全部依赖面，可那份键集**只存在于调用点**：

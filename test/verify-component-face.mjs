@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * verify-component-face.mjs — **组件注入面的分级判据**（P2-7B；BUNDLE-SPLIT §9 #17 的 M8 / M9 那一半）。
+ * verify-component-face.mjs — **组件注入面的分级判据**（ADR-0013 的 D12① 收窄面 / D13 两级公开面；度量 M8 与 M9）。
  *
  * 回答的边界问题：组件入口到底能吃内核的哪些键？——在这之前答案是"整个 `hostKernel`（95 个键，
  * 其中 88 个内部面）"：两个组件入口各自 `const { … } = hostKernel` 现解构（about-notice 6 项、
@@ -8,7 +8,7 @@
  * **内核导出的具名视图**（`lib/kernel/component-session.js` 的 `COMPONENT_VIEW_KEYS` +
  * `componentViewFrom()`），本守卫把这条边界变成机械判据。
  *
- * 判据（§9 #17 的 ③，加上 P2-7B 要的三条面归属）：
+ * 判据（ADR-0013 的 D12③「内核内部面不得被组件 / 路由族直接解构」，加上本守卫要的三条面归属）：
  *   ① **内核分级面机械复算**：`KERNEL_STABLE_FACE`（`lib/kernel/host-kernel.js` 导出的 15 项）
  *      与**实跑内核**的 `Object.keys()` 对账。**合同数字的唯一真源 = 本行**（改一次 =
  *      一次可见的决策：同时把下面这行改掉）：
