@@ -2576,31 +2576,10 @@ check('「壁纸属性」按钮：仅场景/网页壁纸 + 常规按钮样式（
     && !tabsSrc.includes('we-picker__btn--props')
     && tabsSrc.indexOf('weT("壁纸属性")') !== -1
     && tabsSrc.indexOf('weT("壁纸属性")') < tabsSrc.indexOf('weT("暂停")'));
-// 星链按钮（用户口径 2026-10-14）：当前壁纸卡片播放控制行里有一枚「点个星喵⭐」——
-// 与「关于」页小字 Star 按钮**同款式**（.we-picker__btn--primary；主按钮是"实心 accent 底
-// + 随 accent 的墨色字"的那一枚），跳 ABOUT_REPO_URL、且排在「暂停」之前。
-// 为什么值得钉：这枚按钮的可见性完全依赖 primary 款式 —— 只有一条只改 color/border 的
-// 覆盖规则就能让它与背景同色（PR #202 实测发生过，见 styles-ext.js 的说明）。
+// 「侧栏播放控制行」这一节钉两件事：全局主按钮款式不被二次覆盖、窄容器下控制行不溢出。
+// 两件都只看**当前形态**，不涉及某枚具体按钮（本行今天就是暂停/刷新/清除三枚）。
 {
-  const curRow = qpSrc.slice(qpSrc.indexOf('className: "we-qp__current-actions"'));
-  const rowEnd = curRow.indexOf('we-qp__section'); // 到下一节为止的窗口
-  const row = rowEnd > 0 ? curRow.slice(0, rowEnd) : curRow;
-  const starAt = row.indexOf('weT("点个星喵⭐")');
-  const playAt = row.indexOf('weT("暂停")');
-  check('星链按钮：primary 款式（实心 accent）+ href=ABOUT_REPO_URL + 排在「暂停」之前',
-    starAt !== -1 && playAt !== -1 && starAt < playAt
-      && row.includes('className: "we-picker__btn we-picker__btn--primary"')
-      && row.includes('href: ABOUT_REPO_URL'),
-    'star@' + starAt + ' play@' + playAt + ' primary=' + row.includes('we-picker__btn--primary')
-      + ' href=' + row.includes('href: ABOUT_REPO_URL'));
-  // 负对照：同一判据对同一段源码的**变异体**（摘掉 primary 类）必须判红 ——
-  // 否则上面那条可能只是"字符串碰巧都在同一段文本里"。
-  const mutated = row.replace('we-picker__btn we-picker__btn--primary', 'we-picker__btn');
-  const mutatedOk = mutated.includes('className: "we-picker__btn we-picker__btn--primary"')
-    && mutated.includes('href: ABOUT_REPO_URL');
-  check('负对照：摘掉 primary 类 ⇒ 同一判据变假（判据有牙）',
-    mutatedOk === false && mutated !== row && starAt !== -1);
-  // 且全局 primary 款式仍是"实心底 + 墨随 accent"（styles-ext.js 那条未限定作用域的覆盖
+  // 全局 primary 款式仍是"实心底 + 墨随 accent"（styles-ext.js 那条未限定作用域的覆盖
   // 是历史上真实发生过的隐形 bug —— 这里正面钉住 panel 段那条主规则还在、且 styles-ext
   // 中不再有第二份 .we-picker__btn--primary 覆盖把它压掉）。
   const extStyleSrc = readFileSync(join(root, 'src', 'styles-ext.js'), 'utf8');
@@ -2609,7 +2588,7 @@ check('「壁纸属性」按钮：仅场景/网页壁纸 + 常规按钮样式（
       && !/^\s*\.we-picker__btn--primary\s*\{/m.test(extStyleSrc),
     'ext 覆盖规则数=' + (extStyleSrc.match(/^\s*\.we-picker__btn--primary\s*\{/m) || []).length
       + ' extStyleSrc.length=' + extStyleSrc.length);
-  // 窄容器不溢出：官方右栏最窄 276px，四枚按钮同行放不下（实测溢出 27px）⇒ 控制行必须
+  // 窄容器不溢出：官方右栏最窄 276px，控制行那几枚按钮加上圆盘与间距已接近满宽 ⇒ 控制行必须
   // 允许整组折行、按钮组带 margin-left: auto（折行时靠右）。判据钉两个声明在**同一条规则**上。
   const curRowRule = stylesSrc.match(/\.we-qp__current\s*\{[^}]*\}/);
   const actsRule = stylesSrc.match(/\.we-qp__current-actions\s*\{[^}]*\}/);
@@ -3282,9 +3261,6 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
   // QuickPanel 的自由变量：一律当**形参**传（真实现或替身），漏一个就是 ReferenceError。
   const FREE = ['weT', 'React', 'localStorage',
     'useWeLocale', 'useStore', 'liveRenderEnabled', 'CARD_TYPE_LABELS', 'applySelection', 'cardKeyDown',
-    // 仓库地址（src/about-assets.js 的常量）：星链按钮是 <a href={ABOUT_REPO_URL}>，在
-    // bundle 里与 about-assets 同作用域、按文件 import 时是自由变量 ⇒ 与上面同一纪律。
-    'ABOUT_REPO_URL',
     'playbackIsVideoLike', 'playableInventory', 'groupWallpapers', 'rotationCandidates',
     'emit', 'setTransient', 'setSetting', 'onTogglePlay', 'onClear', 'onGroupChange', 'onNextWallpaper',
     'onToggleRotation', 'onToggleAudio', 'onVideoVolume', 'loadInventory', 'openSettingsSection',
@@ -3350,8 +3326,6 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
     ? { type: 'div', props: { className: 'we-picker__props' }, children: [] }
     : null);
   SEL = selBase;
-  // 星链按钮的 href 常量：给**真值**（about-assets.js 的同一导出），不手抄字面量。
-  const aboutAssetsMod = await import(pathToFileURL(join(root, 'src', 'about-assets.js')).href);
   const bag = new Function(...FREE,
     qpSrc + '\nreturn { QuickPanel };')(
     ...FREE.map((n) => ({
@@ -3359,7 +3333,6 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
       localStorage: { getItem: () => null, setItem() {} },
       useWeLocale: noop, useStore: () => SEL,
       liveRenderEnabled: () => false, CARD_TYPE_LABELS: { video: '视频', web: '网页', image: '图片', scene: '场景' },
-      ABOUT_REPO_URL: aboutAssetsMod.ABOUT_REPO_URL,
       applySelection: noop, cardKeyDown: noop, playbackIsVideoLike: () => true,
       playableInventory: () => [], groupWallpapers: () => [], rotationCandidates: () => [],
       emit: noop, setTransient: noop, setSetting: noop,

@@ -100,7 +100,6 @@ const WE_I18N_EN_PICKER = {
   "在设置页打开「外观」页签 —— 玻璃预设与全部外观配置在那里": "Open the Appearance tab in settings — glass presets and the full appearance config live there",
   "在设置页打开「播放」页签 —— 出图来源 / 实时帧 / 帧率上限在那里": "Open the Playback tab in settings — frame source, live frame and FPS cap live there",
   "去挑一张 ›": "Pick one ›",
-  "点个星喵⭐": "⭐ Star us, meow",
 
   // ── src/sidebar-right.js ──
   "本地 Wallpaper Engine 壁纸库与播放控制": "Local Wallpaper Engine library and playback controls",

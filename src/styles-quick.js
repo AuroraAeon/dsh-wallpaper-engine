@@ -256,10 +256,10 @@ body[data-we-glass-floaters] .we-repo-panel__body {
     padding-top: 10px;
     border-top: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.22));
   }
-  /* 控制行允许**整组折行**（flex-wrap）：官方右栏最窄 276px，四枚按钮（星链 + 暂停/刷新/
-     清除）加上圆盘与间距会超宽（实测溢出 27px，「清除」被裁）。窄到放不下时按钮组整体落到
-     第二行、靠右对齐（.we-qp__current-actions 的 margin-left: auto；info 列独占首行）；
-     宽容器里四枚仍同行。不用按钮各自的 flex-wrap —— 那会碎出 3+1 之类的歪行。 */
+  /* 控制行允许**整组折行**（flex-wrap）：官方右栏最窄 276px，三枚按钮（暂停/刷新/清除）＋
+     圆盘＋间距已接近满宽，再加内容就会溢出。窄到放不下时按钮组整体落到第二行、靠右对齐
+     （.we-qp__current-actions 的 margin-left: auto；info 列独占首行）；宽容器里三枚仍同行。
+     不用按钮各自的 flex-wrap —— 那会碎出 3+1 之类的歪行。 */
   .we-qp__current { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   /* 当前壁纸缩略图 = 一枚旋转圆盘（用户口径：圆形图片旋转、中心空心小圆）：预览图
      裁成整圆，播放时匀速自转、暂停停在原角度（复用设置页黑胶的 we-vinyl-spin 关键帧
@@ -306,11 +306,10 @@ body[data-we-glass-floaters] .we-repo-panel__body {
     font-size: 0.82em; color: var(--we-ink-2, rgba(128, 128, 128, 0.9));
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  /* 控制行允许**整组折行**：官方右栏最窄 276px，四枚按钮（星链 + 暂停/刷新/清除）加上
-     圆盘与间距会超宽（实测溢出 27px，「清除」被裁）。窄到放不下时按钮组整体落到第二行、
-     靠右对齐（info 列独占首行）；宽容器里四枚仍同行。不用按钮各自的 flex-wrap —— 那会
-     碎出 3+1 之类的歪行。margin-left: auto 只在折行的第二行生效（单行时 info 的 flex:1
-     已经吃掉全部余量）。 */
+  /* 控制行允许**整组折行**：官方右栏最窄 276px，三枚按钮（暂停/刷新/清除）加上圆盘与间距
+     已接近满宽，再加内容就会超宽。窄到放不下时按钮组整体落到第二行、靠右对齐（info 列独占
+     首行）；宽容器里三枚仍同行。不用按钮各自的 flex-wrap —— 那会碎出 3+1 之类的歪行。
+     margin-left: auto 只在折行的第二行生效（单行时 info 的 flex:1 已经吃掉全部余量）。 */
   .we-qp__current-actions { flex: none; display: flex; gap: 6px; margin-left: auto; }
   /* 壁纸属性入口：页签栏下方独占整行、文字居中、字号与页签标签一致。
      边框显式写在这里：宿主的中性描边令牌在这套玻璃面板上近乎不可见；

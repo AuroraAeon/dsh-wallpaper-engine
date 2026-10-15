@@ -4366,7 +4366,14 @@ function WallpaperPicker() {
     onResetModule,
   });
   const renderActiveTab = () => {
-    if (activeTab === "about") return renderAboutTab({ components });
+    if (activeTab === "about") return renderAboutTab({
+      components,
+      // 「重新查看本版更新公告」的落点：立请求位 + emit 让 `UpdateNotice` 重渲染。
+      // 不变量：这两个动作必须留在本文件这一侧 —— `renderAboutTab` 体内不许出现
+      // `setSetting(` / 字面 `emit(` / `apiJson|apiFetch(`（判据见 test/verify-about.mjs），
+      // 所以那条腿只调这个回调。请求位由 `UpdateNotice.dismiss()` 清。
+      onReopenNotice: () => { noticeReopenRequest = true; emit(); },
+    });
     if (activeTab === "extensions") return renderExtensionsTab(extensionCtx());
     if (activeTab === "appearance") return renderAppearanceTab({
       setSetting, setTransient,
@@ -4887,7 +4894,10 @@ function RopeDock() {
 //      each other off; web-wallpaper audio reactivity under the strict sandbox;
 //      inline code in thinking blocks, native dropdown popups and the preset
 //      dialog display correctly again,
-//   ③ a one-tap star button (「点个星喵⭐」) on the sidebar wallpaper card,
+//   ③ a one-tap star entry carried by this very notice — the caption under the
+//      art is a link straight to the repo. It is the only star prompt outside the
+//      About tab, and it stays dismissible with the rest of the notice (no
+//      permanent button is added to any always-visible surface),
 //   ④ Linux X11 occlusion power saving — a covered window drops frames, a fully
 //      covered one pauses (more battery left).
 // The notice art (GitHub star plea, shipped as lib/about/update-notice.jpg and
@@ -4903,15 +4913,12 @@ function RopeDock() {
 // 都从磁盘现读，而后端路由只在 DSH 重启时换血 —— 更新后未重启的窗口期里，旧后端
 // 的 /about-qr 白名单还没有 update-notice.jpg ⇒ 图 404。若照旧立刻弹窗，用户看到
 // 裂图，而「知道了」一关整版公告永久退场，配图等于永远没人看到。
-// ⚠️ 2026-10-15 公告随新版本换血：v1.3.2 之后的一整批（头像导入大升级 / 修复一批 /
-// 星链按钮 / Linux 遮挡省电）。配图沿用「星来」那张、caption 保留；哨兵升到下一版号 ——
-// 看过 1.3.2 公告的机器重弹一次，是设计意图。
+// ⚠️ 公告正文与配图是**随版本换血**的：改内容就要升哨兵（否则看过旧版的用户永远看不到
+// 新说明，改了等于没改 ⇒ 重弹一次是设计意图）。哨兵当前值决定这一版公告讲的是哪一批改动。
 const NOTICE_VERSION = "1.3.3";
-// 公告内容改版（新增「侧边栏只是简略版」大字说明 + 配图缩小）必须升哨兵：
-// 否则看过旧版的用户永远看不到新说明，改了等于没改 ⇒ 重弹一次是设计意图。
 // 配图就绪探针的节奏：HEAD 轮询到新白名单在场（= 后端已重启）才弹；旧后端一直
-// 不在场超过 WAIT 则降级为**无图**弹出（文案信息完整；求星入口在「关于」页常驻，
-// 不靠弹窗这一条命）。探针打在 /about-qr 上是自清洁的：404 响应 no-store、200
+// 不在场超过 WAIT 则降级为**无图**弹出（文案信息完整；求星入口另有「关于」页那枚常驻按钮
+// 与它的重看按钮，不靠弹窗这一条命）。探针打在 /about-qr 上是自清洁的：404 响应 no-store、200
 // no-cache（lib/components/about-notice/about-qr.js），怎么轮询都不会污染 Electron 缓存。
 const NOTICE_ART_WAIT_MS = 90000;
 // 探针的**退避表**（不是固定间隔）：旧后端在场时，1.5s 一拍的固定轮询在一个时限里就是
@@ -4927,6 +4934,12 @@ const NOTICE_ART_BACKOFF_MS = [1500, 3000, 6000, 12000, 30000];
 // "后端重启后刷新页面就能拿到图"）。用模块级变量而不是 store 字段：纯视图态，进 store
 // 会平白多一对瞬态字段要过直写棘轮（与 art 用组件本地 state 同一条理由）。
 let noticeArtVerdict = "";
+// 「重新查看本版更新公告」的**请求位**（关于页那枚按钮经 `onReopenNotice` 回调写它；消费在
+// `UpdateNotice`，清在它的 `dismiss()`）。
+// 不变量：① 它是**页面级视图态**（刷新即失效）—— 公告"看过了"的真源始终是 `settings.noticeSeen`，
+// 这里只记"刚才有人点过重看"；② 它是**模块级变量而非 store 字段**，与上面的 `noticeArtVerdict`
+// 同一条理由（纯视图态进 store 会平白多一个瞬态字段要过直写棘轮）。
+let noticeReopenRequest = false;
 
 /**
  * 配图探针的时刻表（**纯函数**：判据在真源码上跑它，见 test/verify-about.mjs ⑤）。
@@ -4964,24 +4977,42 @@ function UpdateNotice() {
   // Art-gate 探针：pending（探测中，什么都不弹）→ ready（新后端在场，带图弹）→
   // timeout（等满 WAIT 仍 404，降级为无图弹）。用组件本地 state 而不是共享
   // selection —— 纯视图态，进 store 会平白多一对瞬态字段要过直写棘轮。
-  const [art, setArt] = React.useState(noticeArtVerdict || "pending");
+  //
+  // ⚠️ **手动重看时必须从 pending 起步**，不能拿缓存结论当初始值：`noticeArtVerdict` 是
+  // **页面级**缓存，可能停在任何终态（`timeout` = 那次没等到图、按无图降级过）。拿它当初始
+  // art 会让重看直接按"无图公告"渲染，而**配图下方那行求星链接与配图同一条门控** ⇒ 那条腿
+  // 整条不渲染，用户看到的就是"点了没反应"。从 pending 起步 + 下面 effect 让手动请求重新探
+  // 一次，语义才对：手动重看应当现算"这台机器的后端**现在**有没有这张图"。
+  const [art, setArt] = React.useState(noticeReopenRequest ? "pending" : (noticeArtVerdict || "pending"));
+  // ⚠️ 上面这个初始化式读模块级 `noticeReopenRequest`（声明在本文件 4951 行、`UpdateNotice`
+  //    之前）—— 模块求值期不读它，只在组件渲染期读，所以不存在 TDZ 面。
   // Only render once the host settings (source of truth) are applied, so the
   // persisted noticeSeen is final. On a fresh port/restart the localStorage
   // origin is empty (noticeSeen == "") and would briefly flash the notice before
   // the host GET merges the real value — wait for hostLoaded to avoid that.
   const eligible = sel.hostLoaded && sel.noticeSeen !== NOTICE_VERSION;
+  // 「重新查看本版更新公告」：关于页那枚按钮把请求位立起来，本组件**随时挂载** ⇒ emit() 一响
+  // 这里就重渲染、读到 true ⇒ 即使 noticeSeen 已是本版也照样展示一次（这正是该按钮的用途：
+  // 公告是"一等版本弹一次"的展示面，用户想再看时不该只能改设置文件）。
+  // 只读、不消费：请求位由 `dismiss()` 清（见那里），这样"知道了"一关就回到正常口径。
+  const reopenRequested = noticeReopenRequest;
   // 更新公告整块（含配图那条 `/about-qr/update-notice.jpg` 腿）归 `about-notice` 组件行
   // （ADR-0013 D3②）：那一行关掉 ⇒ 公告**整块不弹**，探针也一个请求都不发（路由整族没了，
   // 探到的是必然的 404）。判据只此一处实现 —— `weComponentVisible`。
+  // ⚠️ 手动请求那条支路**仍受这一行约束**（按钮本身也长在这一行的 gate 之内，见
+  // `renderAboutTab`）：两者同源，不会出现"重开后无按钮"或"行关了还能弹"的错配。
   const componentOn = weComponentVisible(sel.inventory && sel.inventory.components, "about-notice");
   React.useEffect(() => {
-    // 已关过本版公告的用户一个请求都不发（每次开面板都探一遍是纯浪费）。
-    if (!eligible) return undefined;
+    // 已关过本版公告、且这次也不是手动请求 ⇒ 一个请求都不发（每次开面板都探一遍是纯浪费）。
+    if (!eligible && !reopenRequested) return undefined;
     // 组件行（about-notice）不可用 ⇒ 它那一族路由整族没注册，探到的是必然的 404 —— 一个请求
     // 都不发。与上面那句**分开写**：两条门挡的是两件不同的事（用户已关公告 / 组件行关了）。
     if (!componentOn) return undefined;
     // 同一页面已有结论 ⇒ 直接采纳，一个请求都不再发（多开面板 / 来回切页不复探）。
-    if (noticeArtVerdict) { setArt(noticeArtVerdict); return undefined; }
+    // ⚠️ **手动重看不吃这条缓存**：用户点「重新查看本版更新公告」的语义是"现在让我再看看"，
+    // 要的是"此刻这台机器的后端有没有那张图"的现算结论（他可能刚重启过 DSH）。吃缓存会按旧
+    // 结论（可能是 timeout 的无图形态）弹出来，那条求星腿就跟着没了。
+    if (noticeArtVerdict && !reopenRequested) { setArt(noticeArtVerdict); return undefined; }
     let alive = true;
     const timers = [];
     const schedule = noticeArtSchedule(NOTICE_ART_WAIT_MS, NOTICE_ART_BACKOFF_MS);
@@ -4997,20 +5028,27 @@ function UpdateNotice() {
     };
     timers.push(setTimeout(() => probe(0), schedule[0]));
     return () => { alive = false; for (const t of timers) clearTimeout(t); };
-  }, [eligible, componentOn]);
-  const show = eligible && componentOn && (art === "ready" || art === "timeout");
+  }, [eligible, componentOn, reopenRequested]);
+  // 展示条件：正常口径（本版没看过）**或** 用户手动请求重看（关于页那枚按钮）。
+  // 两条都受 `componentOn` 约束（组件行关了 ⇒ 公告整族没了）。
+  // `reopenRequested` 进依赖数组：请求位在 effect 之外被置起来时（关于页点击 → emit → 本组件
+  // 重渲染）要重新评估探针那一段，否则"手动重看却拿不到 art 结论"会卡在 pending 不显示。
+  const show = componentOn && (reopenRequested || eligible) && (art === "ready" || art === "timeout");
   const dismiss = () => {
     // Persist the dismissed version through the settings pipeline (localStorage
     // cache + host file). emit() re-renders this component (useStore) to hide it.
     setSetting("noticeSeen", NOTICE_VERSION);
+    // 手动请求也要清掉：否则这一次关掉后 `show` 仍为真（请求位还立着）⇒ 关不掉。
+    // 命令式写法（不是 setState）—— 与请求位的模块级归属一致：它记的是"请求发生过了"。
+    noticeReopenRequest = false;
     emit();
   };
   if (!show) return null;
   return React.createElement("div", { className: "we-update-notice", role: "alert" },
     React.createElement("div", { className: "we-update-notice__title" }, weT("🎉 更新：头像导入大升级 · 一组修复 · 一键点星")),
     // 只有 ready 才渲染配图与说明行（timeout 降级态无图弹出，正文信息自足）。
-    // 配图换「星来」，但**求星路径指引保留**（用户口径）：图下那行
-    // 「关于页一键直达」是用户找到点星入口的唯一指引，不随配图换血退场。
+    // 图下那行是**求星入口**（见下面的说明），所以它随配图同一条门控：无图降级态没有它，
+    // 但求星入口另有「关于」页那枚常驻按钮兜住，不是唯一命脉。
     art === "ready" ? React.createElement("img", {
       className: "we-update-notice__art",
       src: apiUrl(NOTICE_ART_PATH),
@@ -5020,9 +5058,25 @@ function UpdateNotice() {
       onError: () => setArt("timeout"),
     }) : null,
     art === "ready" ? React.createElement("div", { className: "we-update-notice__art-cap" },
-      React.createElement("strong", null, weT("在设置中的壁纸引擎页面中的关于中可一键直达，谢谢喵！"))) : null,
+      // 求星入口：配图下方这一行是**真跳转**（不是纯文字指路），用户读完图就能一步到仓库。
+      // 用 `<a>` 而不是 `<button>`：外链交给浏览器原生行为（新窗 / 中键 / 修饰键都对），
+      // 与关于页那枚 Star 按钮同款；`we-picker__btn--primary`（实心 accent + 墨随 accent）
+      // 在公告的恒定深色玻璃底上**逐字沿用**，不另造一套公告专用按钮样式。
+      // ⚠️ **不变量：公告底部只许有一枚 `<button>`**（`知道了`）。`test/compat-harness-pages.mjs`
+      // 用 `document.querySelector('.we-update-notice__btn')` 定位"知道了"来关公告；再加一枚
+      // 同名 class 的 `<button>` 会让它点到错的那枚。所以求星这条腿用 `<a>` + 自己的
+      // `we-update-notice__star` 类。
+      // 只在 `art === "ready"` 时渲染（与配图同一条门控）：无图降级态的正文信息自足，
+      // 且求星入口另有「关于」页那枚常驻按钮与它的重看按钮 —— 这条腿不是唯一命脉。
+      React.createElement("a", {
+        className: "we-update-notice__star we-picker__btn we-picker__btn--primary",
+        href: ABOUT_REPO_URL,
+        target: "_blank",
+        rel: "noopener noreferrer",
+        title: weT("在浏览器里打开项目仓库"),
+      }, weT("⭐ 去 GitHub 点亮 Star"))) : null,
     React.createElement("div", { className: "we-update-notice__body" },
-      // 2026-10-15 换血（用户口径：简单公告）：延续「简洁 + 大字」——只讲四件事，
+      // 行文体例（用户口径：简单公告）：简洁 + 大字 —— 只讲四件事，
       // 全部走 16pt callout（.we-update-notice__callout），每条一句不加尾巴长文。
       React.createElement("p", { className: "we-update-notice__callout" },
         "① ", noticeEx(2), React.createElement("strong", null, weT("头像导入大升级！")),
@@ -5031,8 +5085,8 @@ function UpdateNotice() {
         "② ", noticeEx(2), React.createElement("strong", null, weT("修复一批")),
         weT("：多窗口实时渲染不再互相踢掉；网页壁纸音频可视化恢复跳动；设置图标对齐、思考块行内代码与下拉弹层显示恢复正常。")),
       React.createElement("p", { className: "we-update-notice__callout" },
-        "③ ", noticeEx(2), React.createElement("strong", null, weT("新增「点个星喵⭐」按钮")),
-        weT("：侧栏壁纸卡片一键直达仓库，欢迎来点颗星！")),
+        "③ ", noticeEx(2), React.createElement("strong", null, weT("求星入口搬到这条公告里")),
+        weT("：上面的配图下方就能一键直达仓库，欢迎来点颗星！")),
       React.createElement("p", { className: "we-update-notice__callout" },
         "④ ", noticeEx(2), React.createElement("strong", null, weT("Linux 用户更省电")),
         weT("：窗口被遮挡时自动降帧，完全遮挡时暂停渲染。")),

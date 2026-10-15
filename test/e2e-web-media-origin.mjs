@@ -403,9 +403,9 @@ const PRODUCT_DRAWER_ACTIONS_SCOPE = 'className: "we-picker__current-actions"';
 const productDrawerPanelSrc = panelText();
 const productDrawerActions = (expected) => productPrimaryActions(productDrawerPanelSrc, PRODUCT_DRAWER_ACTIONS_SCOPE) === expected;
 // 对照用的另一个真来源：快捷面板的**播放控制行**也叫 actions（`we-qp__current-actions`，
-// 里面是暂停/刷新/清除三枚 button；另有一枚「点个星喵⭐」星链，是 <a> 不是 button ——
-// 计数器只数 `React.createElement("button"` ⇒ 期望值仍是 3）。判据只在目标 scope 上生效
-// ⇒ 数它必须是 3 而不是 1，顺带证明计数器不是"读到谁都返回同一个数"。
+// 里面是暂停 / 刷新 / 清除三枚 `<button>`；该行不放求星入口，见 src/quick-panel.js 的不变量）
+// ⇒ 计数器只数 `React.createElement("button"`，期望值 3。判据只在目标 scope 上生效 ⇒
+// 数它必须是 3 而不是 1，顺带证明计数器不是"读到谁都返回同一个数"。
 const PRODUCT_QP_ACTIONS_SCOPE = 'className: "we-qp__current-actions"';
 const productQuickPanelSrc = readFileSync(join(root, 'src', 'quick-panel.js'), 'utf8');
 

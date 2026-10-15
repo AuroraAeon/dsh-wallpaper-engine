@@ -300,13 +300,16 @@ function weComponentVisibleOf(components, name) {
   }
 
   // ── 「关于」页签：项目简介 / 仓库与 Star / 交流群二维码 / 贡献者致谢（压尾）──────
-  // 这是**除组件行状态外不读面板状态**的页签：内容全是静态文案 + 两张内联二维码（数据在
-  // src/about-assets.js，构建期随 prelude 内联）。但契约是**逐页签**的 ——
-  // verify-scene-live 要求每个 render*Tab 首行从 ctx 解构（"要什么"写在签名处），
-  // 所以这里显式写下空解构：别让后来人以为"这个页签不用取外界"就能绕过接缝。
+  // 内容全是静态文案 + 两张内联二维码（数据在 src/about-assets.js，构建期随 prelude
+  // 内联）；**唯一的外部能力**是 `ctx.onReopenNotice`（「重新查看更新公告」按钮）。
+  // 它不是"读面板状态"：状态写入与 emit 都发生在 client.js 那一侧（回调体内），本渲染器
+  // 只读模块级真值 + 调一个交进来的回调 —— 这正是 test/verify-about.mjs 那条
+  // "渲染器只读模块级状态（不自己发请求 / 不写设置 / 不发通知）"允许的形状。
+  // 契约是**逐页签**的 —— verify-scene-live 要求每个 render*Tab 首行从 ctx 解构
+  //（"要什么"写在签名处），所以这里显式解构出那一个回调。
   // 四段的**顺序**是用户的明确口径（致谢压尾），判据按首次出现下标比大小钉住。
   function renderAboutTab(ctx) {
-    const { } = ctx;
+    const { onReopenNotice } = ctx;
     // ── D3 可见面 gate（ADR-0013 D3①/D3③）：该组件行关掉 ⇒ **整块不渲染**（返回 null，
     // 界面不显示；配置项由调用方按同一判据隐藏）。判据：test/verify-component-visibility.mjs
     // 的"声明落点必须被 gate"双向对账。唯一实现在 src/client.js 的 weComponentVisible。
@@ -386,6 +389,17 @@ function weComponentVisibleOf(components, name) {
           // 这条是给"点了没反应"的场景留的兜底（同字体集导出的"普通链接"口径）。
           React.createElement("code", { className: "we-about__url" }, ABOUT_REPO_URL),
         ),
+        // 「重新查看本版更新公告」：公告的哨兵 `noticeSeen` 让它**一版只弹一次** ⇒ 不给一条
+        // 重看路径的话，用户"想再看这版改了什么"就只能去改设置文件。
+        // ⚠️ 只调回调（`ctx.onReopenNotice`）：状态写入与 emit 都在 client.js 那一侧 ——
+        // 本渲染器因此保持"只读模块级状态"（判据见文件头那段说明）。
+        // 与上面那枚 Star 按钮**同放一节**是有意的：它们是同一件事的两个面（公告配图下那行
+        // 也是同一个求星入口，见 src/client.js 的 UpdateNotice）。
+        React.createElement("button", {
+          className: "we-picker__btn we-about__reopen", type: "button",
+          onClick: () => { if (typeof onReopenNotice === "function") onReopenNotice(); },
+          title: weT("再弹一次本版更新公告（含配图下方的求星入口）"),
+        }, weT("重新查看本版更新公告")),
         React.createElement("p", { className: "we-about__p" },
           weT("想要新功能、遇到问题，或者想看看接下来要做什么，都欢迎来仓库提 Issue / PR —— 一起把它做得更好 🧰")),
       ),

@@ -528,6 +528,50 @@ check('negative control: 门控判据对无门控的合成组件有牙',
   !/art === "ready" \? React\.createElement\("img"/.test('function UpdateNotice() { return React.createElement("img", { src: x }); }')
     && !/art === "ready" \|\| art === "timeout"/.test('function UpdateNotice() { const show = loaded; }'));
 
+// ── ⑤a′ 「重新查看本版更新公告」的两腿接线 ────────────────────────────────────
+// 公告的哨兵 `noticeSeen` 让它**一版只弹一次**；关于页那枚「重新查看本版更新公告」是唯一的
+// 重看路径。两腿都要钉住，否则"按钮在、但没人接"（点了没反应）或"能弹、但关不掉"（请求位不清）
+// 都会静默存在。
+{
+  // 腿一（渲染器侧）：关于页那枚按钮只调**回调**，不自己写状态/发通知 ——
+  // 这正是上面 ④ 那条"渲染器只读模块级状态"允许的形状，所以这里顺着同一口径断言。
+  check('关于页有「重新查看本版更新公告」按钮，且只调 ctx 回调（不自己 emit / setSetting）',
+    /weT\("重新查看本版更新公告"\)/.test(aboutBody)
+      && /onReopenNotice\(\)/.test(aboutBody)
+      && !ABOUT_EMIT_CALL_RE.test(aboutBody) && !ABOUT_SET_SETTING_RE.test(aboutBody));
+  // 腿二（client 侧）：调用点把回调接上、回调两件事都做（立请求位 + emit），
+  // 且 `dismiss()` 必须清掉请求位 —— 否则关掉后 `show` 仍为真、弹窗关不掉。
+  // ⚠️ 就地剥注释（`clientCode` 在下面 ⑤b 才定义，在前面引用它会 TDZ 报错）：
+  //    形态判据一律只看代码，注释里就写着 `onReopenNotice` 这类词。
+  const clientCodeHere = stripComments(clientSrc);
+  const reopenCall = /onReopenNotice:\s*\(\)\s*=>\s*\{[^}]*noticeReopenRequest\s*=\s*true[^}]*emit\(\)/.test(clientCodeHere);
+  check('调用点接上 onReopenNotice（立请求位 + emit 重渲染）',
+    reopenCall, 'wired=' + reopenCall);
+  check('公告的展示条件含"手动请求"支路（否则重看按不出来）',
+    /const show = componentOn && \(reopenRequested \|\| eligible\)/.test(noticeSrc));
+  check('dismiss() 清掉请求位（否则关不掉）',
+    /noticeReopenRequest = false;/.test(noticeSrc));
+  // ⚠️ 手动重看**不许吃页面级 art 缓存**（`noticeArtVerdict`）：它可能停在 `timeout`（那台
+  // 机器上一次没等到图、按无图降级过），而"配图"与"配图下那行求星链接"是同一条门控 ⇒
+  // 吃了缓存就会按无图公告渲染、求星那条腿整条不见（现象是"点了没反应"）。
+  // 两条都必须成立：① 手动请求时初始 art 从 pending 起步；② effect 里不吃那条缓存。
+  check('手动重看不吃页面级 art 缓存（否则 timeout 结论会让求星腿整条不渲染）',
+    /useState\(noticeReopenRequest \? "pending"/.test(noticeSrc)
+      && /noticeArtVerdict && !reopenRequested/.test(noticeSrc));
+  // 负对照：把两个条件任意一个改回"吃缓存"的写法 ⇒ 同一条判据判红。
+  const c1 = 'const [art, setArt] = React.useState(noticeArtVerdict || "pending");'
+    + 'if (noticeArtVerdict && !reopenRequested) { setArt(noticeArtVerdict); }';
+  const c2 = 'const [art, setArt] = React.useState(noticeReopenRequest ? "pending" : "x");'
+    + 'if (noticeArtVerdict) { setArt(noticeArtVerdict); }';
+  const cacheOk = (s) => /useState\(noticeReopenRequest \? "pending"/.test(s) && /noticeArtVerdict && !reopenRequested/.test(s);
+  check('negative control: 两种"吃缓存"写法都被判红',
+    cacheOk(c1) === false && cacheOk(c2) === false && cacheOk(noticeSrc) === true);
+  // 负对照：同一批正则对"按钮在、没人接"的合成源码必须判红。
+  check('negative control: 按钮只画不接 ⇒ 同一条判据判红',
+    !/onReopenNotice\(\)/.test("function renderAboutTab(ctx) { const { onReopenNotice } = ctx; return weT(\"重新查看本版更新公告\"); }")
+      && /weT\("重新查看本版更新公告"\)/.test("function renderAboutTab(ctx) { return weT(\"重新查看本版更新公告\"); }"));
+}
+
 // ── ⑤b 请求数上限 + 页面级结论缓存 ─────────────────────────────────────────
 // 缘起：未重启的后端 + 面板多开几次 ⇒ 约 150 行 404 红字（用户实测反馈）。请求本身是
 // 自清洁的（no-store/200 no-cache），但刷屏不是。两条腿都不读第二份字面量：退避表与
@@ -575,12 +619,15 @@ check('negative control: 接线判据对"退避表建了但组件仍按固定间
     && !noticeBackoffWired(noticeWiredOk + ' timers.push(setTimeout(probe, NOTICE_ART_POLL_MS));'));
 // 页面级结论缓存：面板可反复开关，但"这个后端有没有那张图"是页面级事实 ⇒ 第二轮起
 // 一个请求都不发。判据要求**读**与**写**同时在（只写不读 = 缓存白建）。
+// ⚠️ 读点带一个**手动重看例外**（`&& !reopenRequested`）：点那枚按钮的语义是"现在再看一次"，
+// 该拿现算结论，不吃旧缓存（实测故障：旧缓存停在 timeout ⇒ 重看按无图弹 ⇒ 求星腿没了）。
+// 缓存本身仍在水面：非手动路径照旧吃它，所以这条判据的意图（多开面板不复探）不变。
 const noticeVerdictCached = (s) => /let noticeArtVerdict\b/.test(s)
-  && /if \(noticeArtVerdict\) \{ setArt\(noticeArtVerdict\); return undefined; \}/.test(s)
+  && /if \(noticeArtVerdict && !reopenRequested\) \{ setArt\(noticeArtVerdict\); return undefined; \}/.test(s)
   && s.includes('noticeArtVerdict = "ready"') && s.includes('noticeArtVerdict = "timeout"');
 const noticeCacheOnlyWrite = 'let noticeArtVerdict = ""; noticeArtVerdict = "ready"; noticeArtVerdict = "timeout";';
 const noticeCacheOk = 'let noticeArtVerdict = "";'
-  + ' if (noticeArtVerdict) { setArt(noticeArtVerdict); return undefined; }'
+  + ' if (noticeArtVerdict && !reopenRequested) { setArt(noticeArtVerdict); return undefined; }'
   + ' noticeArtVerdict = "ready"; noticeArtVerdict = "timeout";';
 check('探针有页面级结论缓存（读在、两个终态都在：多开面板不复探）', noticeVerdictCached(clientCode));
 check('negative control: 缓存判据对"只写不读"的形态有牙',

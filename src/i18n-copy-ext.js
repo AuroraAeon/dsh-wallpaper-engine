@@ -150,6 +150,10 @@ const WE_I18N_EN_EXT = {
   "项目以 MIT 协议开源、完全免费。如果它让你的 DSH 好看了一点点，去仓库点一颗 ⭐ 就是最直接的鼓励～": "The project is MIT-licensed and completely free. If it made your DSH look even a little nicer, a ⭐ on the repo is the most direct way to say thanks!",
   "⭐ 去 GitHub 点亮 Star": "⭐ Star it on GitHub",
   "在浏览器里打开项目仓库": "Open the project repository in your browser",
+  // 「重新查看本版更新公告」（关于页「开源与支持」节那枚按钮）：公告是等版本弹一次的
+  // 展示面，看过就调不出来 —— 这条给用户一条重看路径（也顺带能再看到配图下的求星入口）。
+  "重新查看本版更新公告": "Show this version's update notice again",
+  "再弹一次本版更新公告（含配图下方的求星入口）": "Show this version's update notice once more (it carries the star entry under the art)",
   "⭐ 正在获取 star 数…": "⭐ Fetching star count…",
   "⭐ 当前 {count} star": "⭐ {count} stars right now",
   "⭐ 暂时取不到 star 数": "⭐ Star count unavailable right now",
@@ -173,16 +177,19 @@ const WE_I18N_EN_EXT = {
   "正在应用…": "Applying…",
   "采用「作者自用」": "Apply “Author's preset”",
   "保持我的设置": "Keep my settings",
-  // ── 更新公告（2026-10-15 换血：头像导入大升级 / 修复一批 / 点星按钮 / Linux 省电）──
+  // ── 更新公告（当前一版公告的标题 / 配图 caption / 四条正文 / 按钮）──
   "🎉 更新：头像导入大升级 · 一组修复 · 一键点星": "🎉 Update: avatar import overhaul · a batch of fixes · one-tap star",
   "新朋友「星来」登场": "The blue-haired maid mascot says hi",
-  "在设置中的壁纸引擎页面中的关于中可一键直达，谢谢喵！": "One click away under Settings → Wallpaper Engine → About — thank you, meow!",
+  // 公告配图下那行（求星入口）的文案与关于页那枚 Star 按钮**同一句** ⇒ 复用其既有词条
+  //（上面 "⭐ 去 GitHub 点亮 Star"，151 行那份），此处**不得**再登记一份：
+  // 同键重复会被 test/verify-i18n.mjs 的「词表内无重复键」判红（同名键在对象字面量里静默去重，
+  // 后写的那份会被吃掉）。
   "头像导入大升级！": "Avatar imports leveled up!",
   "现支持 SVG / GIF 等更多格式，超大图可自动压缩，上传前还能先裁切 —— 都在「扩展」分页。": "SVG / GIF and more formats are supported, oversized images can be auto-compressed, and you can crop before uploading — all under the Extensions tab.",
   "修复一批": "A batch of fixes",
   "：多窗口实时渲染不再互相踢掉；网页壁纸音频可视化恢复跳动；设置图标对齐、思考块行内代码与下拉弹层显示恢复正常。": ": live scene wallpapers in multiple windows no longer kick each other off; web-wallpaper audio visuals react to music again; settings icons, inline code in thinking blocks and dropdown popups render correctly again.",
-  "新增「点个星喵⭐」按钮": "A new “Star us, meow” button",
-  "：侧栏壁纸卡片一键直达仓库，欢迎来点颗星！": ": one tap from the sidebar wallpaper card straight to the repo — go leave a star!",
+  "求星入口搬到这条公告里": "The star entry moved into this notice",
+  "：上面的配图下方就能一键直达仓库，欢迎来点颗星！": ": the line under the art above goes straight to the repo — go leave a star!",
   "Linux 用户更省电": "Linux users save more battery",
   "：窗口被遮挡时自动降帧，完全遮挡时暂停渲染。": ": a covered window drops frames, a fully covered one pauses rendering.",
   "升级后建议重启一次 DSH，改动才完整生效；本提示每个新版本只出现一次，点下方按钮关闭后不再弹出。": "Restart DSH once after upgrading so changes fully apply; this notice shows once per version — dismiss it and it won't come back.",
