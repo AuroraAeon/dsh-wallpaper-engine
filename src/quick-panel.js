@@ -372,12 +372,9 @@
         sel.videoError && React.createElement("div", { className: "we-picker__current-error" }, sel.videoError),
       ),
       React.createElement("div", { className: "we-qp__current-actions" },
-        // ⚠️ **不变量：这一行只放日常操作**（暂停 / 播放 · 刷新 · 清除）。求星不是日常动作，
-        // 不放这里 —— 侧栏已另有不影响观感的求星入口：上方装饰绳拉出的仓库抽屉，以及「关于」
-        // 页常驻的「⭐ 去 GitHub 点亮 Star」+ 实时 star 数 + 裸地址兜底。求星的**时点**由更新
-        // 公告承担（公告配图下那行是真跳转，见 src/client.js 的 UpdateNotice）。
-        // 判据：test/verify-scene-live.mjs 的「侧栏控制行」一节（钉的是本行的折行/对齐与
-        // 全局主按钮款式，不钉按钮个数 —— 个数由 e2e 的 scope 计数判据管）。
+        // ⚠️ **不变量：这一行只放日常操作**（暂停 / 播放 · 刷新 · 清除；场景与网页壁纸再加
+        // 「壁纸属性」）。求星之类不是日常动作，不放这里 —— 求星入口在「关于」页常驻
+        //（Star 按钮 + 重看公告按钮）与更新公告配图下那行，都不占这一行。
         React.createElement("button", {
           className: "we-picker__btn", type: "button",
           onClick: onTogglePlay, disabled: !sel.url,

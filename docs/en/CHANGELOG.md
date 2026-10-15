@@ -9,9 +9,14 @@
 > **Version numbers, issue numbers and performance figures live here**, not on the front page
 > (`README.md` / `README.en.md` keep only version-independent highlights).
 >
-> **Current released version: `v1.3.0`** (published on npm and GitHub Release, 2026-10-06); the next version is in development (`package.json`'s `version`).
+> **Current released version: `v1.3.2`**; the next version `v1.3.3` is in development (`package.json`'s `version`).
 >
 > Counts such as `test/verify-scene-live.mjs` `(466)` record the **total at the moment that entry was written**, not the current total (later entries push it up — it is 502 now); they are kept verbatim so each entry still matches its own commit.
+
+### v1.3.3 (unreleased)
+
+- **One more notice line + version bump (this repo's iteration, per the user's wording)**: the update notice gains a fifth **bold** callout after the four existing ones — **"Enable dark mode + the "Author's preset" in Settings — one of this plugin's best looks!"** (same 16pt callout style, `<strong>` bold and the ❗ prefix as the other four); `package.json` `version` `1.3.2` → `1.3.3`, with the `NOTICE_VERSION` sentinel synced to `1.3.3` (machines that saw the 1.3.2 notice get it once more). The English word list gains one entry (`src/i18n-copy-ext.js`). **Client-side change ⇒ just refresh the page.**
+- **Revert the "Star us, meow" sidebar star-link button (this repo's iteration, per the user's wording)**: the repo star-plea button added to the quick panel's wallpaper-card playback row in the v1.3.2 batch (`src/quick-panel.js`) is removed; the star plea stays on the Settings → Wallpaper Engine → About page. The update notice is reworked to match: callout ③ "A new 'Star us, meow' button" is dropped entirely, ④⑤ renumber to ③④, and the title's "one-tap star" wording becomes "power saving & look tip"; the matching English word-list entries and the guard pin criteria (the two star-link checks in `test/verify-scene-live.mjs`) are removed too.
 
 ### v1.3.2 (unreleased)
 

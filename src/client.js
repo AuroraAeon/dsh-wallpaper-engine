@@ -4894,16 +4894,15 @@ function RopeDock() {
 //      each other off; web-wallpaper audio reactivity under the strict sandbox;
 //      inline code in thinking blocks, native dropdown popups and the preset
 //      dialog display correctly again,
-//   ③ a one-tap star entry carried by this very notice — the caption under the
-//      art is a link straight to the repo. It is the only star prompt outside the
-//      About tab, and it stays dismissible with the rest of the notice (no
-//      permanent button is added to any always-visible surface),
-//   ④ Linux X11 occlusion power saving — a covered window drops frames, a fully
-//      covered one pauses (more battery left).
+//   ③ Linux X11 occlusion power saving — a covered window drops frames, a fully
+//      covered one pauses (more battery left),
+//   ④ a bold tip: enabling dark mode + the「作者自用」preset is one of the
+//      plugin's best looks.
 // The notice art (GitHub star plea, shipped as lib/about/update-notice.jpg and
 // served by the /about-qr whitelist route — same family as the contact QRs,
 // NOT inlined: see src/about-assets.js) sits at the top with a caption
-// pointing at 设置 → 壁纸引擎 → 关于. The dismissal version is stored WITH the
+// that links straight to the repo — this is the star entry the notice carries.
+// The dismissal version is stored WITH the
 // settings (host file, port-independent) so it survives DSH Desktop's random
 // --port restarts and never re-shows after being closed. Bump NOTICE_VERSION
 // next release to announce something new again (swap the art bytes in
@@ -4914,7 +4913,8 @@ function RopeDock() {
 // 的 /about-qr 白名单还没有 update-notice.jpg ⇒ 图 404。若照旧立刻弹窗，用户看到
 // 裂图，而「知道了」一关整版公告永久退场，配图等于永远没人看到。
 // ⚠️ 公告正文与配图是**随版本换血**的：改内容就要升哨兵（否则看过旧版的用户永远看不到
-// 新说明，改了等于没改 ⇒ 重弹一次是设计意图）。哨兵当前值决定这一版公告讲的是哪一批改动。
+// 新说明，改了等于没改 ⇒ 重弹一次是设计意图）。配图下方那行是**求星跳转** —— 与正文四条
+// 各管一件事，同守 `art === "ready"` 的门控。
 const NOTICE_VERSION = "1.3.3";
 // 配图就绪探针的节奏：HEAD 轮询到新白名单在场（= 后端已重启）才弹；旧后端一直
 // 不在场超过 WAIT 则降级为**无图**弹出（文案信息完整；求星入口另有「关于」页那枚常驻按钮
@@ -5045,7 +5045,7 @@ function UpdateNotice() {
   };
   if (!show) return null;
   return React.createElement("div", { className: "we-update-notice", role: "alert" },
-    React.createElement("div", { className: "we-update-notice__title" }, weT("🎉 更新：头像导入大升级 · 一组修复 · 一键点星")),
+    React.createElement("div", { className: "we-update-notice__title" }, weT("🎉 更新：头像导入大升级 · 一组修复 · 省电与外观提示")),
     // 只有 ready 才渲染配图与说明行（timeout 降级态无图弹出，正文信息自足）。
     // 图下那行是**求星入口**（见下面的说明），所以它随配图同一条门控：无图降级态没有它，
     // 但求星入口另有「关于」页那枚常驻按钮兜住，不是唯一命脉。
@@ -5085,11 +5085,10 @@ function UpdateNotice() {
         "② ", noticeEx(2), React.createElement("strong", null, weT("修复一批")),
         weT("：多窗口实时渲染不再互相踢掉；网页壁纸音频可视化恢复跳动；设置图标对齐、思考块行内代码与下拉弹层显示恢复正常。")),
       React.createElement("p", { className: "we-update-notice__callout" },
-        "③ ", noticeEx(2), React.createElement("strong", null, weT("求星入口搬到这条公告里")),
-        weT("：上面的配图下方就能一键直达仓库，欢迎来点颗星！")),
-      React.createElement("p", { className: "we-update-notice__callout" },
-        "④ ", noticeEx(2), React.createElement("strong", null, weT("Linux 用户更省电")),
+        "③ ", noticeEx(2), React.createElement("strong", null, weT("Linux 用户更省电")),
         weT("：窗口被遮挡时自动降帧，完全遮挡时暂停渲染。")),
+      React.createElement("p", { className: "we-update-notice__callout" },
+        "④ ", noticeEx(2), React.createElement("strong", null, weT("在设置中启用深色模式 + 「作者自用」预设，为本插件最佳效果之一！"))),
       React.createElement("p", { className: "we-update-notice__hint" },
         weT("升级后建议重启一次 DSH，改动才完整生效；本提示每个新版本只出现一次，点下方按钮关闭后不再弹出。")),
     ),

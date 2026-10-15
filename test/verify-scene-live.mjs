@@ -2577,7 +2577,7 @@ check('「壁纸属性」按钮：仅场景/网页壁纸 + 常规按钮样式（
     && tabsSrc.indexOf('weT("壁纸属性")') !== -1
     && tabsSrc.indexOf('weT("壁纸属性")') < tabsSrc.indexOf('weT("暂停")'));
 // 「侧栏播放控制行」这一节钉两件事：全局主按钮款式不被二次覆盖、窄容器下控制行不溢出。
-// 两件都只看**当前形态**，不涉及某枚具体按钮（本行今天就是暂停/刷新/清除三枚）。
+// 两件都只看**当前形态**，不涉及某枚具体按钮。
 {
   // 全局 primary 款式仍是"实心底 + 墨随 accent"（styles-ext.js 那条未限定作用域的覆盖
   // 是历史上真实发生过的隐形 bug —— 这里正面钉住 panel 段那条主规则还在、且 styles-ext
@@ -2588,8 +2588,9 @@ check('「壁纸属性」按钮：仅场景/网页壁纸 + 常规按钮样式（
       && !/^\s*\.we-picker__btn--primary\s*\{/m.test(extStyleSrc),
     'ext 覆盖规则数=' + (extStyleSrc.match(/^\s*\.we-picker__btn--primary\s*\{/m) || []).length
       + ' extStyleSrc.length=' + extStyleSrc.length);
-  // 窄容器不溢出：官方右栏最窄 276px，控制行那几枚按钮加上圆盘与间距已接近满宽 ⇒ 控制行必须
-  // 允许整组折行、按钮组带 margin-left: auto（折行时靠右）。判据钉两个声明在**同一条规则**上。
+  // 窄容器不溢出：播放控制行多枚按钮（暂停/刷新/清除，外加场景壁纸的「壁纸属性」），
+  // 官方右栏最窄 276px 时可能放不下 ⇒ 控制行必须允许整组折行、按钮组带
+  // margin-left: auto（折行时靠右）。判据钉两个声明在**同一条规则**上。
   const curRowRule = stylesSrc.match(/\.we-qp__current\s*\{[^}]*\}/);
   const actsRule = stylesSrc.match(/\.we-qp__current-actions\s*\{[^}]*\}/);
   check('窄容器防溢出：控制行 flex-wrap + 按钮组 margin-left: auto（折行右对齐）',
