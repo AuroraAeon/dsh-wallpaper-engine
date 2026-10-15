@@ -1,11 +1,14 @@
 # 插件包重构手册 —— 多包拆分（主包 + 核心子插件 + 边缘子插件）
 
 > **哈希说明（这条线被重写过两次，旧哈希多半已不在现行 `main` 上）**：本文件里的短哈希是**当时那条线上的**历史哈希。
-> 现行线 = 单笔 squash `6385b62e`（父 = 上游 merge `a86923b7`），本地工作树即该提交。
+> **现行线 = `main` @ `31b06847`**：拆包那笔 squash `6385b62e`（父 = 上游 merge `a86923b7`）只是它的**祖先**，
+> 其后还有追版本与多次上游 merge 若干笔 ⇒ **文中把 `6385b62e` 当"现行尖端"读的地方，一律以此行为准**
+> （该哈希现在只用于指 §13.1 那次审查的对象）。本文件自身在本机工作树里可能另有未提交改动。
 > 追版本第二期那一笔（108 笔压缩，父 = `c43a936`）以 tag `catchup-2nd` 标注，但**该 tag 只被
 > `backup/main-pre-rebase-20261014` 包含，不是 `main` 的祖先**；`backup/pre-squash-20261014` 亦然。
 > ⇒ **复核本文件的旧哈希前先切到对应备份分支**，不要在 `main` 上找。
-> 复算：`git rev-parse --short HEAD catchup-2nd` · `git branch -a --contains catchup-2nd` ·
+> 复算：`git rev-parse --short HEAD` · `git log --oneline -1` · `git rev-list --count 6385b62e..HEAD` ·
+> `git status --porcelain` · `git branch -a --contains catchup-2nd` ·
 > `git merge-base --is-ancestor catchup-2nd HEAD`（预期非 0）。
 
 
@@ -285,7 +288,7 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 
 ---
 
-## 6. 需要产品/架构拍板的四个问题（**2026-10-14 复核：两条已定案，两条按阶段前置**）
+## 6. 需要产品/架构拍板的问题（**2026-10-15 复核：已定案 §6.2 / §6.5；仍按阶段前置 §6.1 / §6.3 / §6.4**）
 
 | 问题 | 状态 | 决策 / 期限 |
 |---|---|---|
@@ -337,6 +340,13 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 | **B 明确连坐** | 关主包 = 关整族；界面必须**说清"整族已停用、重开主包恢复"**，`components.failed` 与"未启用"在 UI 上可区分（`D3③` 已经要求这条） | 用户多一步操作；但零新机制、语义诚实 |
 
 > 无论选哪个，**都不能"什么都不做"**：现状是"用户看到 failed，profile 却已改" —— 这正是 `D3③` 的"失败必须可见"要防的形态。
+
+> **2026-10-15 表态（用户口径）：走 B 明确连坐。** 理由：拆分后**大量组件在机制上就依赖主包**
+> （配置模板逻辑、`applyComponent` 门面、§5.1 ② 定下的"子包 import 主包叶子模块"这条 value import 边），
+> 所以"主包被关掉"与"整包被关掉"**行为一致**，A 的"不连坐"没有可实现的物理基础。
+> **待细化（P-A 落 §7.6 开关往返判据之前必须定，仍算开口）**：主包行 inactive 时，由它的 patch 插入的
+> 子包行要不要**一并撤走**（不清掉就会出现"主包已关、子包路由还在"的半死状态）；以及"整族已停用"这句
+> 提示由谁渲染 —— 都在 `U5`（`reconcileProfilePatches` 抛错 + 记 `application:'failed'` + 不回滚 YAML）那条路径上。
 
 ---
 
@@ -432,16 +442,40 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 > **注意**：`workspace:` / `bundledDependencies` / monorepo 的**安装语义不被 DSH 支持**（I3），
 > 但"同仓多包 + 各自发布"在 npm 层是可行的 —— 我们要的只是**同仓开发**，不是 workspace 协议。
 >
-> ⚠️ **开发期解析：未验证，P-A 开工前必须做一次 spike**。本机两个 profile 都按
-> `link:D:/dsh-wallpaper-engine/` 安装（复算：`$DSH_HOME/profiles/<p>/package.json` 的 `dependencies`），
-> 而 **`link:` 不会把被 link 包的 `dependencies` 装进 profile** —— 实测 profile 顶层有 `js-yaml` / `undici`，
-> 但**没有** `webwallgl` / `x11`（它们只在本仓自己的 `node_modules` 里）。
-> 行名走 loader：**裸包名 → `internal.import(name, bareModuleBaseUrl)`**（installed-host base），
-> **只有相对名（`./…`）才 "resolve beside the configuration file"**。
-> ⇒ **发布路径**（用户 `pnpm add` 主包、子包作为传递依赖被 hoist 到 profile 顶层）成立；
-> **开发路径**下 §8.3 那个**裸真名**能不能解析到子包，必须先 spike 证伪或改口径
-> （备选：开发期行名写相对 patch 的 `./packages/<pkg>/lib/index.js` —— I4 明列支持相对名）。
-> **在 spike 出结论之前，不要把 P-A 的"三行都在场"当成已成立。**
+> ✅ **开发期解析 spike：2026-10-15 完成，结论已落**（原"未验证"闸门解除）。取证 = 直读
+> `D:/DeepSeek Harness/resources/app.asar`（DSH 0.2.0-rc.2）+ 真 profile 目录上的解析探针 + 合成 profile 实证。
+>
+> 1. **`bareModuleBaseUrl` 在本版 DSH 里没有任何调用点传它**。全 asar 里该标识符只出现在
+>    `@deepseek-ai/dsh-app-boot/lib/index.js`；`loader.builtins.include` 也只有这一处赋值；而**唯一**
+>    import `boot` 的调用点是 `@deepseek-ai/dsh/lib/profile-boot`（desktop 与 web 都经 `runProfile` 走这里），
+>    其调用是 `boot(NAME, rootConfig, readProfilePatches(…), async (hostCtx) => {…})` —— **4 个实参，
+>    第 5 个 `bareModuleBaseUrl` 恒为 `undefined`** ⇒ 恒走 `Include` 分支，`HostResolvedRootInclude` 从不构造。
+>    下文原话"裸包名 → `internal.import(name, bareModuleBaseUrl)`（installed-host base）"描述的是**那段分支的代码**，
+>    但本版没有任何路径进入它 ⇒ **该参数是死参数**（`bareModuleBaseUrl` 的注释也写明"for closed packaged runtimes"）。
+> 2. 因此**行名一律从 `<profile>/cordis.yml` 所在目录起算**（`rootConfig = join(profile.dir, 'cordis.yml')`；
+>    `prepareProfilePatches(…, parentURL = dirname(absoluteConfigPath) + '/')`）—— **裸名与 `./…` 相对名同底**：
+>    裸名 → `<profile>/node_modules/<name>`；相对名 → `<profile>/<相对路径>`。
+> 3. **真机解析探针**（`createRequire('<profile>/cordis.yml')`，web profile）：
+>    `dsh-plugin-wallpaper-engine` → `D:\dsh-wallpaper-engine\lib\index.js` ✓；
+>    `dsh-plugin-wallpaper-engine/about-notice` ✓（**这就是现有 4 行今天真能工作的机制**）；
+>    `dsh-plugin-wallpaper-engine-fx` → **MODULE_NOT_FOUND** ✗；
+>    `dsh-plugin-wallpaper-engine/packages/fx/lib/index.js` → **ERR_PACKAGE_PATH_NOT_EXPORTED** ✗
+>    （`exports` 是**封闭映射** ⇒ 经包名的深层路径一律走不通）；
+>    `./packages/fx/lib/index.js` → 落到 `<profile>/packages/…`，**不存在** ✗。⇒ **原文那条备选口径（以及 §8.3 里
+>    照抄它的注释）是错的，作废**。
+> 4. **"`link:` 不装 dependencies"已由上游自己记账**：`<profile>/node_modules/.package-map.json` 里
+>    `"link:D:/dsh-wallpaper-engine": {"url":"file:///D:/dsh-wallpaper-engine","dependencies":{}}`
+>    —— **空依赖表**。⇒ 开发期 profile 的 `node_modules` **永远不会**自己出现子包真名。
+> 5. **结论 / 开发期口径：行名不改（裸真名），改用开发期 junction**。在 `<profile>/node_modules/` 下为每个
+>    子包建目录 junction：`dsh-plugin-wallpaper-engine-<pkg>` → `D:/dsh-wallpaper-engine/packages/<pkg>`，
+>    与发布后 npm/pnpm 的 hoist 布局**同形** ⇒ **同一份 `cordis.patch.yml`（裸真名）开发期与发布期都成立**，
+>    不需要"开发期行名 ↔ 发布期行名"两套。已实证：junction + `createRequire('<profile>/cordis.yml')` +
+>    真 ESM `import()` 全通（脚本 `.integration-notes/scratch/spike-junction.mjs`）。
+>    **备选（不推荐）**：开发期行名写 `./node_modules/dsh-plugin-wallpaper-engine/packages/<pkg>/lib/index.js`
+>    —— 相对名确实绕开 `exports` 且经符号链接能到仓库，但**发布期该路径不存在**，会把 patch 劈成两套。
+>    **代价照付**：junction 不在 profile 的 `.modules.yaml` / `.package-map.json` 里 ⇒ profile 侧
+>    `pnpm install` 之后要重建（写成一条可重跑的脚本，别手点）。
+> ⇒ **P-A 的"三行都在场"现在可以当成已成立**（前提：先按第 5 条建 junction）。
 
 ### 8.2 每个子包的清单（照抄用）
 
@@ -468,8 +502,9 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
     # 既有组件行：id 与 name 一个字都不改（§3）
     - id: wallpaper-engine-about-notice
       name: 'dsh-plugin-wallpaper-engine/about-notice'
-    # 新子包：行名 = 真实包名（**发布形态**；开发期若 profile 是 `link:` 安装，
-    # 见 §8.1 的待验项 —— 可能要用相对 patch 的 `./packages/<pkg>/lib/index.js`）
+    # 新子包：行名 = 真实包名，**开发期与发布期同一份**（§8.1 spike 结论：本版 DSH 不传
+    # bareModuleBaseUrl ⇒ 行名一律从 <profile>/cordis.yml 旁起算；开发期靠 §8.1 第 5 条的
+    # junction 让这个名字出现在 profile/node_modules 里，不要改行名）
     - id: wallpaper-engine-fonts
       name: 'dsh-plugin-wallpaper-engine-fonts'
     - id: wallpaper-engine-fx
@@ -622,7 +657,7 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 
 ---
 
-## 14. 待决策清单（**2026-10-14 复核：开工闸门项已定案，其余标了阶段前置**）
+## 14. 待决策清单（**2026-10-15 复核：开工闸门项与 `D-13` 已定案；其余标了阶段前置**）
 
 | # | 决策 | 状态 |
 |---|---|---|
@@ -638,7 +673,7 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 | D-10 | 目录布局 | **定案（2026-10-14）：同仓 `packages/<pkg>/`**（§8.1；不用 workspace 协议） |
 | D-11 | 从哪个子包开始 | **建议三个小包试点**（§7.1） |
 | D-12 | **开关档位 / 重启边界**（"不用重启"的射程） | **已定案（本轮细化）**：开关只承诺**能力**（同行切换宿主半边 + 浏览器可见面，§1.1 边界 1、§11）；**代码 / 版本 / 清单 / 增删行一律重启**（`U3` / `R3` / `I8`，§1.1 边界 2）。判据 = §7.6 第 4 条 |
-| D-13 | **主包被关掉时的用户可见语义**（§6.5） | **阶段前置：P-A 之前必须表态**（与 §7.1 同批）。二选一：**A 不连坐**（适配 `U5` 的 failed 路径）或 **B 明确连坐**（UI 说清"整族已停用、重开主包恢复"，`components.failed` 与"未启用"可区分）。**不允许什么都不做**（现状是"用户看到 failed，profile 却已改"） |
+| D-13 | **主包被关掉时的用户可见语义**（§6.5） | ✅ **已定案（2026-10-15，用户口径）：B 明确连坐** —— 主包被关掉 = 整包被关掉，理由是大批组件在机制上依赖主包（配置模板逻辑 / `applyComponent` 门面 / §5.1 ② 的子包→主包 value import），见 §6.5 的表态块。**残余开口**：子包行是否随主包行一并撤走、"整族已停用"提示的渲染点 —— 属实现细节，卡 §7.6 开关往返判据，不再卡阶段开工 |
 
 ---
 
