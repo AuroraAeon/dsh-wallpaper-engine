@@ -229,12 +229,12 @@ schema tag 升版后，**旧 tag 的预设文件一律读不出**：宿主按「
 
 **D7 — 新增导入 / 导出，形态照抄字体集族（不另造一套）。**
 - **导出**：`GET /glass-presets/<id>/export`，`Content-Disposition: attachment`，
-  正文由**读到的值重建**（不照抄磁盘字节）—— 与 `lib/routes/fontsets.js` 的
+  正文由**读到的值重建**（不照抄磁盘字节）—— 与 `packages/fonts/lib/routes/fontsets.js` 的
   `<id>/export` 逐条同形。走**普通链接**，不引入 blob / `showSaveFilePicker`
   （本仓既有纪律，见 `src/preset-store.js` 的形态棘轮）。
 - **导入**：`POST /glass-presets/import`，本地预检三道（读不出 / 非 JSON / tag 不对各给
   一句可判定文案）后交宿主权威校验，再按占用情况分配新 id —— 照抄
-  `src/fontset-store.js` 的 `importFontSet` 与 `lib/routes/fontsets.js` 的 `import` 段。
+  `src/fontset-store.js` 的 `importFontSet` 与 `packages/fonts/lib/routes/fontsets.js` 的 `import` 段。
 - **导出对话框**：点「导出」先弹资产勾选对话框（D4 的三项 + 后果说明），确认后才发起下载。
 - ⚠️ **与 `lib/routes/presets.js` 文件头「没有 import/export」那条既有决策的关系**：
   该段原文要求「导出/导入若要做，应当连着『分享到市场』一起设计」。本 ADR **推翻它的

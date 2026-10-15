@@ -84,6 +84,7 @@
 |---|---|
 | [CODE-STRUCTURE.md](./CODE-STRUCTURE.md) | **代码结构与边界** —— 两份文档合并而成（原 `MODULE-LAYOUT.md` ⊕ `ARCHITECTURE.md`）：`lib/` 与 `src/` 的分工规范、目录约定与准入门槛、两个半边与路由族、构建期内联、启停生命周期、数据流、**状态真源清单**、层间边界表、在册守卫 |
 | [ARCHITECTURE-SPLIT.md](./ARCHITECTURE-SPLIT.md) | **本分支的宿主半边形态：门面重写记录** —— "主包 + 组件行 + 内核化"三层各自是什么、门面现在只剩什么、能力分别搬去哪（组件目录 / 内核 / 叶子模块）、与上游单包形态的差异与迁移路径、组件行归属与开关的判据在哪 |
+| [SUBPACKAGE-GRAPH.md](./SUBPACKAGE-GRAPH.md) | **子包依赖图（人工维护快照，无判据）** —— 行树（组件行 vs 独立子包行）、**两张平面**的 Mermaid 图、允许/禁止边表、登记点矩阵（每个包 × 每个登记点）；规范条款在 [`adr/0014`](./adr/0014-subpackage-contract.md)，本文只画现状，文头给复算命令 |
 | [DEV-GUIDE.md](./DEV-GUIDE.md) | **二次开发指南** —— "怎么加一个 X"的配方（加路由 / 加设置项 / 加浏览器端代码）；**§4 是验证与测试**（原 `TEST-LAYOUT.md` 并入）：三层结构、两档判据、运行矩阵、覆盖范围、`test/tools/` 清单、写判据的八条约定 |
 | [FONT-SYSTEM.md](./FONT-SYSTEM.md) | 字体系统的通道分工、不变量、扩展步骤、进浏览器包的约束 |
 | [DSH-UI-INTERFACES.md](./DSH-UI-INTERFACES.md) | **我们去依赖了 DSH 的哪些 UI 接口** —— 按"客户端产物 / node 宿主 / 桌面壳 / 第三方插件"四层记账：哪些是宿主刻意提供的稳定契约（设计令牌、源码作者写的数据属性）、哪些是构建哈希或第三方私有类名、哪些**与预想不同**（宿主有正式的槽系统而我们钉渲染后的 DOM；`data-dsh-desktop-mode` 其实是桌面壳的 URL 参数）。含**复算方法**（asar 直读 + 偏移→包索引），升级前照它重跑 |
@@ -121,6 +122,7 @@
 | [0011](./adr/0011-preset-full-snapshot.md) | 预设从**玻璃子集快照**升为**整机配置快照**（键集由 `KINDS` 派生、资产按需携带、旧预设作废、新增导入导出） |
 | [0012](./adr/0012-artifact-untracking.md) | 构建产物出库（`lib/client.js` 不入库，改由 build / prepack 现场构建）＋ README 展示图迁至 Release 资产外链；修订 ADR-0003 的 D6 |
 | [0013](./adr/0013-bundle-multi-component-rows.md) | **插件拆分（现行唯一版本）**：终态 = **多包**（主包 + 子包，版本一致；D6/D8 于 2026-10-14 就地改写），单包多行是**起点**；核心目标 = **降复杂度 / 锚定模块边界 / 解耦合**三件并列；**行级开关 = 宿主路由 ＋ 该组件的浏览器可见面**（可见面由宿主行状态派生、双向对账、"宁可显示不可静默消失"）；**不做**每组件一格客户端开关 / 包内懒块。**旧 0012–0016（该决定的旧编号）已归档**到 [`archive/adr/`](./archive/adr/)；本决定**重编号 0012 → 0013**（让位给上游的 `0012-artifact-untracking`） |
+| [0014](./adr/0014-subpackage-contract.md) | **子包规范**：`packages/<pkg>` 独立子包行的成文契约（条款号 `S*`）—— 术语（独立子包行 vs 组件行、宿主/浏览器半边）、布局、清单契约、行与接线、**依赖方向（两张平面 + 禁止边）**、生命周期、开关与重启、发布形态、登记点；判据只加在**代码与磁盘**，**不新增任何 markdown 判据**；依赖图是人工维护的 Mermaid（[`SUBPACKAGE-GRAPH.md`](./SUBPACKAGE-GRAPH.md)） |
 
 ## 已归档（`archive/`，只作记录）
 
@@ -155,7 +157,7 @@
 | [audits/F0-THEME-SERVICE-CHECKLIST.md](./archive/audits/F0-THEME-SERVICE-CHECKLIST.md) | F0 真机确认（已关闭）—— 结论（`V1–V10` 约束）在账本 §9.1；原始证据在本地未跟踪目录 |
 | [audits/P3-11-PLAN.md](./archive/audits/P3-11-PLAN.md) | `WallpaperPicker` 拆分的过程记录（**已完成**：模型 / 模态框 / 属性面板三块都搬走）—— 开工前的事实核对、先决断言清单与收口时的牙齿证明；结论在账本的 `P3-11` 行，判据在守卫本身 |
 | [audits/LOGGING-PLAN.md](./archive/audits/LOGGING-PLAN.md) | 日志分级与提示通道的过程记录（**已完成**：G0 + P1–P5）—— 三档 `error` / `warn` / `info`（默认 `warn`）+ 一条独立的成功提示通道。**机制与不变量已留在 `lib/log.js` / `lib/notice.js` / `lib/routes/diag.js` 的文件头**，判据在 `test/verify-logging.mjs` |
-| [audits/F3-PLAN.md](./archive/audits/F3-PLAN.md) | 字体集文件化的过程记录（**已完成**：阶段 0–4）—— 随包预设 · 两层存储 · 人工切换 · 导入导出。**机制与不变量已留在 `lib/routes/fontsets.js` / `src/fontset-store.js` / `src/fontset-editor.js` / `lib/settings-schema.js` 的文件头**，判据在 `test/verify-fontset.mjs` + `test/fontset-load-smoke.mjs` |
+| [audits/F3-PLAN.md](./archive/audits/F3-PLAN.md) | 字体集文件化的过程记录（**已完成**：阶段 0–4）—— 随包预设 · 两层存储 · 人工切换 · 导入导出。**机制与不变量已留在 `packages/fonts/lib/routes/fontsets.js` / `src/fontset-store.js` / `src/fontset-editor.js` / `lib/settings-schema.js` 的文件头**，判据在 `test/verify-fontset.mjs` + `test/fontset-load-smoke.mjs` |
 | [audits/TEST-ANTIPATTERN-AUDIT.md](./archive/audits/TEST-ANTIPATTERN-AUDIT.md) | **测试框架的反模式审计（逐条现状）** —— `test/` 的 72 个 `.mjs`（顶层 57 + `test/tools/` 15）与 2 份夹具按 A1–A4（面向结果编程）/ B1–B4（无意义测试）/ C1–C6（自欺欺人）三族口径逐条过了一遍：每条守什么、**牙齿**（`yes` / `no` / `partial`，即"产品真按它声称守护的方式回归时它会不会红"）如何、现址 `file:line` 在哪。**106 处发现已全部定案**（R 47 / H 33 / D 20 / 不改·声明 5 / 取消 2），未决 0 |
 | [audits/TEST-ANTIPATTERN-FIX-PLAN.md](./archive/audits/TEST-ANTIPATTERN-FIX-PLAN.md) | 同一轮审计的**遗留与风险清单**（收口后重写为"现在还有什么问题"）—— 只剩仍未解决或本机证明不了的项（F4/F5 两个手动工具、harness 与 e2e 的覆盖空洞、M16 只剩正判据、设置夹具是漂移棘轮、`%TEMP%` 里删不掉的探针）+ 需要决定的事 + 复核命令。逐条现状在审计报告里，不在这里重复 |
 | [wip/](./archive/wip/) 的**第二期收口批** | **追版本第二期（追链 / 文档注释同步 / 测试锚定）的过程记录整体归档**：`TEST-ANCHORING.md`（task-8 判据锚定）· `TEST-CREDIBILITY-AUDIT.md`（对抗性审计 + 修复落地账）· `UNWIRED-MODULES.md`（task-9 孤儿盘点）· `DOC-DRIFT-REPORT.md` + `DOC-ROT-REPORT-2.md` + `DOC-ROT-REPORT-3.md`（三轮文档 / 注释腐化复核）· `COMPONENT-TOGGLE-REPORT.md`（P2-11 开关语义实测取证）· `ISSUE-190-FX-PERF-DESIGN.md`（#190 光效层治理）· `ISSUE-AUDIT-148PLUS.md`（issue ≥148 核查；**残留 6 条未做项写在它的归档横幅里**）。各件的结论已分头落位：机制 → 实现文件头注释、判据 → `test/`、取舍 → [`adr/`](./adr/README.md) |

@@ -180,6 +180,133 @@ check('负对照：合成 apply 体（无自检调用）⇒ 接线判据判红',
   !(synthBody !== null && /assertSubpackagesResolvable\s*\(/.test(synthBody)),
   '合成体=' + JSON.stringify(synthBody));
 
+// ── ④ 服务面真接线（§5.1 ①）：apply() 的**第一件事**必须是 provide ────────────────
+// 只查"调了没有"不够：顺序错（自检在前、服务在后）时子包 fiber 已经因缺服务 park，
+// 服务的撤销语义也就没人验。所以同时钉住"先 provide，再启动自检"。
+const facadeProvideRe = /provideSubpackageHost\s*\(\s*ctx\s*\)/;
+const facadeAssertRe = /assertSubpackagesResolvable\s*\(/;
+const facadeProvideImported = /import\s*\{[^}]*\bprovideSubpackageHost\b[^}]*\}\s*from\s*['"]\.\/subpackage-boot\.js['"]/.test(stripComments(facadeSrc));
+check('lib/index.js 的 apply 体里调用了 provideSubpackageHost(ctx)（服务面真接线，import 自 ./subpackage-boot.js）',
+  facadeBody !== null && facadeProvideRe.test(facadeBody) && facadeProvideImported,
+  facadeBody === null ? '定位不到 apply 体' : ('apply 体里没有 provideSubpackageHost(ctx)=' + !facadeProvideRe.test(facadeBody) + ' / 没有从 ./subpackage-boot.js 具名引入=' + !facadeProvideImported));
+const provideAt = facadeBody === null ? -1 : facadeBody.search(facadeProvideRe);
+const assertAt = facadeBody === null ? -1 : facadeBody.search(facadeAssertRe);
+check('服务面是主包 apply() 的**第一步**（provide 在子包启动自检之前）',
+  provideAt >= 0 && assertAt >= 0 && provideAt < assertAt,
+  'provide@' + provideAt + ' · assertSubpackagesResolvable@' + assertAt);
+const synthFacade2 = 'export function apply(ctx) { assertSubpackagesResolvable([], () => null); return () => {}; }\n';
+const synthBody2 = functionBodyOf(stripComments(synthFacade2), APPLY_HEADER);
+check('负对照：合成 apply 体（没有 provideSubpackageHost(ctx)）⇒ 服务面接线判据判红',
+  !(synthBody2 !== null && facadeProvideRe.test(synthBody2)), '合成体=' + JSON.stringify(synthBody2));
+const synthBody3 = functionBodyOf(stripComments('export function apply(ctx) { assertSubpackagesResolvable([], () => null); provideSubpackageHost(ctx); }\n'), APPLY_HEADER);
+check('负对照：合成 apply 体（自检在前、provide 在后 = 顺序错）⇒ 第一步判据判红',
+  synthBody3 !== null && !(synthBody3.search(facadeProvideRe) < synthBody3.search(facadeAssertRe)),
+  '合成体=' + JSON.stringify(synthBody3));
+
+
+// ── ④b 跨包服务面契约（§5.1 ①；纯函数，真模块 / 合成体 / 真源码变异体同一判据）─────────
+// 子包半边"零主包说明符"能成立，全押在这一份服务面上：名字、键集、冻结、以及
+// provide 的**两条腿**（真宿主走 ctx.provide ⇒ 服务随主包 fiber 撤销、子包 inject 级联；
+// 直调夹具没有 provide ⇒ 退回挂同名属性）。少哪条都是静默失效，必须逐条判红。
+const HOST_SERVICE_LITERAL = 'wallpaperEngineHost';
+const HOST_KEYS = ['ids', 'keyNames', 'keys', 'handOff', 'schema', 'http'];
+const SCHEMA_KEYS = ['isFontSetId', 'sanitizeFontset', 'FONTSET_MIGRATED_ID', 'FONTSET_SCHEMA_TAG', 'systemFontKeyOf'];
+const HTTP_KEYS = ['sendJson', 'bodyReader'];
+const notSameSet = (a, b) => JSON.stringify([...a].sort()) !== JSON.stringify([...b].sort());
+
+function serviceViolations(mod2, expectName) {
+  const bad = [];
+  if (typeof mod2.HOST_SERVICE_NAME !== 'string') { bad.push('HOST_SERVICE_NAME 不是字符串（导出=' + typeof mod2.HOST_SERVICE_NAME + '）'); return bad; }
+  if (mod2.HOST_SERVICE_NAME !== expectName) bad.push('HOST_SERVICE_NAME=' + JSON.stringify(mod2.HOST_SERVICE_NAME) + ' ≠ 契约字面量 ' + JSON.stringify(expectName) + '（名字漂移 = 子包 inject 找不到服务）');
+  if (typeof mod2.createSubpackageHost !== 'function') { bad.push('createSubpackageHost 不是函数'); return bad; }
+  let host;
+  try { host = mod2.createSubpackageHost(); } catch (e) { bad.push('createSubpackageHost() 抛错：' + e.message); return bad; }
+  if (host === null || typeof host !== 'object') { bad.push('createSubpackageHost() 没返回对象：' + String(host)); return bad; }
+  if (!Object.isFrozen(host)) bad.push('服务值没有 Object.freeze（子包能改写服务面）');
+  const keys = Object.keys(host);
+  if (keys.length !== HOST_KEYS.length || notSameSet(keys, HOST_KEYS)) bad.push('服务面键集 ' + JSON.stringify([...keys].sort()) + ' ≠ ' + JSON.stringify([...HOST_KEYS].sort()));
+  for (const k of HOST_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(host, k)) continue;
+    if (k === 'schema' || k === 'http') { if (host[k] === null || typeof host[k] !== 'object') bad.push('host.' + k + ' 不是对象：' + typeof host[k]); continue; }
+    if (typeof host[k] !== 'function') bad.push('host.' + k + ' 不是函数：' + typeof host[k]);
+  }
+  const schemaKeys = (host.schema && typeof host.schema === 'object') ? Object.keys(host.schema) : [];
+  if (notSameSet(schemaKeys, SCHEMA_KEYS)) bad.push('schema 键集 ' + JSON.stringify([...schemaKeys].sort()) + ' ≠ ' + JSON.stringify([...SCHEMA_KEYS].sort()));
+  else if (!Object.isFrozen(host.schema)) bad.push('schema 视图没有冻结（子包能改纯符号面）');
+  const httpKeys = (host.http && typeof host.http === 'object') ? Object.keys(host.http) : [];
+  if (notSameSet(httpKeys, HTTP_KEYS)) bad.push('http 键集 ' + JSON.stringify([...httpKeys].sort()) + ' ≠ ' + JSON.stringify([...HTTP_KEYS].sort()));
+  else if (!Object.isFrozen(host.http)) bad.push('http 视图没有冻结（子包能改应答面）');
+  if (typeof mod2.provideSubpackageHost !== 'function') { bad.push('provideSubpackageHost 不是函数'); return bad; }
+  // 腿 1：真宿主（有 provide）—— 必须走 provide（fiber 级撤销是子包 inject 级联的物理基础）
+  const provided = [];
+  const realCtx = { provide(name, value) { provided.push([name, value]); } };
+  let ret = null;
+  try { ret = mod2.provideSubpackageHost(realCtx); } catch (e) { bad.push('provideSubpackageHost(真宿主) 抛错：' + e.message); }
+  if (provided.length !== 1) bad.push('真宿主腿：ctx.provide 调用 ' + provided.length + ' 次（应恰好 1 次；0 次 = 服务不随主包 fiber 撤销，子包 inject 级联失效）');
+  else {
+    if (provided[0][0] !== mod2.HOST_SERVICE_NAME) bad.push('真宿主腿：ctx.provide 的服务名 ' + JSON.stringify(provided[0][0]) + ' ≠ HOST_SERVICE_NAME');
+    if (provided[0][1] !== ret) bad.push('真宿主腿：ctx.provide 挂的值 ≠ 返回值');
+  }
+  if (Object.prototype.hasOwnProperty.call(realCtx, mod2.HOST_SERVICE_NAME)) bad.push('真宿主腿：既 provide 又挂同名属性（真宿主只许走 provide）');
+  // 腿 2：直调夹具（无 provide）—— 退回挂同一份值；取不到就红
+  const fixtureCtx = {};
+  let ret2 = null;
+  try { ret2 = mod2.provideSubpackageHost(fixtureCtx); } catch (e) { bad.push('provideSubpackageHost(直调夹具) 抛错：' + e.message); }
+  if (ret2 === null || typeof ret2 !== 'object') bad.push('直调夹具腿：返回值不是对象');
+  else if (fixtureCtx[mod2.HOST_SERVICE_NAME] !== ret2) bad.push('直调夹具腿：没有把服务挂到 ctx[' + mod2.HOST_SERVICE_NAME + ']（mock ctx 下子包取不到服务）');
+  else if (!Object.isFrozen(ret2)) bad.push('直调夹具腿：服务值没冻结');
+  return bad;
+}
+
+/** 合成服务面（负对照基准 + 各变异腿）。 */
+const synthHost = (over) => {
+  const base = {
+    HOST_SERVICE_NAME: HOST_SERVICE_LITERAL,
+    createSubpackageHost: () => Object.freeze({
+      ids: () => [], keyNames: () => [], keys: () => ({}),
+      handOff: (_c, dispose) => dispose,
+      schema: Object.freeze({
+        isFontSetId: () => false, sanitizeFontset: (v) => v,
+        FONTSET_MIGRATED_ID: 'migrated', FONTSET_SCHEMA_TAG: 'tag', systemFontKeyOf: () => 'k',
+      }),
+      http: Object.freeze({ sendJson: () => true, bodyReader: () => ({}) }),
+    }),
+    provideSubpackageHost: (ctx) => {
+      const value = base.createSubpackageHost();
+      if (ctx && typeof ctx.provide === 'function') { ctx.provide(base.HOST_SERVICE_NAME, value); return value; }
+      if (ctx && (typeof ctx === 'object' || typeof ctx === 'function')) {
+        try { ctx[base.HOST_SERVICE_NAME] = value; } catch { /* 只读 ctx */ }
+      }
+      return value;
+    },
+  };
+  return Object.assign(base, over || {});
+};
+const baseHostMod = synthHost();
+const baseHostValue = baseHostMod.createSubpackageHost();
+
+check('跨包服务面契约（HOST_SERVICE_NAME 字面量 / 6 键冻结 / schema 5 键 / http 2 键 / provide 真宿主+夹具两腿）',
+  mod ? serviceViolations(mod, HOST_SERVICE_LITERAL).length === 0 : false,
+  mod ? JSON.stringify(serviceViolations(mod, HOST_SERVICE_LITERAL)) : '契约模块没有加载成功');
+check('负对照：合成服务面缺 handOff 键 ⇒ 判红（键集不许少）',
+  serviceViolations(synthHost({ createSubpackageHost: () => Object.freeze({ ids: () => [], keyNames: () => [], keys: () => ({}), schema: baseHostValue.schema, http: baseHostValue.http }) }), HOST_SERVICE_LITERAL).length > 0);
+check('负对照：合成服务面没冻结 ⇒ 判红',
+  serviceViolations(synthHost({ createSubpackageHost: () => ({ ...baseHostValue }) }), HOST_SERVICE_LITERAL).length > 0);
+check('负对照：服务名漂移 ⇒ 判红',
+  serviceViolations(synthHost({ HOST_SERVICE_NAME: 'wallpaperFoo' }), HOST_SERVICE_LITERAL).length > 0);
+check('负对照：schema 键漂移 ⇒ 判红',
+  serviceViolations(synthHost({ createSubpackageHost: () => Object.freeze({ ...baseHostValue, schema: Object.freeze({ isFontSetId: () => false, sanitizeFontset: (v) => v, FONTSET_MIGRATED_ID: 'm', FONTSET_SCHEMA_TAG: 't' }) }) }), HOST_SERVICE_LITERAL).length > 0);
+check('负对照：provide 腿被抹掉（真宿主只挂属性）⇒ 判红',
+  serviceViolations(synthHost({ provideSubpackageHost: (ctx) => { const value = baseHostMod.createSubpackageHost(); try { ctx[baseHostMod.HOST_SERVICE_NAME] = value; } catch { /* 只读 */ } return value; } }), HOST_SERVICE_LITERAL).length > 0);
+check('负对照：直调夹具腿不挂 ctx 属性（mock ctx 下子包取不到）⇒ 判红',
+  serviceViolations(synthHost({ provideSubpackageHost: (ctx) => { const value = baseHostMod.createSubpackageHost(); if (ctx && typeof ctx.provide === 'function') ctx.provide(baseHostMod.HOST_SERVICE_NAME, value); return value; } }), HOST_SERVICE_LITERAL).length > 0);
+const hostMutSrc = absolutize(read(CONTRACT_REL), 'lib').replace('ctx.provide(HOST_SERVICE_NAME, value)', 'void 0');
+let hostMutant = null, hostMutErr = null;
+try { hostMutant = await importSource(hostMutSrc, 'lib', 'host-mutant'); } catch (e) { hostMutErr = e; }
+const hostMutBad = hostMutant ? serviceViolations(hostMutant, HOST_SERVICE_LITERAL) : ['变异体加载失败：' + (hostMutErr && hostMutErr.message)];
+check('负对照：真源码变异（provide 调用被抹掉 = 服务不随主包 fiber 撤销）⇒ 服务面判据判红（证明判据有牙）',
+  hostMutBad.length > 0, JSON.stringify(hostMutBad));
+
 // ③ 行为判据（真模块）+ 合成静默模块负对照
 const ctxData = {
   rootName, patchText, rowSpecs,

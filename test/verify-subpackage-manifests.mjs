@@ -29,13 +29,34 @@
  *   ⑥ 清单是**可 `JSON.parse` 的 LF 文本、无 BOM**（本仓 `.gitattributes` = `* text=auto eol=lf`；
  *      而 `JSON.parse` 不剥 BOM ⇒ `.json` 带 BOM 是真缺陷）。
  *
- * ⚠️ 本文件**不 import 任何裸包**（链上脚本零裸包依赖是 `verify-package-files` 的 P5 硬判据），
- * 也不读 `lib/**` 的实现 —— 它只看包面：patch 行 + 根清单 + 三份子包清单。
+ * ⚠️ 本文件**不 import 任何裸包**（链上脚本零裸包依赖是 `verify-package-files` 的 P5 硬判据）。
+ *
+ * ── 第二段：`packages/*` 独立子包（fx / parallax / fonts）的**包面** ─────────────────
+ *
+ * 上面这一整段（含 `manifestViolations()`）覆盖的是 `lib/components/<sub>` **组件行**：patch 用
+ * **子路径名** `<根包名>/<sub>`，随主包一起发布。`packages/<pkg>/` 是另一种包 —— **独立子包行**：
+ * patch 用**真名** `<根包名>-<pkg>`，各自有自己的 `cordis.patch.yml` / `dsh.client` / 浏览器半边产物。
+ * 早期守卫（purity / boot / client-half / toggle-roundtrip）盯的是**半边接线**，包面本身
+ * （清单字段、行 ⇄ 自带 patch 对账、键表 / 构建表登记、发布两形态）此前**零判据** —— 本段补这个洞。
+ *
+ * 条款号 = `docs/adr/0014-subpackage-contract.md`（`S*` 是那份 ADR 的条款命名空间）：
+ *   S2.1 布局文件集 · S2.2 `main` 在盘 · S3.1 `name` = 根名 + '-' + 目录名 · S3.2 `version` === 根
+ *   S3.3 `exports['.']` 在盘 + `files` 覆盖每个具名出口 · S3.4 `exports['./client']` ⇔ `dsh.client`
+ *   S3.5 peer ⊆ 根 peer、`@deepseek-ai/*` 范围逐字取根、依赖里不得出现主包 / 子包名
+ *   S3.6 `dsh.bundle.patch` === `./cordis.patch.yml` + 在盘 + `files` 覆盖清单三件
+ *   S3.7 清单 LF / 无 BOM / 可 parse · S4.2 自带 patch 的 `(id, name)` 与主包行逐字相等
+ *   S4.3 主包行 id === `wallpaper-engine-<pkg>` · S8.1 根 devDeps 有 `file:packages/<pkg>`、deps 无子包名
+ *   S10.1 `SUBPACKAGE_KEY_TABLE` 每包一项、无多余 · S10.2 `dsh.client` ⇔ `SUBPACKAGE_BUILDS` 一项，
+ *   且 `artifact` === `exports['./client']`、产物在盘
+ *
+ * ⚠️ 本段只读**两张声明面表的字面量**（`lib/subpackage-boot.js` 的 `SUBPACKAGE_KEY_TABLE`、
+ * `scripts/build-client.mjs` 的 `SUBPACKAGE_BUILDS`），不做语义分析；两张表**读不出来就判红**
+ * （静默跳过 = 登记面判据恒真）。覆盖面另有一条**地板**：枚举包目录 < 3 或主包真名行 < 3 ⇒ 判红。
  * ⚠️ 负对照一律在**内存里**改文本/改对象再喂同一判据，**不碰磁盘**。
  *
  * Usage:  node test/verify-subpackage-manifests.mjs
  */
-import { readFileSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -297,10 +318,696 @@ check('覆盖面：派生的每个子包目录都有一份可 parse 的清单', 
   check('negative control: CRLF 行尾 ⇒ 判红', crlf.some((x) => /CR/.test(x)), crlf.join(' | ') || '（没报出来）');
 }
 
+// ═══ 第二段：packages/* 独立子包行的包面（S* 条款 = docs/adr/0014-subpackage-contract.md）═══════
+/** 独立子包目录的父路径（仓库根相对，正斜杠口径）。 */
+const PACKAGES_DIR = 'packages';
+
+/**
+ * S3.8 模板（ADR-0014 S3.8）—— **显式常量是唯一真源**，不以任何一份现成清单为基准：
+ * 拿某一份清单当基准，谁先漂移就跟谁走，判据会变成"跟漂移者对齐"。
+ *
+ * ① MANIFEST_TOP_KEY_TEMPLATE：packages/<pkg>/package.json 顶层键的规范**相对顺序**。
+ *    必选键必须全在且按序；optional 的键只允许**跨形态**缺失（host-only 包没有浏览器半边，
+ *    也就没有 exports['./client'] / dsh.client；注入宿主 webServer 面的包才多出
+ *    peerDependencies）—— 跨形态差异不是缺陷（S3.8 末句）。模板序外的顶层键一律判红。
+ * ② MANIFEST_FILES_LINE：files 键值行的规范**字面量**（单行数组），位置由模板序钉死
+ *    （files 必须在 dsh 块之后）。
+ */
+const MANIFEST_TOP_KEY_TEMPLATE = [
+  { key: 'name' },
+  { key: 'version' },
+  { key: 'description' },
+  { key: 'icon' },
+  { key: 'type' },
+  { key: 'main' },
+  { key: 'exports' },
+  { key: 'dsh' },
+  { key: 'files' },
+  { key: 'peerDependencies', optional: true },
+  { key: 'peerDependenciesMeta', optional: true },
+  { key: 'license' },
+];
+/** files 键值行的规范字面量（单行数组；见 ADR-0014 S3.8）。 */
+const MANIFEST_FILES_LINE = '  "files": ["lib/", "cordis.patch.yml", "locale/", "icon.png", "package.json"],';
+
+/** 独立子包目录（数据驱动：不写死包名，目录名 = 真名里根包名 '-' 之后那一段）。 */
+function discoverPackageDirs() {
+  if (!dirExists(PACKAGES_DIR)) return [];
+  return readdirSync(join(ROOT, PACKAGES_DIR), { withFileTypes: true })
+    .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
+    .map((e) => PACKAGES_DIR + '/' + e.name)
+    .sort();
+}
+
+/**
+ * 把**字符串与注释等长**换成空格（引号留着）：只给结构取值用。
+ * 为什么必须等长：SUBPACKAGE_BUILDS 的 why / markers 文案里就有 `{`（如 `'function syncFxLayer() {'`），
+ * 不等长遮蔽会让括号配对的下标错位，取出来的 dir / artifact 就是别的条目的。
+ */
+function maskStructure(src) {
+  const s = String(src);
+  const out = s.split('');
+  const blank = (from, to) => { for (let k = from; k < to; k++) out[k] = ' '; };
+  let i = 0;
+  while (i < s.length) {
+    const ch = s[i];
+    const next = s[i + 1];
+    if (ch === "'" || ch === '"' || ch === '`') {
+      let j = i + 1;
+      let closed = false;
+      while (j < s.length) {
+        if (s[j] === '\\') { j += 2; continue; }
+        if (s[j] === ch) { j++; closed = true; break; }
+        if (ch !== '`' && s[j] === '\n') break;
+        j++;
+      }
+      blank(i + 1, closed ? j - 1 : j);
+      i = j;
+    } else if (ch === '/' && next === '/') {
+      let j = i; while (j < s.length && s[j] !== '\n') j++;
+      blank(i, j); i = j;
+    } else if (ch === '/' && next === '*') {
+      let j = i + 2;
+      while (j < s.length && !(s[j] === '*' && s[j + 1] === '/')) j++;
+      j = Math.min(s.length, j + 2);
+      blank(i, j); i = j;
+    } else {
+      i++;
+    }
+  }
+  return out.join('');
+}
+
+/** 取 `const <name> = <open> … <close>;` 的字面量体：masked 给配对用、raw 给取值用（长度一致 ⇒ 下标可照搬）。 */
+function literalBody(src, name, open, close) {
+  const masked = maskStructure(src);
+  const at = masked.indexOf('const ' + name + ' = ');
+  if (at < 0) return null;
+  const start = masked.indexOf(open, at);
+  if (start < 0) return null;
+  let depth = 0;
+  for (let i = start; i < masked.length; i++) {
+    if (masked[i] === open) depth++;
+    else if (masked[i] === close) {
+      depth--;
+      if (depth === 0) return { masked: masked.slice(start, i + 1), raw: String(src).slice(start, i + 1) };
+    }
+  }
+  return null;
+}
+
+/** 字面量体里**顶层**的 `{ … }` 块（嵌套块整段收进来；masked 配对、raw 取字面值）。 */
+function topLevelObjects(lit) {
+  const out = [];
+  let depth = 0;
+  let start = -1;
+  for (let i = 0; i < lit.masked.length; i++) {
+    const ch = lit.masked[i];
+    if (ch === '{') { if (depth === 0) start = i; depth++; }
+    else if (ch === '}') { depth--; if (depth === 0 && start >= 0) { out.push(lit.raw.slice(start, i + 1)); start = -1; } }
+  }
+  return out;
+}
+
+/** lib/subpackage-boot.js 的 SUBPACKAGE_KEY_TABLE 顶层键（读不出来 ⇒ null，由判据判红，不许静默跳过）。 */
+function keyTableOf(src) {
+  const lit = literalBody(src, 'SUBPACKAGE_KEY_TABLE', '{', '}');
+  if (!lit) return null;
+  // 顶层键缩进 2 空格（内层对象是 4 空格）；注释行已被遮蔽成空格，不会误收。
+  const ids = [...lit.masked.matchAll(/^ {2}([A-Za-z_$][\w$]*):/gm)].map((m) => m[1]);
+  return ids.length ? ids : null;
+}
+
+/** scripts/build-client.mjs 的 SUBPACKAGE_BUILDS（`{ dir, artifact }` 数组；读不出来 ⇒ null）。 */
+function buildTableOf(src) {
+  const lit = literalBody(src, 'SUBPACKAGE_BUILDS', '[', ']');
+  if (!lit) return null;
+  const entries = [];
+  for (const blk of topLevelObjects(lit)) {
+    const dir = /dir:\s*'([^']+)'/.exec(blk);
+    const artifact = /artifact:\s*'([^']+)'/.exec(blk);
+    if (dir && artifact) entries.push({ dir: dir[1], artifact: artifact[1] });
+  }
+  return entries.length ? entries : null;
+}
+
+/**
+ * 判据本体：packages/* 独立子包的**包面**（S2–S10）。生产路径（读磁盘）与全部负对照（内存里
+ * 改文本 / 换表）都只经过它。
+ *
+ * @param {{dirs: string[], texts: Map<string, string>, selfPatches: Map<string, string>, rootPkg: object,
+ *          rows: {id?: string, name?: string}[],
+ *          fileExists: (rel: string) => boolean, dirExists: (rel: string) => boolean,
+ *          keyTableIds: string[]|null, buildEntries: {dir: string, artifact: string}[]|null}} input
+ * @returns {string[]} 违反项（`<主体>：<人读文案>`；空 = 通过）
+ */
+function packagesViolations(input) {
+  const out = [];
+  const add = (who, msg) => { out.push(who + '：' + msg); };
+  const { dirs, texts, selfPatches, rootPkg, rows, fileExists, dirExists,
+    keyTableIds: keyIds, buildEntries: builds } = input;
+  const nameOf = (dir) => rootPkg.name + '-' + dir.slice(PACKAGES_DIR.length + 1);
+  const siblingNames = new Set(dirs.map((d) => nameOf(d)));
+  const rootDev = rootPkg.devDependencies || {};
+  const rootPeers = rootPkg.peerDependencies || {};
+  const nameRows = rows.filter((r) => r.name && r.name.startsWith(rootPkg.name + '-'));
+
+  // 覆盖面地板：枚举面被削空（或两张声明面表读不出来）时，下面每一条都恒真 ⇒ 先钉住这条。
+  if (dirs.length < 3) {
+    add('覆盖面', 'packages/ 下只枚举到 ' + dirs.length + ' 个包目录（< 3 ⇒ 本判据可能恒真；确实要收缩包数时，'
+      + '同一次提交改这条地板；见 docs/adr/0014-subpackage-contract.md 的复核触发线）');
+  }
+  if (nameRows.length < 3) {
+    add('覆盖面', '主包 cordis.patch.yml 只派生到 ' + nameRows.length + ' 条真名行（< 3 ⇒ 本判据可能恒真）');
+  }
+  if (!keyIds) add('覆盖面', '读不出 lib/subpackage-boot.js 的 SUBPACKAGE_KEY_TABLE（登记面判据不许静默跳过）');
+  if (!builds) add('覆盖面', '读不出 scripts/build-client.mjs 的 SUBPACKAGE_BUILDS（登记面判据不许静默跳过）');
+
+  // 根清单的发布两形态（S8.1）与两张登记面的**多余项**（S10.1 / S10.2 的反向半边）。
+  for (const [n, spec] of Object.entries(rootPkg.dependencies || {})) {
+    if (n === rootPkg.name || siblingNames.has(n)) {
+      add('根清单', 'S8.1 dependencies 里出现主包 / 子包名 ' + n + '（跨包通道走 patch 行 + 冻结面，不靠 npm 依赖图）');
+    }
+    if (String(spec).startsWith('file:')) {
+      add('根清单', 'S8.1 dependencies 里出现 file: 规格 ' + n + '=' + JSON.stringify(spec) + '（file: 只允许留在 devDependencies 的开发链接里）');
+    }
+  }
+  if (keyIds) {
+    for (const k of keyIds) if (!dirs.includes(PACKAGES_DIR + '/' + k)) add('根清单', 'S10.1 SUBPACKAGE_KEY_TABLE 多了 ' + k + '：没有 packages/' + k + '/ 对应');
+  }
+  if (builds) {
+    for (const b of builds) if (!dirs.includes(b.dir)) add('根清单', 'S10.2 SUBPACKAGE_BUILDS 多了 ' + b.dir + '：不在 packages/ 枚举面里');
+  }
+
+  for (const dir of dirs) {
+    const leaf = dir.slice(PACKAGES_DIR.length + 1);
+    const manifestRel = dir + '/package.json';
+    const text = texts.get(dir);
+    if (text == null) { add(dir, 'S2.1 缺 ' + manifestRel); continue; }
+
+    // S2.1 布局：清单 + 自带 patch + 图标 + 两份 locale + lib/ 目录
+    for (const f of ['cordis.patch.yml', 'icon.png', 'locale/en.json', 'locale/zh.json']) {
+      if (!fileExists(dir + '/' + f)) add(dir, 'S2.1 缺 ' + dir + '/' + f);
+    }
+    if (!dirExists(dir + '/lib')) add(dir, 'S2.1 缺 ' + dir + '/lib/ 目录');
+
+    // S3.7 文本形态先判：BOM 会让 JSON.parse 抛一句难读的错，掩盖真正的缺陷
+    for (const s of textShapeProblems(text)) add(dir, 'S3.7 ' + s);
+    let m;
+    try { m = JSON.parse(text); } catch (e) { add(dir, 'S3.7 JSON.parse 失败：' + e.message); continue; }
+    if (!m || typeof m !== 'object' || Array.isArray(m)) { add(dir, 'S3.7 清单不是 JSON 对象'); continue; }
+
+    // S3.1 / S3.2 身份：name = 根名 + '-' + 目录名；version 与根同号
+    const wantName = rootPkg.name + '-' + leaf;
+    if (m.name !== wantName) add(dir, 'S3.1 name=' + JSON.stringify(m.name) + ' ≠ ' + JSON.stringify(wantName) + '（= 根包名 + "-" + 目录名）');
+    if (m.version !== rootPkg.version) add(dir, 'S3.2 version=' + JSON.stringify(m.version) + ' ≠ 根 version ' + JSON.stringify(rootPkg.version) + '（主包与所有子包同号）');
+
+    // S2.2 / S3.3 入口：main 在盘、exports['.'] 在盘、两者落点一致、files 覆盖每个具名出口
+    const exp = (m.exports && typeof m.exports === 'object' && !Array.isArray(m.exports)) ? m.exports : {};
+    const dot = exportTarget(exp['.']);
+    if (typeof m.main === 'string' && m.main && !fileExists(dir + '/' + dropDot(m.main))) {
+      add(dir, 'S2.2 main 指向的文件不在盘上：' + dir + '/' + dropDot(m.main));
+    }
+    if (!dot) add(dir, 'S3.3 缺 exports["."]（宿主按它解析包入口）');
+    if (dot && typeof m.main === 'string' && m.main && dropDot(m.main) !== dropDot(dot)) {
+      add(dir, 'S3.3 main=' + JSON.stringify(m.main) + ' 与 exports["."]=' + JSON.stringify(dot) + ' 落点不一致');
+    }
+    const entry = dot || (typeof m.main === 'string' ? m.main : null);
+    if (entry && !fileExists(dir + '/' + dropDot(entry))) add(dir, 'S3.3 入口不在盘上：' + dir + '/' + dropDot(entry));
+    const files = Array.isArray(m.files) ? m.files.map(String) : null;
+    const filesNorm = files ? files.map((f) => dropDot(f).replace(/\/$/, '')) : [];
+    if (!files) {
+      add(dir, 'S3.3 缺 files（发布白名单：漏了入口就是把包发成残废）');
+    } else {
+      for (const [key, spec] of Object.entries(exp)) {
+        const target = exportTarget(spec);
+        if (!target || target.includes('*')) continue;
+        const rel = dropDot(target);
+        const covered = filesNorm.some((p) => rel === p || rel.startsWith(p + '/'));
+        if (!covered) add(dir, 'S3.3 files 没覆盖 exports[' + JSON.stringify(key) + ']=' + JSON.stringify(target));
+      }
+      for (const f of ['package.json', 'icon.png', 'cordis.patch.yml']) {
+        if (!filesNorm.includes(f)) add(dir, 'S3.6 files 缺 ' + f);
+      }
+      if (!filesNorm.includes('locale')) add(dir, 'S3.6 files 缺 locale/');
+    }
+
+    // S3.4 / S3.6：浏览器半边与自带 patch 的声明两处必须成对，且落点在盘
+    const dsh = (m.dsh && typeof m.dsh === 'object' && !Array.isArray(m.dsh)) ? m.dsh : {};
+    const clientTarget = exportTarget(exp['./client']);
+    const declaresClient = dsh.client != null && dsh.client !== false;
+    if (declaresClient && !clientTarget) add(dir, 'S3.4 声明了 dsh.client 却没有 exports["./client"]');
+    if (!declaresClient && clientTarget) add(dir, 'S3.4 有 exports["./client"] 却没声明 dsh.client（声明面不完整）');
+    if (clientTarget && !fileExists(dir + '/' + dropDot(clientTarget))) add(dir, 'S3.4 ./client 产物不在盘：' + dir + '/' + dropDot(clientTarget));
+    const patchTarget = dsh.bundle && dsh.bundle.patch;
+    if (patchTarget !== './cordis.patch.yml') {
+      add(dir, 'S3.6 dsh.bundle.patch=' + JSON.stringify(patchTarget) + ' ≠ "./cordis.patch.yml"（守卫与宿主加载自带 patch 的共同入口）');
+    }
+    if (typeof patchTarget === 'string' && !fileExists(dir + '/' + dropDot(patchTarget))) {
+      add(dir, 'S3.6 dsh.bundle.patch 不在盘：' + dir + '/' + dropDot(patchTarget));
+    }
+
+    // S3.5 依赖方向：peer ⊆ 根 peer、@deepseek-ai/* 范围逐字取根、依赖里不得出现主包 / 子包名
+    const peers = (m.peerDependencies && typeof m.peerDependencies === 'object') ? m.peerDependencies : {};
+    for (const [n, range] of Object.entries(peers)) {
+      if (!(n in rootPeers)) { add(dir, 'S3.5 peer ' + n + ' 不在根 peerDependencies 里'); continue; }
+      if (n.startsWith('@deepseek-ai/') && range !== rootPeers[n]) {
+        add(dir, 'S3.5 peer ' + n + ' 范围 ' + JSON.stringify(range) + ' ≠ 根 ' + JSON.stringify(rootPeers[n])
+          + '（范围不逐字等同 ⇒ 宿主整次安装被拒 + 回滚）');
+      }
+    }
+    for (const field of ['dependencies', 'peerDependencies']) {
+      const dep = (m[field] && typeof m[field] === 'object') ? m[field] : {};
+      for (const n of Object.keys(dep)) {
+        if (n === rootPkg.name || siblingNames.has(n)) {
+          add(dir, 'S3.5 ' + field + ' 里出现主包 / 子包名 ' + n + '（跨包通道走服务面与冻结面，不是 npm 依赖）');
+        }
+      }
+    }
+
+    // S4.1 / S4.3：主包 patch 里认领这个包的行，id 是覆盖面锚点
+    const row = rows.find((r) => r.name === m.name);
+    if (!row) add(dir, 'S4.1 主包 cordis.patch.yml 里没有认领这个包的行（name=' + JSON.stringify(m.name) + '）');
+    else if (row.id !== 'wallpaper-engine-' + leaf) {
+      add(dir, 'S4.3 主包行 id=' + JSON.stringify(row.id) + ' ≠ ' + JSON.stringify('wallpaper-engine-' + leaf)
+        + '（id 被改名 = 这一行从覆盖面锚点上静默消失）');
+    }
+
+    // S4.2：自带的 patch 只能有那一行，且 (id, name) 与主包行逐字相等
+    const selfText = selfPatches.get(dir);
+    if (selfText == null) {
+      add(dir, 'S2.1 读不出 ' + dir + '/cordis.patch.yml');
+    } else {
+      const named = patchRows(selfText).filter((r) => r.name);
+      if (named.length !== 1) add(dir, 'S4.2 自带 patch 应有恰好一行带 name（现在 ' + named.length + ' 行）');
+      else if (!row) add(dir, 'S4.2 自带 patch 的行 name=' + JSON.stringify(named[0].name) + ' 在主包 patch 里找不到');
+      else {
+        if (named[0].id !== row.id) add(dir, 'S4.2 自带 patch 行 id=' + JSON.stringify(named[0].id) + ' ≠ 主包行 id=' + JSON.stringify(row.id));
+        if (named[0].name !== row.name) add(dir, 'S4.2 自带 patch 行 name=' + JSON.stringify(named[0].name) + ' ≠ 主包行 name=' + JSON.stringify(row.name));
+      }
+    }
+
+    // S8.1 开发形态：根 devDependencies 必须有 file:packages/<pkg> 这条链接
+    const wantSpec = 'file:' + dir;
+    if (rootDev[m.name] !== wantSpec) {
+      add(dir, 'S8.1 根 devDependencies[' + JSON.stringify(m.name) + ']=' + JSON.stringify(rootDev[m.name] ?? null)
+        + ' ≠ ' + JSON.stringify(wantSpec) + '（开发期子包靠这条链接进 profile/node_modules）');
+    }
+
+    // S10.1 / S10.2：两张登记面表与清单逐包对账
+    if (keyIds && !keyIds.includes(leaf)) add(dir, 'S10.1 SUBPACKAGE_KEY_TABLE 里没有 ' + leaf + '（宿主半边拿不到注入键）');
+    if (builds) {
+      const build = builds.find((b) => b.dir === dir);
+      if (declaresClient) {
+        if (!build) add(dir, 'S10.2 声明了 dsh.client 却不在 SUBPACKAGE_BUILDS 里（浏览器半边不会被编出来）');
+        else {
+          if (clientTarget && dropDot(build.artifact) !== dropDot(clientTarget)) {
+            add(dir, 'S10.2 SUBPACKAGE_BUILDS artifact=' + JSON.stringify(build.artifact) + ' ≠ exports["./client"]=' + JSON.stringify(clientTarget));
+          }
+          if (!fileExists(dir + '/' + dropDot(build.artifact))) add(dir, 'S10.2 构建产物不在盘：' + dir + '/' + dropDot(build.artifact));
+        }
+      } else if (build) {
+        add(dir, 'S10.2 没有 dsh.client 却出现在 SUBPACKAGE_BUILDS 里（会产出一份没人加载的产物）');
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * 结构取行用的括号配对：从 startLine 那行起，配到深度归零的那一行（返回值 = 0 基行号）。
+ * 跳过 JSON 字符串体（description 里可能有 { / }），避免把字符串里的花括号当成结构。
+ */
+function braceEndLine(lines, startLine) {
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  for (let i = startLine; i < lines.length; i++) {
+    const s = lines[i];
+    for (let k = 0; k < s.length; k++) {
+      const ch = s[k];
+      if (inStr) {
+        if (esc) esc = false;
+        else if (ch === '\\') esc = true;
+        else if (ch === '"') inStr = false;
+        continue;
+      }
+      if (ch === '"') { inStr = true; continue; }
+      if (ch === '{') depth++;
+      else if (ch === '}') { depth--; if (depth === 0) return i; }
+    }
+  }
+  return -1;
+}
+
+/** 「形态」= 有没有浏览器半边（host-only ⟺ client-half）：S3.8 ③ 的逐字对账只在同形态内做。 */
+function manifestHalfOf(m) {
+  const dsh = (m.dsh && typeof m.dsh === 'object' && !Array.isArray(m.dsh)) ? m.dsh : {};
+  return (dsh.client != null && dsh.client !== false) ? 'client-half' : 'host-only';
+}
+
+/**
+ * 把「跨包允许不同」的三处掩成占位：name / description / exports['./client'] 的目标。
+ * 掩完剩下的是**整份字符串**，逐字比对连排版（缩进、files 单行、键序、块位置）一并进判据。
+ */
+function maskSameShape(text) {
+  return String(text)
+    .replace(/^(\s*"name"\s*:\s*)"(?:[^"\\]|\\.)*"/m, '$1"<masked>"')
+    .replace(/^(\s*"description"\s*:\s*)"(?:[^"\\]|\\.)*"/m, '$1"<masked>"')
+    .replace(/"\.\/client"(\s*:\s*)"(?:[^"\\]|\\.)*"/g, '"./client"$1"<masked>"');
+}
+
+/** 掩掉三处后第一个不同的行（1 基行号 + 两侧文本），供人读文案直接定位到行。 */
+function firstDiff(aText, bText) {
+  const a = String(aText).split('\n');
+  const b = String(bText).split('\n');
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  return { line: i + 1, a: a[i] == null ? '' : a[i], b: b[i] == null ? '' : b[i] };
+}
+
+/**
+ * 判据本体：packages/* 清单的 **S3.8 模板一致性** —— 顶层键序 / files 单行与位置 /
+ * 同形态逐字对账。生产路径（读磁盘文本）与全部负对照（内存里改文本）都只经过它。
+ *
+ * @param {{dirs: string[], texts: Map<string, string>}} input texts：目录 → 清单原文
+ * @returns {string[]} 违反项（<dir>：S3.8 …；空 = 通过）
+ */
+function manifestTemplateViolations({ dirs, texts }) {
+  const out = [];
+  const add = (who, msg) => { out.push(who + '：S3.8 ' + msg); };
+  const templateKeys = MANIFEST_TOP_KEY_TEMPLATE.map((s) => s.key);
+  const parsed = new Map();
+  const linesOf = new Map();
+
+  // 覆盖面地板：任一清单读不出 / parse 不了 ⇒ 判红（静默跳过 = 判据恒真）。
+  for (const dir of dirs) {
+    const text = texts.get(dir);
+    if (text == null) {
+      add(dir, '读不出 ' + dir + '/package.json（覆盖面地板：三份清单任一读不出就判红，不许静默跳过）');
+      continue;
+    }
+    linesOf.set(dir, String(text).split('\n'));
+    let m;
+    try { m = JSON.parse(text); } catch (e) { add(dir, 'JSON.parse 失败：' + e.message); continue; }
+    if (!m || typeof m !== 'object' || Array.isArray(m)) { add(dir, '清单不是 JSON 对象'); continue; }
+    parsed.set(dir, m);
+  }
+
+  for (const [dir, m] of parsed) {
+    // ① 顶层键序：必选键全在、模板外键判红、相对顺序落在模板序里。
+    const keys = Object.keys(m);
+    for (const slot of MANIFEST_TOP_KEY_TEMPLATE) {
+      if (!slot.optional && !keys.includes(slot.key)) {
+        add(dir, '顶层缺必选键 ' + JSON.stringify(slot.key) + '（模板：' + templateKeys.join(' → ') + '）');
+      }
+    }
+    for (const k of keys) {
+      if (!templateKeys.includes(k)) {
+        add(dir, '出现模板外的顶层键 ' + JSON.stringify(k) + '（模板：' + templateKeys.join(' → ')
+          + '；确要新增键就先改 MANIFEST_TOP_KEY_TEMPLATE 常量）');
+      }
+    }
+    for (let i = 1; i < keys.length; i++) {
+      const a = templateKeys.indexOf(keys[i - 1]);
+      const b = templateKeys.indexOf(keys[i]);
+      if (a < 0 || b < 0 || b > a) continue;
+      add(dir, '顶层键序逆序：' + JSON.stringify(keys[i]) + ' 排在 ' + JSON.stringify(keys[i - 1]) + ' 之后'
+        + '（模板序：' + templateKeys.join(' → ') + '；把这两个键换成模板顺序）');
+    }
+
+    // ② files：规范单行字面量（多行 / 内容漂移都在这里判红），且位置在 dsh 块之后。
+    const lines = linesOf.get(dir);
+    const filesAt = lines.findIndex((l) => /^\s*"files"\s*:/.test(l));
+    if (filesAt < 0) {
+      add(dir, '顶层没有 files 键（模板要求；发布白名单）');
+    } else if (lines[filesAt] !== MANIFEST_FILES_LINE) {
+      add(dir, 'files 不是规范单行字面量：实际 L' + (filesAt + 1) + ' ' + JSON.stringify(lines[filesAt])
+        + '（应为 ' + JSON.stringify(MANIFEST_FILES_LINE) + '；改回单行数组，键值行样式与 S3.8 模板逐字相同）');
+    }
+    const dshAt = lines.findIndex((l) => /^\s*"dsh"\s*:\s*\{/.test(l));
+    if (dshAt >= 0 && filesAt >= 0) {
+      const dshEnd = braceEndLine(lines, dshAt);
+      if (dshEnd >= 0 && filesAt < dshEnd) {
+        add(dir, 'files（L' + (filesAt + 1) + '）排在 dsh 块（L' + (dshAt + 1) + '–L' + (dshEnd + 1)
+          + '）之前（模板要求 files 在 dsh 块之后；把这一行移到 dsh 的收尾 }, 后面）');
+      }
+    }
+  }
+
+  // ③ 同形态逐字对账：掩掉 name / description / exports['./client'] 目标后整份字符串必须相等。
+  const byHalf = new Map();
+  for (const [dir, m] of parsed) {
+    const half = manifestHalfOf(m);
+    if (!byHalf.has(half)) byHalf.set(half, []);
+    byHalf.get(half).push(dir);
+  }
+  let compared = 0;
+  for (const [half, members] of byHalf) {
+    for (let i = 0; i < members.length; i++) {
+      for (let k = i + 1; k < members.length; k++) {
+        compared++;
+        const a = members[i];
+        const b = members[k];
+        const ma = maskSameShape(texts.get(a));
+        const mb = maskSameShape(texts.get(b));
+        if (ma === mb) continue;
+        const d = firstDiff(ma, mb);
+        const msg = '同形态（' + half + '）包 ' + a + ' 与 ' + b + ' 的包面不是逐字一致'
+          + '（除 name / description / exports["./client"] 目标外必须逐字相同）：第一处差异 L' + d.line
+          + ' ' + JSON.stringify(d.a) + ' ⇄ ' + JSON.stringify(d.b) + '（改回同形态模板排版）';
+        add(a, msg);
+        add(b, msg);
+      }
+    }
+  }
+  if (!compared) add('覆盖面', '没有任何一组同形态（≥ 2 个包）可做逐字对账（S3.8 ③ 会恒真；检查形态分组没被削空）');
+  return out;
+}
+// ═══ 执行：读盘 → 喂判据 → 逐包打印（数据驱动的包面；负对照见下一段）══════════════════════
+const packageDirs = discoverPackageDirs();
+const packageTexts = new Map();
+const packageSelfPatches = new Map();
+for (const dir of packageDirs) {
+  const manifestRel = dir + '/package.json';
+  if (fileExists(manifestRel)) packageTexts.set(dir, readFileSync(join(ROOT, manifestRel), 'utf8'));
+  const selfRel = dir + '/' + PATCH_REL;
+  if (fileExists(selfRel)) packageSelfPatches.set(dir, readFileSync(join(ROOT, selfRel), 'utf8'));
+}
+const bootSrc = fileExists('lib/subpackage-boot.js') ? readFileSync(join(ROOT, 'lib/subpackage-boot.js'), 'utf8') : '';
+const buildSrc = fileExists('scripts/build-client.mjs') ? readFileSync(join(ROOT, 'scripts/build-client.mjs'), 'utf8') : '';
+const keyIds = keyTableOf(bootSrc);
+const buildList = buildTableOf(buildSrc);
+const realRows = rows.filter((r) => r.name && r.name.startsWith(rootPkg.name + '-'));
+
+/** 生产输入：负对照 = 在内存里换掉 texts / selfPatches / rows / rootPkg / 两张表，喂同一个判据。 */
+const packagesInput = {
+  dirs: packageDirs,
+  texts: packageTexts,
+  selfPatches: packageSelfPatches,
+  rootPkg,
+  rows,
+  fileExists,
+  dirExists,
+  keyTableIds: keyIds,
+  buildEntries: buildList,
+};
+
+check('派生：packages/ 目录数 ≥ 3 且主包 patch 真名行数 ≥ 3（地板；防判据恒真）',
+  packageDirs.length >= 3 && realRows.length >= 3,
+  '目录 ' + packageDirs.length + ' 个 [' + packageDirs.join(' ') + '] · 真名行 ' + realRows.length + ' 条 · 键表 ' + (keyIds ? keyIds.join(' ') : '（读不出）') + ' · 构建表 ' + (buildList ? buildList.map((b) => b.dir).join(' ') : '（读不出）'));
+
+const templateProblems = manifestTemplateViolations({ dirs: packageDirs, texts: packageTexts });
+const packageProblems = [...packagesViolations(packagesInput), ...templateProblems];
+const scoped = new Map(packageDirs.map((d) => [d, []]));
+const unscoped = [];
+for (const p of packageProblems) {
+  const at = p.indexOf('：');
+  const who = at > 0 ? p.slice(0, at) : '';
+  if (scoped.has(who)) scoped.get(who).push(p.slice(at + 1));
+  else unscoped.push(p);
+}
+for (const dir of packageDirs) {
+  const v = scoped.get(dir);
+  let shown = '（清单读不出来）';
+  try {
+    const m = JSON.parse(packageTexts.get(dir));
+    shown = 'version=' + m.version + ' · name=' + m.name + ' · files=' + (Array.isArray(m.files) ? m.files.length : '—') + ' 项';
+  } catch { /* 上面的判据已经把 parse 失败记进 packageProblems */ }
+  check('独立子包包面：' + dir, v.length === 0, v.length ? v.join(' | ') : shown);
+}
+check('S3.8 模板一致性：顶层键序落在模板序 / files 单行且在 dsh 块之后 / 同形态逐字对账',
+  templateProblems.length === 0,
+  templateProblems.join(' | ') || ('0 条（模板序 ' + MANIFEST_TOP_KEY_TEMPLATE.map((s) => s.key).join(' → ') + '）'));
+check('独立子包：登记面 / 根清单无违反（含覆盖面地板）', unscoped.length === 0,
+  unscoped.join(' | ') || '0 条');
+
+// ═══ 负对照：全部在**内存**里改文本 / 换表，再喂**同一个** packagesViolations ═══════════════
+{
+  const dir = packageDirs[0];
+  const leaf = dir.slice(PACKAGES_DIR.length + 1);
+  const real = packageTexts.get(dir) || '';
+  const serialize = (o) => JSON.stringify(o, null, 2) + '\n';
+  const mutated = (fn) => { const o = JSON.parse(real); fn(o); return serialize(o); };
+  const vOf = (text, patch) => packagesViolations({
+    ...packagesInput,
+    texts: new Map(packageTexts).set(dir, text),
+    ...(patch || {}),
+  });
+  const hit = (list, re) => list.some((x) => re.test(x));
+
+  check('正对照：磁盘上的原样输入 ⇒ 0 条违反', real.length > 0 && packageProblems.length === 0,
+    packageProblems.join(' | ') || '0 条');
+  check('正对照：JSON.parse → 重新序列化 ⇒ 仍 0 条（判据不是恒红）',
+    vOf(mutated(() => {})).length === 0, vOf(mutated(() => {})).join(' | ') || '0 条');
+
+  const noName = vOf(mutated((o) => { o.name = rootPkg.name; }));
+  check('negative control: name 改成根包名 ⇒ 判红（S3.1）', hit(noName, /S3\.1/), noName.join(' | ') || '（没报出来）');
+
+  const drift = vOf(mutated((o) => { o.version = '0.0.1'; }));
+  check('negative control: version 漂离根版本 ⇒ 判红（S3.2）', hit(drift, /S3\.2/), drift.join(' | ') || '（没报出来）');
+
+  const ghostEntry = vOf(mutated((o) => { o.main = 'no-such-entry.js'; o.exports['.'] = './no-such-entry.js'; }));
+  check('negative control: main / exports["."] 指向不存在的文件 ⇒ 判红（S2.2 + S3.3）',
+    hit(ghostEntry, /S2\.2/) && hit(ghostEntry, /S3\.3/), ghostEntry.join(' | ') || '（没报出来）');
+
+  const noFiles = vOf(mutated((o) => { delete o.files; }));
+  check('negative control: 删掉 files 发布白名单 ⇒ 判红（S3.3）', hit(noFiles, /S3\.3/), noFiles.join(' | ') || '（没报出来）');
+
+  const uncovered = vOf(mutated((o) => { o.files = ['icon.png', 'package.json', 'cordis.patch.yml', 'locale/']; }));
+  check('negative control: files 没覆盖 exports["."] 的落点 ⇒ 判红（S3.3）',
+    hit(uncovered, /S3\.3/), uncovered.join(' | ') || '（没报出来）');
+
+  const fakeClient = vOf(mutated((o) => { o.dsh = { bundle: { patch: './cordis.patch.yml' }, client: { platform: 'web' } }; }));
+  check('negative control: 声明 dsh.client 却没有 exports["./client"] ⇒ 判红（S3.4）',
+    hit(fakeClient, /S3\.4/), fakeClient.join(' | ') || '（没报出来）');
+
+  const badPatch = vOf(mutated((o) => { o.dsh = Object.assign({}, o.dsh, { bundle: { patch: './nope.yml' } }); }));
+  check('negative control: dsh.bundle.patch 指向别处 ⇒ 判红（S3.6）',
+    hit(badPatch, /S3\.6/), badPatch.join(' | ') || '（没报出来）');
+
+  const badTrust = vOf(mutated((o) => {
+    o.peerDependencies = Object.assign({}, o.peerDependencies, { 'left-pad': '^1.0.0', '@deepseek-ai/dsh-host-webserver': '^9.9.9' });
+    o.dependencies = { [rootPkg.name]: 'file:..' };
+  }));
+  check('negative control: 根没有的 peer / dsh-* 范围漂移 / 依赖里塞主包名 ⇒ 判红（S3.5）',
+    hit(badTrust, /S3\.5/), badTrust.join(' | ') || '（没报出来）');
+
+  const bom = vOf('\uFEFF' + real);
+  check('negative control: 清单带 BOM ⇒ 判红（S3.7）', hit(bom, /S3\.7/), bom.join(' | ') || '（没报出来）');
+
+  const crlfPkg = vOf(real.replace(/\n/g, '\r\n'));
+  check('negative control: CRLF 行尾 ⇒ 判红（S3.7）', hit(crlfPkg, /S3\.7/), crlfPkg.join(' | ') || '（没报出来）');
+
+  const missingPiece = packagesViolations({
+    ...packagesInput,
+    fileExists: (rel) => rel !== dir + '/icon.png' && fileExists(rel),
+  });
+  check('negative control: 布局少一件（icon.png 不在盘）⇒ 判红（S2.1）',
+    hit(missingPiece, /S2\.1/), missingPiece.join(' | ') || '（没报出来）');
+
+  const selfYml = packageSelfPatches.get(dir) || '';
+  const driftYml = selfYml.replace(/(\bid:\s*)\S+/, '$1wallpaper-engine-zzz');
+  const selfDrift = vOf(real, { selfPatches: new Map(packageSelfPatches).set(dir, driftYml) });
+  check('negative control: 自带 patch 的行 id 与主包行不一致 ⇒ 判红（S4.2）',
+    driftYml !== selfYml && hit(selfDrift, /S4\.2/), selfDrift.join(' | ') || '（没报出来）');
+
+  const rowDrift = vOf(real, {
+    rows: rows.map((r) => (r.name === rootPkg.name + '-' + leaf ? { ...r, id: 'wallpaper-engine-zzz' } : r)),
+  });
+  check('negative control: 主包行 id 被改名 ⇒ 判红（S4.3）', hit(rowDrift, /S4\.3/), rowDrift.join(' | ') || '（没报出来）');
+
+  const noLink = packagesViolations({ ...packagesInput, rootPkg: { ...rootPkg, devDependencies: {} } });
+  check('negative control: 根 devDependencies 少了 file:packages/<pkg> 链接 ⇒ 判红（S8.1）',
+    hit(noLink, /S8\.1/), noLink.join(' | ') || '（没报出来）');
+
+  const missingKey = packagesViolations({ ...packagesInput, keyTableIds: (keyIds || []).filter((k) => k !== leaf) });
+  check('negative control: 键表少了这个包 ⇒ 判红（S10.1）', hit(missingKey, /S10\.1/), missingKey.join(' | ') || '（没报出来）');
+
+  const extraKey = packagesViolations({ ...packagesInput, keyTableIds: [...(keyIds || []), 'zzz-ghost'] });
+  check('negative control: 键表多了没有对应目录的包 ⇒ 判红（S10.1 多余项）',
+    hit(extraKey, /S10\.1/), extraKey.join(' | ') || '（没报出来）');
+
+  const synthClient = mutated((o) => {
+    o.dsh = { bundle: { patch: './cordis.patch.yml' }, client: { platform: 'web' } };
+    o.exports['./client'] = './lib/index.js';
+  });
+  const noBuild = vOf(synthClient, { buildEntries: [] });
+  check('negative control: 声明 dsh.client 却不在 SUBPACKAGE_BUILDS 里 ⇒ 判红（S10.2）',
+    hit(noBuild, /S10\.2/), noBuild.join(' | ') || '（没报出来）');
+
+  const wrongArtifact = vOf(synthClient, { buildEntries: [{ dir, artifact: 'lib/client.wrong.js' }] });
+  check('negative control: artifact 与 exports["./client"] 不一致 / 产物不在盘 ⇒ 判红（S10.2）',
+    hit(wrongArtifact, /S10\.2/), wrongArtifact.join(' | ') || '（没报出来）');
+
+  const guestBuild = vOf(real, { buildEntries: [{ dir, artifact: 'lib/client.fx.js' }] });
+  check('negative control: 没有 dsh.client 的包出现在 SUBPACKAGE_BUILDS 里 ⇒ 判红（S10.2）',
+    hit(guestBuild, /S10\.2/), guestBuild.join(' | ') || '（没报出来）');
+
+  const emptyDirs = packagesViolations({ ...packagesInput, dirs: [] });
+  check('negative control: 枚举面被削空（dirs=[]）⇒ 判红（覆盖面地板在起作用）',
+    hit(emptyDirs, /覆盖面/), emptyDirs.join(' | ') || '（没报出来）');
+
+  const noTables = packagesViolations({ ...packagesInput, keyTableIds: null, buildEntries: null });
+  check('negative control: 两张声明面表读不出来 ⇒ 判红（登记面判据不许静默跳过）',
+    hit(noTables, /读不出/), noTables.join(' | ') || '（没报出来）');
+}
+
+// ═══ 负对照：S3.8 模板一致性（同一 manifestTemplateViolations；全部在内存里改文本，不碰磁盘）═══
+{
+  const halfOfDir = (dir) => {
+    try { return manifestHalfOf(JSON.parse(packageTexts.get(dir))); } catch { return '(unparsed)'; }
+  };
+  const anyDir = packageDirs[0];
+  const realAny = packageTexts.get(anyDir) || '';
+  const hostDir = packageDirs.find((d) => halfOfDir(d) === 'host-only');
+  const tOf = (dir, text) => manifestTemplateViolations({ dirs: packageDirs, texts: new Map(packageTexts).set(dir, text) });
+  const hit = (list, re) => list.some((x) => re.test(x));
+
+  const clean = manifestTemplateViolations({ dirs: packageDirs, texts: packageTexts });
+  check('正对照：S3.8 判据对磁盘上的原样输入 ⇒ 0 条违反', clean.length === 0,
+    clean.join(' | ') || ('0 条（形态分组：' + [...new Set(packageDirs.map(halfOfDir))].join(' / ') + '）'));
+
+  // 负对照 ①：改键序 —— 把 files 那一行搬到 dsh 行之前（字面量不变，只破相对顺序）。
+  const reordered = (() => {
+    const lines = realAny.split('\n');
+    const fi = lines.findIndex((l) => /^\s*"files"\s*:/.test(l));
+    const line = lines[fi];
+    const rest = lines.filter((_, i) => i !== fi);
+    rest.splice(rest.findIndex((l) => /^\s*"dsh"\s*:/.test(l)), 0, line);
+    return rest.join('\n');
+  })();
+  const orderBad = tOf(anyDir, reordered);
+  check('negative control: files 行挪到 dsh 之前（改顶层键序）⇒ 判红（S3.8 ①）',
+    reordered !== realAny && hit(orderBad, /顶层键序逆序/), orderBad.join(' | ') || '（没报出来）');
+
+  // 负对照 ②：files 改回多行数组（内容不变，只破单行字面量样式）。
+  const multiline = realAny.replace(MANIFEST_FILES_LINE,
+    '  "files": [\n    "lib/",\n    "cordis.patch.yml",\n    "locale/",\n    "icon.png",\n    "package.json"\n  ],');
+  const filesBad = tOf(anyDir, multiline);
+  check('negative control: files 改回多行数组 ⇒ 判红（S3.8 ②）',
+    multiline !== realAny && hit(filesBad, /不是规范单行字面量/), filesBad.join(' | ') || '（没报出来）');
+
+  // 负对照 ③：给 host-only 包塞 ./client —— 形态从 host-only 变成 client-half，就要与客户端形态逐字对账。
+  const withClient = hostDir == null ? '' : (() => {
+    const o = JSON.parse(packageTexts.get(hostDir));
+    o.exports['./client'] = './lib/client.host.js';
+    o.dsh = Object.assign({}, o.dsh, { client: { platform: 'web' } });
+    return (JSON.stringify(o, null, 2) + '\n').replace(/^ {2}"files": \[[\s\S]*?\],$/m, MANIFEST_FILES_LINE);
+  })();
+  const shapeBad = hostDir == null ? [] : tOf(hostDir, withClient);
+  check('negative control: host-only 包塞进 exports["./client"] + dsh.client ⇒ 判红（S3.8 ③ 同形态对账）',
+    hostDir != null && hit(shapeBad, /同形态/), shapeBad.join(' | ') || '（没报出来）');
+
+  // 负对照 ④：任一清单读不出 —— 覆盖面地板必须判红（不许静默跳过）。
+  const missing = manifestTemplateViolations({ dirs: packageDirs, texts: new Map(packageTexts).set(anyDir, null) });
+  check('negative control: 任一清单读不出 ⇒ 判红（覆盖面地板）',
+    hit(missing, /覆盖面地板/), missing.join(' | ') || '（没报出来）');
+}
 console.log('');
 if (failed) {
   console.log('SUBPACKAGE MANIFEST CHECKS FAILED — ' + failed + ' failed');
   process.exit(1);
 }
-console.log('ALL SUBPACKAGE MANIFEST CHECKS PASSED (' + subs.length + ' subpackage(s))');
+console.log('ALL SUBPACKAGE MANIFEST CHECKS PASSED (' + subs.length + ' 组件行 + ' + packageDirs.length + ' 独立子包)');
 process.exit(0);

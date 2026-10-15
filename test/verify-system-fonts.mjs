@@ -39,6 +39,7 @@ import {
 } from '../packages/fonts/lib/routes/system-fonts.js';   // P-A：族随子包行出户（packages/fonts）
 import { systemFontKeyOf, sanitizeFamilyValue } from '../lib/settings-schema.js';
 import { panelText } from './tools/src-scope.mjs';
+import { sendJson } from '../lib/json-response.js';   // c.http.sendJson —— 子包路由的 JSON 应答唯一实现（§5.1 ①：叶子不再给面）
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const ISO = join(root, '.test-cache', 'system-fonts');
@@ -92,20 +93,20 @@ section('① 纯解析：三个来源各一条正判据 + 负对照');
     mac.includes('苹方-简') && mac.includes('Helvetica') && !mac.includes('PingFang.ttc'),
     mac.slice(0, 4).join(' / '));
 
-  const norm = normalizeFamilies(mac);
+  const norm = normalizeFamilies(mac, systemFontKeyOf);
   check('收口：丢掉 `.` 开头的私有族', !norm.some((n) => n.startsWith('.')), norm.join(', '));
   check('收口：**大小写不敏感**去重（真机上同一个族会被多个文件重复报）',
     norm.filter((n) => n.toLowerCase() === 'helvetica').length === 1);
   check('收口：排序稳定（同一份输入两趟给同一结果）',
-    JSON.stringify(normalizeFamilies(mac)) === JSON.stringify(norm));
-  check('负对照：把私有族混回来会被判出', normalizeFamilies(['.Hidden', 'Shown']).includes('Shown')
-    && !normalizeFamilies(['.Hidden', 'Shown']).includes('.Hidden'));
+    JSON.stringify(normalizeFamilies(mac, systemFontKeyOf)) === JSON.stringify(norm));
+  check('负对照：把私有族混回来会被判出', normalizeFamilies(['.Hidden', 'Shown'], systemFontKeyOf).includes('Shown')
+    && !normalizeFamilies(['.Hidden', 'Shown'], systemFontKeyOf).includes('.Hidden'));
 
   check('Linux：fc-list 一行可给多个别名（逗号分隔，各自成族）',
-    JSON.stringify(normalizeFamilies(parseFcList(FC_LIST))) === JSON.stringify(['DejaVu Sans', 'Noto Sans CJK SC', 'Noto Sans CJK SC Regular']),
-    normalizeFamilies(parseFcList(FC_LIST)).join(' / '));
+    JSON.stringify(normalizeFamilies(parseFcList(FC_LIST), systemFontKeyOf)) === JSON.stringify(['DejaVu Sans', 'Noto Sans CJK SC', 'Noto Sans CJK SC Regular']),
+    normalizeFamilies(parseFcList(FC_LIST), systemFontKeyOf).join(' / '));
   check('负对照：不切逗号就会被判出',
-    normalizeFamilies(parseFcList('A,B')).length === 2);
+    normalizeFamilies(parseFcList('A,B'), systemFontKeyOf).length === 2);
 
   check('Windows 注册表：取值名并摘掉结尾的 (TrueType)',
     JSON.stringify(parseWindowsFontRegistry(REG_QUERY)) === JSON.stringify(['Arial', 'MS Gothic & MS UI Gothic & MS PGothic']),
@@ -114,7 +115,7 @@ section('① 纯解析：三个来源各一条正判据 + 负对照');
     !parseWindowsFontRegistry(REG_QUERY).some((n) => n.startsWith('HKEY')));
 
   check('PowerShell：一行一个族名（空行丢掉）',
-    JSON.stringify(normalizeFamilies(parseLineFamilies('Arial\n\nSegoe UI\narial\n'))) === JSON.stringify(['Arial', 'Segoe UI']));
+    JSON.stringify(normalizeFamilies(parseLineFamilies('Arial\n\nSegoe UI\narial\n'), systemFontKeyOf)) === JSON.stringify(['Arial', 'Segoe UI']));
 
   check('降级：文件名 → 族名（去扩展名 + 摘掉尾部的字重/字形词）',
     familyFromFileName('PingFang-SC-Regular.ttf') === 'PingFang SC'
@@ -131,10 +132,21 @@ section('① 纯解析：三个来源各一条正判据 + 负对照');
 section('② 值域：清单里的每个名字都能变成合法 `sys:` 族键（可进 CSS）');
 {
   const nasty = ['ok name', 'bad;name', 'bad{name}', 'quote"name', 'back\\slash', 'a'.repeat(200), '  '];
-  const kept = normalizeFamilies(nasty);
+  const kept = normalizeFamilies(nasty, systemFontKeyOf);
   check('收口用**共享内核**的值域：破坏 CSS 的名字一个都不留',
     kept.every((n) => systemFontKeyOf(n) !== ''), kept.join(' / '));
   check('负对照：同一判据对"把 `bad;name` 当合法名"有牙', systemFontKeyOf('bad;name') === '');
+  // 新签名（§5.1 ① 之后）：keyOf 是**必需**面 —— 本文件不再静态 import 共享内核，缺面必须响亮失败。
+  check('正控：给了共享内核的 systemFontKeyOf 面 ⇒ 收口照常（合法名留、坏名丢）',
+    (() => { const r = normalizeFamilies(['Arial', 'bad;name', '.Hidden'], systemFontKeyOf); return r.length === 1 && r[0] === 'Arial'; })(),
+    normalizeFamilies(['Arial', 'bad;name', '.Hidden'], systemFontKeyOf).join(' / '));
+  check('负对照：缺 keyOf 面 ⇒ **显式抛错**「缺少 systemFontKeyOf 面」（不许静默按"全不过滤"跑出脏清单）',
+    (() => { try { normalizeFamilies(['Arial']); return false; } catch (e) { return /缺少 systemFontKeyOf 面/.test(String(e && e.message)); } })());
+  check('负对照：注册夹具缺 schema 面 ⇒ 注册期就抛错（不许静默退化成"没有值域过滤"）',
+    (() => {
+      try { registerSystemFontsRoutes({ route() {} }, { disposers: [], base: '/wallpaper-engine', cachePath: () => CACHE, log: () => {} }); return false; }
+      catch { return true; }
+    })());
   check('限长：超长名字被丢（不截断成另一个名字）',
     !kept.some((n) => n.length > 64), kept.map((n) => n.length).join(','));
   check('`sys:` 键经组件字体消毒后原样保留（本机字体要能存进字体集）',
@@ -152,7 +164,7 @@ const macRun = async (cmd) => (cmd === 'osascript'
   ? { ok: true, stdout: CORETEXT_OUT, error: '' }
   : { ok: true, stdout: MAC_JSON, error: '' });
 {
-  const mac = await collectSystemFonts({ platform: 'darwin', run: macRun, home: '/nonexistent-home', now: () => 111 });
+  const mac = await collectSystemFonts({ keyOf: systemFontKeyOf, platform: 'darwin', run: macRun, home: '/nonexistent-home', now: () => 111 });
   check('macOS 两条权威来源都成功 ⇒ 来源逐条留痕 + approximate=false + 时钟来自注入的 now',
     mac.source === 'system_profiler+coretext' && mac.approximate === false && mac.scannedAt === 111,
     mac.source + ' / appr=' + mac.approximate);
@@ -163,11 +175,11 @@ const macRun = async (cmd) => (cmd === 'osascript'
   check('两条腿的名字都过同一条值域与私有族过滤（`.SF Numeric` / `Bad;Name` 都不进）',
     !mac.fonts.some((n) => n.startsWith('.') || n === 'Bad;Name'));
   check('负对照：只跑 system_profiler 那条腿 ⇒ 清单里没有 `PingFang SC`（判据不是恒真）',
-    normalizeFamilies(parseMacFonts(MAC_JSON)).includes('PingFang SC') === false
+    normalizeFamilies(parseMacFonts(MAC_JSON), systemFontKeyOf).includes('PingFang SC') === false
     && mac.fonts.includes('PingFang SC'));
 
   // 只有一条腿活着也要能用（CoreText 快、system_profiler 慢；任一缺失都不该让整块功能失效）。
-  const onlyCore = await collectSystemFonts({
+  const onlyCore = await collectSystemFonts({ keyOf: systemFontKeyOf,
     platform: 'darwin', home: '/nonexistent-home', now: () => 222,
     run: async (cmd) => (cmd === 'osascript' ? { ok: true, stdout: CORETEXT_OUT, error: '' }
       : { ok: false, stdout: '', error: 'not-found' }),
@@ -175,7 +187,7 @@ const macRun = async (cmd) => (cmd === 'osascript'
   check('system_profiler 挂了 ⇒ 仍用 CoreText 那条腿（规范名可用、approximate=false）',
     onlyCore.source === 'coretext' && onlyCore.approximate === false && onlyCore.fonts.includes('PingFang SC'),
     onlyCore.source + ' / ' + onlyCore.fonts.join(', '));
-  const onlySp = await collectSystemFonts({
+  const onlySp = await collectSystemFonts({ keyOf: systemFontKeyOf,
     platform: 'darwin', home: '/nonexistent-home', now: () => 223,
     run: async (cmd) => (cmd === 'osascript' ? { ok: false, stdout: '', error: 'no-jxa' }
       : { ok: true, stdout: MAC_JSON, error: '' }),
@@ -184,14 +196,14 @@ const macRun = async (cmd) => (cmd === 'osascript'
     onlySp.source === 'system_profiler' && onlySp.fonts.includes('苹方-简'), onlySp.source);
 
   // 权威来源失败 ⇒ 文件名降级（家目录指向不存在的地方 ⇒ 清单为空，但**来源与标记**必须诚实）。
-  const down = await collectSystemFonts({ platform: 'darwin', run: failRun, home: '/nonexistent-home', now: () => 224 });
+  const down = await collectSystemFonts({ keyOf: systemFontKeyOf, platform: 'darwin', run: failRun, home: '/nonexistent-home', now: () => 224 });
   check('权威来源失败：走文件名降级且**标 approximate**（不把推测当事实）',
     down.source === 'file-names' && down.approximate === true,
     down.source + ' / appr=' + down.approximate);
   check('负对照：拿权威那次的标记去判降级那次 ⇒ 判据变红',
     down.approximate !== mac.approximate);
 
-  const win = await collectSystemFonts({ platform: 'win32', run: async (cmd) => (cmd === 'powershell.exe'
+  const win = await collectSystemFonts({ keyOf: systemFontKeyOf, platform: 'win32', run: async (cmd) => (cmd === 'powershell.exe'
     ? { ok: false, stdout: '', error: 'no-powershell' }
     : { ok: true, stdout: REG_QUERY, error: '' }), home: '/nonexistent-home', dirs: [], now: () => 333 });
   check('Windows：PowerShell 失败后退回注册表那条腿（同样标 approximate）',
@@ -204,7 +216,7 @@ const macRun = async (cmd) => (cmd === 'osascript'
   for (const f of ['PingFang-SC-Regular.ttf', 'Arial_Bold.otf', '.Hidden.ttf', 'notes.txt']) {
     writeFileSync(join(FIX_DIR, f), '');
   }
-  const fallback = await collectSystemFonts({
+  const fallback = await collectSystemFonts({ keyOf: systemFontKeyOf,
     platform: 'plan9', run: failRun, home: '/nonexistent-home', dirs: [FIX_DIR], now: () => 555,
   });
   check('降级：扫目录按文件名推族名（去扩展名 + 摘字重词），非字体文件不进清单',
@@ -212,7 +224,7 @@ const macRun = async (cmd) => (cmd === 'osascript'
     && fallback.approximate === true && fallback.source === 'file-names',
     fallback.fonts.join(' / '));
 
-  const none = await collectSystemFonts({
+  const none = await collectSystemFonts({ keyOf: systemFontKeyOf,
     platform: 'plan9', run: okRun(''), home: '/nonexistent-home', dirs: [], now: () => 444,
   });
   check('不认识的平台 + 空目录：不 spawn（没有权威命令）、清单为空、来源诚实标 file-names',
@@ -289,6 +301,7 @@ section('④ 路由：200 信封、缓存不重复扫描、?refresh=1 重扫、�
   const logs = [];
   rmSync(CACHE, { force: true });
   registerSystemFontsRoutes(server, {
+    schema: { systemFontKeyOf }, http: { sendJson },   // 共享内核纯符号面（§5.1 ①：本族不再 import 主包）
     disposers, base: '/wallpaper-engine', cachePath: () => CACHE, log: (m) => logs.push(m),
     platform: 'darwin', home: '/nonexistent-home',
     // 权威两腿**并行** ⇒ 用 system_profiler 那条腿数“扫了几次”（CoreText 那条几乎免费）。
@@ -329,6 +342,7 @@ section('④ 路由：200 信封、缓存不重复扫描、?refresh=1 重扫、�
   let legacyScans = 0;
   const legacyServer = mockServer();
   registerSystemFontsRoutes(legacyServer, {
+    schema: { systemFontKeyOf }, http: { sendJson },   // 共享内核纯符号面（§5.1 ①：本族不再 import 主包）
     disposers: [], base: '/wallpaper-engine', cachePath: () => CACHE, log: () => {},
     platform: 'darwin', home: '/nonexistent-home',
     runFontCommand: async (cmd) => {
@@ -354,6 +368,7 @@ section('④ 路由：200 信封、缓存不重复扫描、?refresh=1 重扫、�
   const fresh = mockServer();
   const freshDisposers = [];
   registerSystemFontsRoutes(fresh, {
+    schema: { systemFontKeyOf }, http: { sendJson },   // 共享内核纯符号面（§5.1 ①：本族不再 import 主包）
     disposers: freshDisposers, base: '/wallpaper-engine', cachePath: () => CACHE, log: () => {},
     platform: 'darwin', home: '/nonexistent-home',
     // 权威两腿**并行** ⇒ 用 system_profiler 那条腿数“扫了几次”（CoreText 那条几乎免费）。
@@ -376,6 +391,7 @@ section('④ 路由：200 信封、缓存不重复扫描、?refresh=1 重扫、�
   // 权威来源与文件名降级都拿不到 ⇒ 200 + ok:false（绝不是 5xx），清单空。
   const deadServer = mockServer();
   registerSystemFontsRoutes(deadServer, {
+    schema: { systemFontKeyOf }, http: { sendJson },   // 共享内核纯符号面（§5.1 ①：本族不再 import 主包）
     disposers: [], base: '/wallpaper-engine', cachePath: () => join(ISO, 'dead.json'), log: () => {},
     platform: 'darwin', home: '/nonexistent-home', fontDirs: [], runFontCommand: failRun,
   });

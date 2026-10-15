@@ -156,9 +156,9 @@ runtime the wallpaper is remembered and degrades to the legacy plain iframe (no 
   extensions / about — **extensions** is the module container for later features: its registry comes
   lazily from `extensionModules()` in `src/panel-tabs.js` (never a top-level reference to a sibling
   module's symbol — importing that source file on its own would throw a ReferenceError), an empty
-  registry renders an empty state, and the modules registered today are **click & trail effects**: descriptor `src/ext-fx.js` (the island — one master
+  registry renders an empty state, and the modules registered today are **click & trail effects**: descriptor `packages/fx/src/ext-fx.js` (the island — one master
   switch plus a sub-switch each for clicks and the trail, alongside their style, size, glow, duration,
-  width, opacity, blend mode and colors), canvas layer `src/fx-layer.js` (**client-only, no host half**) — it
+  width, opacity, blend mode and colors), canvas layer `packages/fx/src/fx-layer.js` (**client-only, no host half**) — it
   only listens passively to `pointermove` / `pointerdown` on `document` (the host is a `pointer-events: none`
   overlay, so it never captures input; a click whose target sits inside
   `button, a, input, select, textarea, label, [role="button"], [contenteditable="true"], .we-picker, .we-modal`
@@ -173,8 +173,8 @@ runtime the wallpaper is remembered and degrades to the legacy plain iframe (no 
   **host element** (on the canvas they would only blend against the host's own stacking context), composites
   with `lighter` inside, and takes its color from the theme accent / rainbow (a hue per instance, drifting
   over time) / custom.
-  The registry also holds the **3D depth** module (the **third** entry in that module container, after the avatar and click/trail effects — the ordinal is fixed by the registry order, not by this page): behaviour layer `src/parallax-layer.js` plus
-  descriptor `src/ext-parallax.js` — the opposite of the one above, it **builds no DOM node at all**. It
+  The registry also holds the **3D depth** module (the **third** entry in that module container, after the avatar and click/trail effects — the ordinal is fixed by the registry order, not by this page): behaviour layer `packages/parallax/src/parallax-layer.js` plus
+  descriptor `packages/parallax/src/ext-parallax.js` — the opposite of the one above, it **builds no DOM node at all**. It
   only listens passively to `pointermove` on `document`, `resize` on `window` and `visibilitychange`,
   turning the cursor's offset from the screen center into a displacement, and each frame writes the
   **final, fully multiplied displacement** straight onto **the layers that actually move** as the CSS
@@ -312,7 +312,7 @@ of those answers, names are derived from **font file names** and the result is
 on macOS) ⇒ two cache layers, stale values served first with a background rescan, and a "Rescan" button in
 the panel; **nothing is scanned at startup** (the first real use triggers it). ⚠️ **The names a system lists are not necessarily names a browser can match** (system-reserved faces such as `Apple Color Emoji` / `Symbol` / `Zapf Dingbats`, plus alternate spellings like `苹方-繁`, can all resolve to nothing) — when the panel renders it probes whether each name actually works in this browser, skips the ones that do not, and **says how many were skipped**, so a dead option is never mistaken for a broken feature. The decision and its costs
 are in [ADR-0009](../adr/0009-system-fonts-from-the-os.md); the mechanism invariants live in the headers of
-`lib/routes/system-fonts.js` and `src/system-fonts.js`.
+`packages/fonts/lib/routes/system-fonts.js` and `src/system-fonts.js`.
 
 ### Captured-frame geometry validation (viewport aspect ratio)
 

@@ -14,8 +14,13 @@
  *   裸包名 -> lib/index.js；<裸包>/<子> -> lib/components/<子>/index.js；子包真实包名 -> packages/<dir>/<main>。
  * 负对照（必须有牙）：
  *   a. 合成"只 return dispose 不交给 fiber"的插件 -> 本判据检测函数判红；
- *   b. 真源码变异体：把行入口里的 handOffTeardown( 换成恒等函数（= lead 口径的 return dispose），
- *      用 data: URL 装载 -> 检测函数判红。空壳行没有 handOffTeardown 则显式列出并计数。
+ *   b. 真源码变异体：把行入口里的**交接调用**（旧叶子形态 handOffTeardown( 或服务面形态
+ *      <receiver>.handOff(）换成恒等函数（= lead 口径的 return dispose），用 data: URL 装载
+ *      -> 检测函数判红。空壳行没有交接调用则显式列出并计数。
+ *   c. mock ctx 不带跨包服务面（ctx.wallpaperEngineHost）-> 每个子包宿主半边都必须在装载期抛错。
+ *
+ * 跨包服务面（§5.1 ①）：mock ctx 用主包叶子 createSubpackageHost() 的**真值**（不是手搓 stub），
+ * 服务名 HOST_SERVICE_NAME 也动态读自同一叶子；行入口零主包说明符（§5.2）在本文件另有一条判据。
  * 挂链：test/run-guards.mjs 的 VERIFY_STEPS（hard）。
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs';
@@ -26,6 +31,17 @@ import { buildIndex } from './tools/host-route-index.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const MUT_HELPER = '__weMutNoHandoff';
+/**
+ * 「该行声明了手工交接」的源码形态（检测用，**不带 /g**，避免 lastIndex 串味）：
+ *   · 旧叶子形态：handOffTeardown(ctx, dispose)
+ *   · 服务面形态（refactor 后三个子包宿主半边的写法）：host.handOff(ctx, dispose)
+ * 变异时接收者/函数名**一起**换成恒等函数，等价于"只 return dispose、不交给 fiber"。
+ */
+const HANDOFF_SRC_RE = /(?:[A-Za-z_$][\w$]*\s*\.\s*handOff|\bhandOffTeardown)\s*\(/;
+const HANDOFF_MUT_RE = new RegExp(HANDOFF_SRC_RE.source, 'g');
+/** 跨包服务面（§5.1 ①）槽位：mock ctx 用的**真**服务名与真服务值，主流程里从主包叶子动态读入。 */
+let HOST_SERVICE_NAME = 'wallpaperEngineHost';
+let HOST_SERVICE = null;
 let failed = 0;
 function check(name, ok, detail) {
   if (ok) console.log('  ok  ' + name);
@@ -98,12 +114,24 @@ const makeTable = () => {
 const makeFiber = (webServer) => {
   const collected = [];
   let handoffs = 0;
+  const provided = [];
   return {
     // handoffs = 该行**交给 fiber 的 teardown 数目**（§7.6④ 的第二个观测面：路由之外唯一能看出
     // "拆卸有没有真交接"的量；纯浏览器空壳行宿主侧零路由，只有这一面能分辨真源码与变异体）。
-    ctx: { webServer, effect(cb) { handoffs++; const d = cb(); if (typeof d === 'function') collected.push(d); return d; } },
+    ctx: {
+      webServer,
+      // 跨包服务面（§5.1 ①）：子包宿主半边只经 ctx.<服务名> 取面，这里给**真值**
+      // （主包 createSubpackageHost()）——手搓 stub 等于把"服务面名字/键集"从本判据里挖掉，
+      // 那一面由 test/verify-subpackage-boot.mjs 逐键对账，这里只保证"取得到、能用"。
+      [HOST_SERVICE_NAME]: HOST_SERVICE,
+      // 真宿主的 provide：主包 apply() 第一件事就是 provideSubpackageHost(ctx)（服务随 fiber 撤销、
+      // 子包 inject 级联的物理基础）。mock 里也放上，免得主包/子包将来走 provide 分支时静默失效。
+      provide(name, value) { provided.push([name, value]); },
+      effect(cb) { handoffs++; const d = cb(); if (typeof d === 'function') collected.push(d); return d; },
+    },
     unload() { while (collected.length) collected.pop()(); },
     handoffs: () => handoffs,
+    provided: () => provided,
   };
 };
 /** 模拟 cordis 对函数声明 apply 的构造分支：返回值被丢弃，只有 ctx.effect 能救回 teardown。 */
@@ -192,7 +220,9 @@ function rowRoundtripProblems(target, plugins, own) {
 }
 
 function mutateNoHandoff(src) {
-  return 'const ' + MUT_HELPER + ' = (_c, d) => d;\n' + src.split('handOffTeardown(').join(MUT_HELPER + '(') + '\n';
+  // 交接调用 -> 恒等函数：host.handOff(ctx, dispose) / handOffTeardown(ctx, dispose) 都变成
+  // __weMutNoHandoff(ctx, dispose)（返回 dispose 但不经 ctx.effect ⇒ 交接量归零）。
+  return 'const ' + MUT_HELPER + ' = (_c, d) => d;\n' + String(src).replace(HANDOFF_MUT_RE, MUT_HELPER + '(') + '\n';
 }
 function absolutize(src, fileAbs) {
   const fileUrl = pathToFileURL(fileAbs).href;
@@ -212,21 +242,36 @@ function rootExportsTarget(spec) {
   return null;
 }
 /**
- * 子包宿主入口按**裸名** import 主包（'dsh-plugin-wallpaper-engine/subpackage-boot.js'）。
+ * **过渡期兜底**（refactor 后行入口应为零主包说明符，见主流程的判据）：
+ * 老形态的子包宿主入口按裸名 import 主包（'dsh-plugin-wallpaper-engine/subpackage-boot.js'）。
  * 真实 profile 里主包就装在 node_modules/<主包名>，本仓普通检出下 node_modules 里没有主包自己，
  * 于是裸名解析不到 —— 这里按主包 exports 把裸名映射成仓内 file:// URL。只改解析、不改被测代码；
  * 映射不到（exports 缺该子路径）就保持原样，让 import 大声失败（顺带钉住主包 exports 面）。
+ * 保留它的理由：真出现说明符时不要把"解析不到"伪装成"往返坏掉"，但说明符本身由主流程判红。
  */
+/** 源码里的模块说明符（from / side-effect import / dynamic import / require 四种形态都收）。 */
+function specifiersOf(src) {
+  const out = [];
+  const re = /(?:from\s*|import\s*\(\s*|require\s*\(\s*|import\s+)['"]([^'"]+)['"]/g;
+  let m;
+  while ((m = re.exec(String(src))) !== null) out.push(m[1]);
+  return out;
+}
+/** 该源码（先去注释）里的**主包说明符**；空数组 = 零主包说明符（§5.2 目标态）。 */
+function rootSpecifiersOf(src) {
+  return specifiersOf(stripComments(String(src))).filter((s) => s === rootPkg.name || s.indexOf(rootPkg.name + '/') === 0);
+}
 function mapRootSpecifiers(src) {
   return String(src).replace(/(from\s*|import\s*\(\s*)(['"])([^'"]+)\2/g, (m, pre, q, spec) => {
     const t = rootExportsTarget(spec);
     return t ? pre + q + pathToFileURL(resolve(ROOT, t.replace(/^\.\//, ''))).href + q : m;
   });
 }
-/** 装载行入口：子包入口里的主包裸名先映射成 file:// URL（无裸名时直接按真文件装载，保住 import.meta.url）。 */
+/** 装载行入口：零主包说明符（refactor 后的目标态）直接按**真文件**装载（保住 import.meta.url）；
+ *  过渡期仍有说明符时才走 data: URL + 裸名映射（见 mapRootSpecifiers 的说明）。 */
 async function importEntry(abs) {
   const src = readFileSync(abs, 'utf8');
-  if (src.indexOf(rootPkg.name) < 0) return import(pathToFileURL(abs).href);
+  if (rootSpecifiersOf(src).length === 0) return import(pathToFileURL(abs).href);
   const code = absolutize(mapRootSpecifiers(src), abs);
   return import('data:text/javascript;base64,' + Buffer.from(code, 'utf8').toString('base64') + '#entry-' + encodeURIComponent(abs));
 }
@@ -253,11 +298,36 @@ const pkgs = discoverSubpackages();
 const rows = resolveRows(rootPkg, pkgs);
 check('根 patch 至少有一行', rows.length > 0, rows.length ? '' : 'cordis.patch.yml 里解析不到 (id, name) 行');
 
+// 跨包服务面（§5.1 ①）：从主包叶子**动态**读服务名 + createSubpackageHost()。mock ctx 用真值，
+// 不手搓 stub —— 名字/键集漂移由 verify-subpackage-boot.mjs 逐键对账，这里保证本文件的 mock
+// 与真宿主同形（子包宿主半边 inject 的唯一条目就是这个服务）。
+let bootLoadErr = null;
+try {
+  const boot = await import(pathToFileURL(join(ROOT, 'lib/subpackage-boot.js')).href);
+  HOST_SERVICE_NAME = boot.HOST_SERVICE_NAME;
+  HOST_SERVICE = boot.createSubpackageHost();
+} catch (e) { bootLoadErr = e; }
+check('主包跨包服务面可动态装载（mock ctx 用真 createSubpackageHost()，不手搓 stub）',
+  HOST_SERVICE !== null && typeof HOST_SERVICE_NAME === 'string' && HOST_SERVICE_NAME.length > 0,
+  bootLoadErr ? ('装载 lib/subpackage-boot.js 失败：' + String(bootLoadErr.message || bootLoadErr).split('\n')[0]) : 'HOST_SERVICE=' + String(HOST_SERVICE));
+
 const unknown = rows.filter((r) => r.kind === 'unknown');
 check('每一行的 name 都能解析到宿主入口（子包必须能按包名找到 packages/<dir>）', unknown.length === 0,
   unknown.map((r) => 'id=' + r.id + ' name=' + r.name + ' 在 packages/ 下找不到对应包').join('；'));
 const missingEntry = rows.filter((r) => r.rel && !isFile(join(ROOT, r.rel)));
 check('每个行入口文件都存在', missingEntry.length === 0, missingEntry.map((r) => r.name + ' -> ' + r.rel).join('；'));
+
+// 行入口零主包说明符（§5.2）：refactor 后子包宿主半边只经 ctx.<服务名> 取面，**不再** import 主包。
+// 装载器里的 mapRootSpecifiers 保留成过渡期兜底（真出现说明符时仍把裸名映射到仓内 file:// URL，
+// 免得"解析不到"冒充"往返坏掉"），但说明符本身在这里**判红**并点名：不许静默回到模块图上的边。
+const rootSpecRows = [];
+for (const r of rows) {
+  if (!r.rel || !isFile(join(ROOT, r.rel))) continue;
+  const hits = [...new Set(rootSpecifiersOf(read(r.rel)))];
+  if (hits.length) rootSpecRows.push(r.name + '（' + r.rel + '）：' + hits.join(', '));
+}
+check('行入口零主包说明符（子包半边只许经 ctx.' + HOST_SERVICE_NAME + ' 取面；浏览器产物不在此列，见 verify-subpackage-purity.mjs）',
+  rootSpecRows.length === 0, rootSpecRows.join('；'));
 console.log('    · 行表：' + rows.map((r) => r.id + '[' + r.kind + (r.browser ? ',浏览器面' : ',宿主面') + ']').join(' / '));
 
 const plugins = [];
@@ -272,6 +342,46 @@ for (const r of rows) {
 }
 check('所有行入口都装载成功', plugins.length === rows.filter((r) => r.rel && isFile(join(ROOT, r.rel))).length,
   plugins.map((p) => p.label).join(' / '));
+
+// 真宿主腿（整合面）：主包行 apply() 必须通过 ctx.provide 把服务面挂给当前 fiber ——
+// 子包 inject: ['<服务名>'] 的级联（关主包=关整族，D-13 B）就建立在这条腿上。
+{
+  const rootPlugin = plugins.filter((p) => p.row.kind === 'root')[0];
+  if (!rootPlugin) check('行表里有主包行（kind=root）可验真宿主腿', false, '找不到 kind=root 的行');
+  else {
+    const tR = makeTable();
+    const fR = makeFiber(tR.webServer);
+    let provErr = null;
+    try { loadDroppingReturn(rootPlugin.apply, fR.ctx); } catch (e) { provErr = e; }
+    const prov = fR.provided();
+    const gotName = prov.length === 1 ? prov[0][0] : null;
+    const gotVal = prov.length === 1 ? prov[0][1] : null;
+    check('主包行 apply() 通过 ctx.provide 挂出服务面（名字=' + HOST_SERVICE_NAME + '、6 键冻结、真宿主腿 = 子包 inject 级联成立）',
+      provErr === null && gotName === HOST_SERVICE_NAME && gotVal !== null && typeof gotVal === 'object'
+        && typeof gotVal.keys === 'function' && typeof gotVal.handOff === 'function'
+        && (gotVal.schema && gotVal.http ? true : false) && Object.isFrozen(gotVal),
+      (provErr ? '装载抛错：' + String(provErr.message || provErr).split('\n')[0] + ' · ' : '')
+        + 'ctx.provide 记录 ' + JSON.stringify(prov.map((x) => [x[0], x[1] ? Object.keys(x[1]).join(',') : String(x[1])])));
+    fR.unload();
+  }
+}
+
+// 负对照 c：mock ctx **不带**服务面 ⇒ 每个子包宿主半边都必须在装载期抛错。
+// 某行在没有 ctx.<服务名> 时仍能装载 = 它没走服务面（静态 import 主包 / 自搓 stub），
+// 那"零主包说明符"就成了纸面文章。放在零残留探针之前跑，避免把它的残留算到后面头上。
+{
+  const noServiceOk = [];
+  for (const p of plugins.filter((q) => q.row.kind === 'subpackage')) {
+    const t = makeTable();
+    const f = makeFiber(t.webServer);
+    delete f.ctx[HOST_SERVICE_NAME];
+    try { loadDroppingReturn(p.apply, f.ctx); noServiceOk.push(p.label + '（' + p.row.rel + '）在没有 ctx.' + HOST_SERVICE_NAME + ' 时仍装载成功'); }
+    catch { /* 预期：抛错 */ }
+    try { f.unload(); } catch { /* 装载已抛错，收尾尽力而为 */ }
+  }
+  check('负对照：mock ctx 不带服务面 ⇒ 每个子包宿主半边都在装载期抛错（证明它真经 ctx.' + HOST_SERVICE_NAME + ' 取面）',
+    noServiceOk.length === 0, noServiceOk.join('；'));
+}
 
 if (plugins.length > 0) {
   // 零残留探针（定时器：被 clear 或已触发就出账；只统计停用后仍挂着的）
@@ -314,17 +424,18 @@ if (plugins.length > 0) {
   }
 
   // 观测面 2：交接量（路由之外唯一的可观测差异）。零宿主贡献行（§2.2 纯浏览器空壳）宿主侧零路由，
-  // 它的 apply 若把 handOffTeardown 退回成"只 return dispose"，路由面上**毫无差别** ⇒ 本条判据在这类
-  // 行上会变成没有牙的恒真判据。源码里调用 handOffTeardown( 就是"必须交接"的声明，据此要求实测 ≥1。
+  // 它的 apply 若把交接退回成"只 return dispose"，路由面上**毫无差别** ⇒ 本条判据在这类行上会变成
+  // 没有牙的恒真判据。源码里出现交接调用（handOffTeardown( 或服务面 host.handOff(）就是"必须交接"
+  // 的声明，据此要求实测 ≥1。
   const ownHandoffs = measureHandoffs(plugins);
   const handoffIssues = [];
   for (const p of plugins) {
-    const expected = read(p.row.rel).indexOf('handOffTeardown(') >= 0 ? 1 : 0;
+    const expected = HANDOFF_SRC_RE.test(read(p.row.rel)) ? 1 : 0;
     const got = ownHandoffs.get(p.label);
     if (got < expected) handoffIssues.push(p.label + '（' + p.row.rel + '）源码里' + (expected ? '有' : '没有')
-      + ' handOffTeardown(，实测交给 fiber 的 teardown ' + got + ' 个');
+      + ' 交接调用（handOffTeardown( / <receiver>.handOff(），实测交给 fiber 的 teardown ' + got + ' 个');
   }
-  check('交接面：源码里调用 handOffTeardown( 的行，实测至少向 ctx.effect 交 1 个 teardown（零路由行也吃这条）',
+  check('交接面：源码里有交接调用（handOffTeardown( / <receiver>.handOff(）的行，实测至少向 ctx.effect 交 1 个 teardown（零路由行也吃这条）',
     handoffIssues.length === 0, handoffIssues.join('；'));
   console.log('    · 交接量：' + plugins.map((p) => p.label + '=' + ownHandoffs.get(p.label)).join(' / '));
 
@@ -369,7 +480,7 @@ if (plugins.length > 0) {
   }
   fAll.unload();
   if (allLoadFailures.length) loadFailures.push(...allLoadFailures);
-  check('每一行的 apply 在本 harness 里可独立装载（主包裸名映射到仓内文件后不抛异常）',
+  check('每一行的 apply 在本 harness 里可独立装载（零主包说明符 ⇒ 按真文件装载；过渡期裸名仍先映射到仓内文件，不抛异常）',
     loadFailures.length === 0, loadFailures.join('；'));
   const leftover = tAll.table.size;
   const pendingTimers = [...timerIds].length;
@@ -415,13 +526,13 @@ if (plugins.length > 0) {
   for (const p of plugins) {
     const abs = join(ROOT, p.row.rel);
     const src = readFileSync(abs, 'utf8');
-    if (src.indexOf('handOffTeardown(') < 0) { skipped.push(p.label + '（0 处 handOffTeardown，空壳行）'); continue; }
+    if (!HANDOFF_SRC_RE.test(src)) { skipped.push(p.label + '（0 处交接调用，空壳行）'); continue; }
     const mod = await importMutant(src, abs, 'mut-' + encodeURIComponent(p.label));
     const applyFn = mod.apply || (mod.default && mod.default.apply);
     if (typeof applyFn !== 'function') { mutProblems.push(p.label + '：变异体没有导出 apply'); continue; }
     const mutPlugins = plugins.map((q) => (q.label === p.label ? { label: q.label, apply: applyFn, row: q.row } : q));
     let mutOwn, bad2, mutHandoff;
-    const expectedHandoff = src.indexOf('handOffTeardown(') >= 0 ? 1 : 0;
+    const expectedHandoff = HANDOFF_SRC_RE.test(src) ? 1 : 0;
     try {
       mutOwn = measureOwn(mutPlugins);
       bad2 = rowRoundtripProblems(p.label, mutPlugins, mutOwn);
@@ -438,7 +549,7 @@ if (plugins.length > 0) {
     const delta = bad2.filter((v) => !baseline.includes(v));
     mutFaces.push(p.label + (delta.length ? '（路由面 +' + delta.length + '）' : '（交接面 ' + mutHandoff + ' < ' + expectedHandoff + '）'));
     if (delta.length === 0 && !(mutHandoff < expectedHandoff)) {
-      mutProblems.push(p.label + '：变异体（handOffTeardown -> 恒等 = 只 return dispose）**没有被判红** —— 本条判据没有牙'
+      mutProblems.push(p.label + '：变异体（交接调用 -> 恒等 = 只 return dispose）**没有被判红** —— 本条判据没有牙'
         + '（路由面相对真源码基线新增 0 条；交接面实测 ' + mutHandoff + ' 个，真源码声明下限 ' + expectedHandoff + ' 个）');
     }
   }
@@ -447,16 +558,16 @@ if (plugins.length > 0) {
     (mutProblems.length ? mutProblems.join('；') : mutated + ' 个变异体全部被判红') + (skipped.length ? ' · 跳过：' + skipped.join(' / ') : ''));
   console.log('    · 变异体判红口：' + mutFaces.join(' / '));
 
-  // 文本兜底：注册了路由的行，apply 体里必须出现 handOffTeardown
+  // 文本兜底：注册了路由的行，apply 体里必须出现交接调用
   const textIssues = [];
   for (const p of plugins) {
     if (ownSets.get(p.label).size === 0) continue;
     const src = read(p.row.rel);
     const body = functionBodyOf(stripComments(src), 'export function apply(');
     if (body === null) textIssues.push(p.label + '（' + p.row.rel + '）定位不到 export function apply( 的函数体');
-    else if (!/handOffTeardown\s*\(/.test(body)) textIssues.push(p.label + '（' + p.row.rel + '）apply 体里没有 handOffTeardown(');
+    else if (!HANDOFF_SRC_RE.test(body)) textIssues.push(p.label + '（' + p.row.rel + '）apply 体里没有交接调用（handOffTeardown( / <receiver>.handOff(）');
   }
-  check('注册了路由的行：apply 体里都有 handOffTeardown(', textIssues.length === 0, textIssues.join('；'));
+  check('注册了路由的行：apply 体里都有交接调用（handOffTeardown( / <receiver>.handOff(）', textIssues.length === 0, textIssues.join('；'));
 }
 
 console.log('');

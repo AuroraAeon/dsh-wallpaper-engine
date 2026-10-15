@@ -45,7 +45,7 @@
 - `config.json` 里只留根字段（活动字体集 id 与自定义项）—— **字体键不在 settings 的持久化
   白名单里**：它们由 `lib/settings-schema.js` 的 `FONTSET_KEYS` 定义 kind 元数据，
   客户端 [`src/fontset-store.js`](../src/fontset-store.js) 与宿主
-  [`lib/routes/fontsets.js`](../lib/routes/fontsets.js) **共用同一份**做消毒。
+  [`packages/fonts/lib/routes/fontsets.js`](../packages/fonts/lib/routes/fontsets.js) **共用同一份**做消毒。
   ⚠️ **加键是加性的**（老文件缺键 ⇒ 消毒时回落默认值，`FONTSET_SCHEMA_VERSION` 不随加键升 ——
   升版本会让所有已导出的 `.json` 变成"读不懂"）。
 - **写回是设计的一部分**：面板里改任何一个字体项都只落到**当前这一套**；导入导出按整份 `.json` 走
@@ -57,7 +57,7 @@
 
 - **内置族键**：`FONT_FAMILY_VALUES` 里那几个（雅黑 / 楷体 / 宋体 / 黑体 / 行楷 / 等宽 / 默认），
   CSS 栈写死在客户端 `FONT_FAMILY_STACKS`。
-- **本机字体键 `sys:<族名>`**：清单由**宿主枚举**（[`lib/routes/system-fonts.js`](../lib/routes/system-fonts.js)），
+- **本机字体键 `sys:<族名>`**：清单由**宿主枚举**（[`packages/fonts/lib/routes/system-fonts.js`](../packages/fonts/lib/routes/system-fonts.js)），
   客户端通道是 [`src/system-fonts.js`](../src/system-fonts.js)。为什么问操作系统而不是自己解析字体文件，
   见 [`adr/0009`](./adr/0009-system-fonts-from-the-os.md)。⚠️ **同一个字体可能有两个键**：macOS 上
   本地化名（`苹方-简`）与规范名（`PingFang SC`）**都在**清单里 —— 两条腿并行、名字取并集，

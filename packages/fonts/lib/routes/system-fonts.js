@@ -47,6 +47,8 @@
  *   · `disposers` / `base: BASE` ← 清理句柄与路径前缀
  *   · `cachePath()`             ← 落盘缓存路径（`pluginDataDir()/system-fonts.json`）
  *   · `log`                     ← 降级要留痕（成功不记：成功是常态）
+ *   · `schema`                  ← 共享内核的纯符号面（本族只用 `systemFontKeyOf`，见下）
+ *   · `http`                    ← JSON 应答的纯函数面（本族只用 `sendJson`，见下）
  *   · `platform` / `home` / `fontDirs` / `runFontCommand` ← **可选**注入点：真实调用一个都不传
  *     （各自有默认实现），守卫用它们换掉平台、目录与子进程（本族**不 spawn** 真进程就能判）。
  * 本文件自己的纯函数（`collectSystemFonts` / `defaultRun` / 各 `parse*`）**导出**：守卫用夹具判前者，
@@ -57,15 +59,13 @@ import { spawn } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { schemaView, httpView } from 'dsh-plugin-wallpaper-engine/subpackage-boot.js';
-// 跨包通道（BUNDLE-SPLIT §5.1 出路②）：本族只 import **唯一受控叶子**
-// `dsh-plugin-wallpaper-engine/subpackage-boot.js`，不 import 主包的其他任何模块。
-// 共享内核的**纯函数**在模块求值期就该可用（本文件的纯函数 `normalizeFamilies` 与守卫的直读都依赖这一点）
-// ⇒ 走叶子的具名视图**静态取用**；运行期才存在的实例（disposers / cachePath / log）仍逐键从 `c` 消费：
-//   · systemFontKeyOf —— 名字的值域与前端**同一份**（这里过滤掉的名字，前端也一定拼不出族键）。
-//   · sendJson —— JSON 应答的**唯一实现**（状态码 + 两个头 + end，见主包 lib/json-response.js）。
-const { systemFontKeyOf } = schemaView;
-const { sendJson } = httpView;
+// 跨包通道（ADR-0014 S5.1 / S5.3）：本族**零主包 specifier** —— 共享内核的纯符号面也不静态
+// import，而由 `registerSystemFontsRoutes` 的 `c` 显式收下（调用点 = 子包入口
+// packages/fonts/lib/index.js，值来自 `ctx.wallpaperEngineHost`）：
+//   · `c.schema.systemFontKeyOf` —— 名字的值域与前端**同一份**（这里过滤掉的名字，前端也一定拼不出族键）。
+//   · `c.http.sendJson` —— JSON 应答的**唯一实现**（状态码 + 两个头 + end，见主包 lib/json-response.js）。
+// 运行期才存在的实例（disposers / cachePath / log / 平台注入点）仍逐键从 `c` 消费。
+// 模块作用域**不持有**主包的任何值（ADR-0014 S5.1 / S5.3 反模式：HMR 后旧代 exports）。
 
 /** 权威扫描的成功结果新鲜期：字体装/删不频繁，一次扫描（macOS ~10s）摊到一周可接受。 */
 const SYSTEM_FONTS_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -280,11 +280,15 @@ function collectFontFiles(dirs, depth, files) {
  * 名字数组 → 清单。三件事：去空白、丢**不可用**的名字（`.` 开头的私有族 / 过不了共享内核
  * 校验的）、去重排序（`localeCompare`：中文名与拉丁名混排时按本地口径，比码点序可读）。
  *
- * `systemFontKeyOf` 是**纯函数**，按 P-A 裁决走叶子 `subpackage-boot.js` 的 `schemaView` 静态取用
- * （模块求值期即已可用）⇒ 本函数**单参调用就成立**（test/verify-system-fonts.mjs:95/100/101/105/108
- * 正是单参调用）；第二参只是显式覆写口，不传时用模块级那份。
+ * `keyOf` 就是共享内核的 `systemFontKeyOf`（纯函数）—— 本文件**不再静态 import** 它：调用方
+ * （`registerSystemFontsRoutes` 经 `c.schema`，或守卫直接调用本导出）把面传进来。
+ * 本文件零主包 specifier ⇒ **没有模块级默认可退**：缺 face 时**显式抛错**
+ * （宁可响亮失败，也别静默按"全不过滤"跑出一份脏清单）。
  */
-function normalizeFamilies(names, keyOf = systemFontKeyOf) {
+function normalizeFamilies(names, keyOf) {
+  if (typeof keyOf !== 'function') {
+    throw new Error('normalizeFamilies(names, keyOf)：缺少 systemFontKeyOf 面（c.schema.systemFontKeyOf）');
+  }
   const seen = new Set();
   const out = [];
   for (const raw of Array.isArray(names) ? names : []) {
@@ -374,6 +378,8 @@ async function runSource(source, run, now) {
  * @param {string} [deps.home]      家目录（默认 `homedir()`；守卫喂夹具）
  * @param {string[]} [deps.dirs]    降级路径要扫的目录（默认按平台 + 家目录推；守卫喂夹具目录）
  * @param {() => number} [deps.now] 时钟（默认 `Date.now`）
+ * @param {(name:string) => (string|undefined)} [deps.keyOf] 共享内核的名字校验面（`systemFontKeyOf`；
+ *   纯函数，本文件**没有**模块级默认 —— 调用点必须给，缺了 `normalizeFamilies` 抛错）
  * @returns `{ fonts, source, approximate, scannedAt }` —— `fonts` 可能为空 = 真的一个都没读到
  */
 async function collectSystemFonts(deps) {
@@ -382,6 +388,9 @@ async function collectSystemFonts(deps) {
   const run = typeof d.run === 'function' ? d.run : defaultRun;
   const home = typeof d.home === 'string' && d.home ? d.home : homedir();
   const now = typeof d.now === 'function' ? d.now : Date.now;
+  // 共享内核的名字校验面（纯函数）由调用方传入；本文件零主包 specifier ⇒ 没有模块级默认可退
+  // （normalizeFamilies 缺 face 会显式抛错）。
+  const keyOf = typeof d.keyOf === 'function' ? d.keyOf : undefined;
 
   const authoritative = await Promise.all(
     authoritativeSources(platform).map((s) => runSource(s, run, now)));
@@ -394,7 +403,7 @@ async function collectSystemFonts(deps) {
     used.push(r.source);
     if (r.at > scannedAt) scannedAt = r.at;
   }
-  const fonts = normalizeFamilies(merged);
+  const fonts = normalizeFamilies(merged, keyOf);
   if (fonts.length) {
     return { fonts, source: used.join('+'), approximate: false, scannedAt: scannedAt || now() };
   }
@@ -403,7 +412,7 @@ async function collectSystemFonts(deps) {
   for (const s of fallbackSources(platform)) {
     const r = await runSource(s, run, now);
     if (!r) continue;
-    const f = normalizeFamilies(r.families);
+    const f = normalizeFamilies(r.families, keyOf);
     if (f.length) return { fonts: f, source: r.source, approximate: true, scannedAt: r.at };
   }
 
@@ -411,24 +420,25 @@ async function collectSystemFonts(deps) {
   const scanDirs = Array.isArray(d.dirs) ? d.dirs : fontDirs(platform, home);
   const files = collectFontFiles(scanDirs, 0, []);
   return {
-    fonts: normalizeFamilies(parseFontFileNames(files)),
+    fonts: normalizeFamilies(parseFontFileNames(files), keyOf),
     source: 'file-names', approximate: true, scannedAt: now(),
   };
 }
 
 /** 注入契约（P2-7A / ADR-0013 D12）：本族从 `c` 消费的**必需**键 —— 门面/组件行调用点必须逐键给到（判据 test/verify-inject-contracts.mjs 双向对账）。 */
 // 四键都是**运行期实例**（清理句柄 / 路径前缀 / 缓存路径 / 日志），调用点 = `packages/fonts/lib/index.js`，
-// 由 `subpackageKeys('fonts')` 一次给全。共享内核的两个**纯函数**不在这里：它们走叶子
-// `subpackage-boot.js` 的 `schemaView` / `httpView` 静态取用（见文件头）。
-export const DEPS = ['disposers', 'base', 'cachePath', 'log'];
+// 由主包 `host.keys('fonts')` 一次给全；`schema` / `http` 是共享内核的**纯符号面**，
+// 由同一个调用点从 `ctx.wallpaperEngineHost` 显式传下（见文件头）—— 本文件零主包 specifier。
+export const DEPS = ['disposers', 'base', 'cachePath', 'log', 'schema', 'http'];
 /** 允许缺席的键：真实调用点一个都不传，代码各有默认实现（守卫/测试用它们换掉平台、目录与子进程）。 */
 export const OPTIONAL_DEPS = ['platform', 'home', 'fontDirs', 'runFontCommand'];
 
 export function registerSystemFontsRoutes(webServer, c) {
   // 后四个是**可选**注入点：真实调用一个都不传（各有默认实现），守卫用它们换掉平台、目录与
   // 子进程 —— 于是本族**不 spawn 真进程**也能判（这是本文件唯一能跨平台判的那一半）。
-  const { disposers, base: BASE, cachePath, log, platform, home, fontDirs, runFontCommand } = c;
-  const deps = { platform, home, dirs: fontDirs, run: runFontCommand };
+  const { disposers, base: BASE, cachePath, log, schema, http, platform, home, fontDirs, runFontCommand } = c;
+  // `keyOf` 是**纯函数面**（`c.schema.systemFontKeyOf`），随 deps 传进 `collectSystemFonts`。
+  const deps = { platform, home, dirs: fontDirs, run: runFontCommand, keyOf: schema.systemFontKeyOf };
 
   /** 内存缓存 `{ fonts, source, approximate, scannedAt }` —— 进程内共享，重启由落盘那份接上。 */
   let mem = null;
@@ -478,9 +488,10 @@ export function registerSystemFontsRoutes(webServer, c) {
     kind: 'exact',
     path: `${BASE}/system-fonts`,
     handler: async (req, res) => {
-      // 薄别名：保留调用点写法（只有 200 + body），实现收敛到 lib/json-response.js。
+      // 薄别名：保留调用点写法（只有 200 + body），实现来自共享内核的 `c.http.sendJson`
+      // （主包 lib/json-response.js 的唯一实现）。
       // 缓存由**本路由**管（TTL 在上游），别让浏览器再叠一层不可控的缓存 ⇒ no-store。
-      const reply = (body) => sendJson(res, 200, body);
+      const reply = (body) => http.sendJson(res, 200, body);
       if ((req.method || 'GET').toUpperCase() !== 'GET') { res.statusCode = 405; res.end(); return; }
       let force;
       try { force = new URL(req.url, 'http://localhost').searchParams.get('refresh') === '1'; } catch { force = false; }

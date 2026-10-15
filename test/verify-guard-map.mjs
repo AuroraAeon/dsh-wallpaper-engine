@@ -108,7 +108,6 @@ const NO_MODULE_TARGET_WHY = {
   'verify-route-ownership.mjs': '管的是**实现归属唯一性**（行→入口按各包 exports/files 派生，跨全部族与组件行），不针对单个模块',
   'verify-bridge-ci.mjs': '管的是 **CI 桥接面**（工作流/脚本接线，不读源模块）',
   'verify-undefined-refs.mjs': '管的是**未定义引用**（"用了但没 import/声明"的非全局内置名），扫 lib/src/scripts 全树按 AST 判，目标不是某个模块',
-  'verify-subpackage-manifests.mjs': '管的是**子包包面**（`lib/components/*/package.json` 的 name/version/main/exports/peer 与 patch 行、根 `exports` 三连对账），只读清单与 patch 文件，不读任何源模块',
 };
 
 const map = buildMap(ROOT);

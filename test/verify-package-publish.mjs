@@ -433,6 +433,101 @@ section('⑧ 根清单 ⇄ package-lock.json 同步（`npm ci` 的前提）');
       { ...r0, dependencies: { a: '^1.0.0', c: '^3.0.0' } }).length === 0);
 }
 
+// ── ⑨ 发布形态自洽（ADR-0014 S8.2 的执行者：发布者的人工步骤 + 这条离线门）──────
+// 为什么单列一条：S8.2 的"发布时把 `file:` 换成同号精确版"没有脚本执行者，能离线钉住的只有
+// **形态自洽** —— 三份子包清单"全有或全无"。改了一半（部分进了 `dependencies`、`file:` 还留在
+// `devDependencies`）是唯一能让干净检出 `npm ci` 在 install 步 404 的形态（P-A 事故同款）。
+section('⑨ 发布形态自洽（开发期 ⇄ 发布期：全有或全无，混态判红）');
+{
+  const subs = [];
+  const packagesDir = join(ROOT, 'packages');
+  if (existsSync(packagesDir)) {
+    for (const e of readdirSync(packagesDir, { withFileTypes: true })) {
+      if (!e.isDirectory() || e.name.startsWith('.')) continue;
+      const p = join(packagesDir, e.name, 'package.json');
+      if (!existsSync(p)) continue;
+      subs.push({ dir: e.name, name: JSON.parse(readFileSync(p, 'utf8')).name });
+    }
+    subs.sort((a, b) => (a.dir < b.dir ? -1 : 1));
+  }
+  const EXACT = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
+  /** 判据本体：根清单处于哪种发布形态、形态内部有何矛盾（正判据与全部负对照调**同一个**函数）。 */
+  const publishForm = (manifest, list) => {
+    const problems = [];
+    const deps = manifest.dependencies || {};
+    const devDeps = manifest.devDependencies || {};
+    for (const [n, s] of Object.entries(deps)) {
+      if (String(s).startsWith('file:')) {
+        problems.push('dependencies 里有 ' + n + '@' + s + '（未发布的包锁不出来 ⇒ 干净检出 `npm ci` E404）');
+      }
+    }
+    const inDeps = list.filter((x) => Object.hasOwn(deps, x.name));
+    const inDev = list.filter((x) => Object.hasOwn(devDeps, x.name));
+    for (const x of list) {
+      if (!Object.hasOwn(deps, x.name) && !Object.hasOwn(devDeps, x.name)) {
+        problems.push('子包 ' + x.name + ' 两处形态都没登记（开发期应为 `file:packages/' + x.dir + '`）');
+      }
+    }
+    for (const x of inDev) {
+      if (String(devDeps[x.name]) !== 'file:packages/' + x.dir) {
+        problems.push('devDependencies.' + x.name + ' = ' + devDeps[x.name]
+          + '，开发期必须是 `file:packages/' + x.dir + '`');
+      }
+    }
+    for (const x of inDeps) {
+      const spec = String(deps[x.name]);
+      if (!EXACT.test(spec)) {
+        problems.push('dependencies.' + x.name + ' = ' + spec + '，发布期必须是同号精确版本（不用 ^ / ~ / file:）');
+      } else if (spec !== manifest.version) {
+        problems.push('dependencies.' + x.name + ' = ' + spec + ' ≠ 主包 version '
+          + manifest.version + '（S3.2 同号纪律）');
+      }
+    }
+    let form = 'dev';
+    if (inDeps.length > 0 && inDev.length > 0) form = 'mixed';
+    else if (inDeps.length > 0) form = 'publish';
+    if (form === 'mixed') {
+      problems.push('半发布形态：dependencies 里 ' + inDeps.length + ' 个、devDependencies 里 '
+        + inDev.length + ' 个（要么全开发期、要么全发布期）');
+    }
+    if (form === 'publish' && inDeps.length !== list.length) {
+      problems.push('发布形态缺项：' + inDeps.length + '/' + list.length + ' 个子包进了 dependencies');
+    }
+    if (form === 'dev' && inDev.length !== list.length) {
+      problems.push('开发形态缺项：' + inDev.length + '/' + list.length + ' 个子包有 `file:` 规格');
+    }
+    return { form, problems };
+  };
+  const live = publishForm(pkg, subs);
+  check('覆盖面：从 `packages/*` 清单读到 ≥3 个子包名（读不出来 ⇒ 下面的判据恒真）',
+    subs.length >= 3, subs.map((x) => x.dir).join(', ') || '无');
+  check('根清单处于自洽的开发期形态（S8.1）：`dependencies` 无子包、三条 `file:packages/<pkg>` 齐备',
+    live.form === 'dev' && live.problems.length === 0,
+    live.form + (live.problems.length ? '；' + live.problems.join('; ') : ''));
+  // 负对照：同一判据对六种形态问题都有牙，对两个**合法**形态都不误报。
+  const syn = [{ dir: 'a', name: 'main-a' }, { dir: 'b', name: 'main-b' }, { dir: 'c', name: 'main-c' }];
+  const devM = {
+    version: '1.0.0', dependencies: { x: '^2.0.0' },
+    devDependencies: { 'main-a': 'file:packages/a', 'main-b': 'file:packages/b', 'main-c': 'file:packages/c' },
+  };
+  const pubDeps = { x: '^2.0.0', 'main-a': '1.0.0', 'main-b': '1.0.0', 'main-c': '1.0.0' };
+  const pubM = { version: '1.0.0', dependencies: pubDeps, devDependencies: {} };
+  const negs = [
+    ['半发布（两条进 dependencies、file: 还留着）', { ...pubM, devDependencies: { 'main-c': 'file:packages/c' } }, /半发布形态/],
+    ['范围规格（^1.0.0 而非同号精确）', { ...pubM, dependencies: { ...pubDeps, 'main-a': '^1.0.0' } }, /同号精确版本/],
+    ['发布形态缺项（1/3 进 dependencies）', { ...pubM, dependencies: { x: '^2.0.0', 'main-a': '1.0.0' } }, /发布形态缺项/],
+    ['开发形态缺项（少一条 file:）', { ...devM, devDependencies: { 'main-a': 'file:packages/a', 'main-b': 'file:packages/b' } }, /开发形态缺项/],
+    ['devDependencies 里写了非 file: 规格', { ...devM, devDependencies: { ...devM.devDependencies, 'main-c': '^1.0.0' } }, /开发期必须是/],
+    ['dependencies 里出现 file:（S8.1 红线）', { ...pubM, dependencies: { ...pubDeps, 'main-a': 'file:packages/a' } }, /dependencies 里有/],
+  ];
+  const missed = negs.filter(([, m, re]) => !re.test(publishForm(m, syn).problems.join(' | '))).map(([n]) => n);
+  check('负对照：六种形态问题都被判出', missed.length === 0,
+    missed.length ? '漏判：' + missed.join(' / ') : negs.length + ' 种形态');
+  check('负对照：两个合法形态（全开发期 / 全发布期）零问题、不误报',
+    publishForm(devM, syn).form === 'dev' && publishForm(devM, syn).problems.length === 0
+    && publishForm(pubM, syn).form === 'publish' && publishForm(pubM, syn).problems.length === 0);
+}
+
 console.log('');
 if (failed) { console.log(`PACKAGE PUBLISH CHECKS FAILED — ${failed} failed`); process.exit(1); }
 console.log('ALL PACKAGE PUBLISH CHECKS PASSED');

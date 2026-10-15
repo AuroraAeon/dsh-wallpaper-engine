@@ -76,16 +76,16 @@
 | `verify-scene-probe.mjs` | `lib/media/scene-probe.js` `lib/pkg-read.js` `lib/scene-manifest.js` |  |
 | `verify-scene.mjs` | `lib/index.js` `lib/kernel/host-kernel.js` `lib/kernel/host-session.js` `lib/media/frame-store.js` `lib/pkg-read.js` `lib/routes/live-frame.js` `lib/routes/media-bytes.js` `lib/routes/props.js` `lib/routes/scene-frame.js` `lib/routes/scene-media.js` `lib/routes/settings.js` `lib/scene-manifest.js` | ✅ |
 | `verify-settings-namespaces.mjs` | `lib/index.js` `lib/kernel/data-dir.js` `lib/routes/settings.js` `lib/settings-schema.js` `src/persistence.js` |  |
-| `verify-settings-schema-exports.mjs` | `lib/index.js` | ✅ |
+| `verify-settings-schema-exports.mjs` | `lib/index.js` `lib/subpackage-boot.js` | ✅ |
 | `verify-softrender.mjs` | — | ✅ |
 | `verify-static.mjs` | — |  |
 | `verify-steam-discovery.mjs` | `lib/index.js` `lib/steam-discovery.js` |  |
 | `verify-subpackage-boot.mjs` | `lib/index.js` `lib/subpackage-boot.js` |  |
 | `verify-subpackage-client-half.mjs` | `packages/fx/lib/client.fx.js` | ✅ |
-| `verify-subpackage-manifests.mjs` | — |  |
-| `verify-subpackage-purity.mjs` | `lib/host-boot.js` `lib/index.js` |  |
-| `verify-subpackage-toggle-roundtrip.mjs` | `lib/index.js` | ✅ |
-| `verify-system-fonts.mjs` | `lib/settings-schema.js` `packages/fonts/lib/routes/system-fonts.js` `src/client.js` `src/font/typography.js` `src/panel-tabs-advanced.js` `src/panel-tabs-appearance.js` `src/panel-tabs-effects.js` `src/panel-tabs-mascot.js` `src/panel-tabs-wallpaper.js` `src/panel-tabs.js` `src/quick-panel.js` `src/system-fonts.js` | ✅ |
+| `verify-subpackage-manifests.mjs` | `lib/subpackage-boot.js` |  |
+| `verify-subpackage-purity.mjs` | `lib/host-boot.js` `lib/index.js` `lib/subpackage-boot.js` |  |
+| `verify-subpackage-toggle-roundtrip.mjs` | `lib/index.js` `lib/subpackage-boot.js` | ✅ |
+| `verify-system-fonts.mjs` | `lib/json-response.js` `lib/settings-schema.js` `packages/fonts/lib/routes/system-fonts.js` `src/client.js` `src/font/typography.js` `src/panel-tabs-advanced.js` `src/panel-tabs-appearance.js` `src/panel-tabs-effects.js` `src/panel-tabs-mascot.js` `src/panel-tabs-wallpaper.js` `src/panel-tabs.js` `src/quick-panel.js` `src/system-fonts.js` | ✅ |
 | `verify-theme-follow.mjs` | `lib/settings-schema.js` `src/client.js` `src/live-layer-diag.js` `src/live-layer-gate.js` `src/live-layer-pointer.js` `src/live-layer-underlay.js` `src/live-layer-watch.js` `src/live-layer.js` `src/media-prep.js` `src/panel-tabs-advanced.js` `src/panel-tabs-appearance.js` `src/panel-tabs-effects.js` `src/panel-tabs-mascot.js` `src/panel-tabs-wallpaper.js` `src/panel-tabs.js` `src/theme-follow.js` | ✅ |
 | `verify-theme-layer.mjs` | `lib/settings-schema.js` `src/client.js` `src/effects.js` `src/font/apply.js` `src/font/color-roles.js` `src/font/typography.js` `src/panel-tabs-advanced.js` `src/panel-tabs-appearance.js` `src/panel-tabs-effects.js` `src/panel-tabs-mascot.js` `src/panel-tabs-wallpaper.js` `src/panel-tabs.js` | ✅ |
 | `verify-token-contract.mjs` | `src/styles-base.js` `src/styles-chrome.js` `src/styles-ext.js` `src/styles-panel.js` `src/styles-quick.js` `src/styles-settings.js` `src/styles-shell.js` `src/styles-sidebar.js` `src/styles.js` |  |
@@ -125,7 +125,7 @@
 | `lib/http-lifecycle.js` | 1 | `verify-scene-live` |
 | `lib/index.js` | 29 | `e2e-web-media-origin` `verify-about` `verify-adapter` `verify-bundle-rows` `verify-cache-dir` `verify-client` `verify-contracts` `verify-fontset` `verify-logging` `verify-module-layout` `verify-occlusion-hub` `verify-package-files` `verify-package-publish` `verify-presets` `verify-reachability` `verify-route-index` `verify-scene-frame-master` `verify-scene-live` `verify-scene` `verify-settings-namespaces` `verify-settings-schema-exports` `verify-steam-discovery` `verify-subpackage-boot` `verify-subpackage-purity` `verify-subpackage-toggle-roundtrip` `verify-transcode-state` `verify-types` `verify-upload-store` `verify-we-install-probe` |
 | `lib/inventory.js` | 4 | `verify-inventory-index` `verify-scene-live` `verify-types` `verify-we-install-probe` |
-| `lib/json-response.js` | 2 | `verify-json-response` `verify-occlusion-hub` |
+| `lib/json-response.js` | 3 | `verify-json-response` `verify-occlusion-hub` `verify-system-fonts` |
 | `lib/kernel/component-session.js` | 1 | `verify-component-face` |
 | `lib/kernel/config.js` | 2 | `verify-config-store` `verify-upload-store` |
 | `lib/kernel/data-dir.js` | 4 | `verify-cache-dir` `verify-client` `verify-settings-namespaces` `verify-upload-store` |
@@ -166,7 +166,7 @@
 | `lib/shim-seed.js` | 1 | `verify-scene-live` |
 | `lib/startup-sweep.js` | 1 | `verify-scene-live` |
 | `lib/steam-discovery.js` | 2 | `verify-steam-discovery` `verify-we-install-probe` |
-| `lib/subpackage-boot.js` | 3 | `verify-inject-contracts` `verify-json-response` `verify-subpackage-boot` |
+| `lib/subpackage-boot.js` | 7 | `verify-inject-contracts` `verify-json-response` `verify-settings-schema-exports` `verify-subpackage-boot` `verify-subpackage-manifests` `verify-subpackage-purity` `verify-subpackage-toggle-roundtrip` |
 | `lib/upload-dir.js` | 4 | `verify-asset-paths` `verify-cache-dir` `verify-scene-live` `verify-upload-store` |
 | `lib/upload-store.js` | 2 | `verify-scene-live` `verify-upload-store` |
 | `lib/wallpaper-scan.js` | 1 | `verify-wallpaper-scan` |

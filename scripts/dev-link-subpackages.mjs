@@ -30,18 +30,17 @@
  *   node scripts/dev-link-subpackages.mjs --json          # 机器可读输出
  *   node scripts/dev-link-subpackages.mjs --no-repo-links  # 只处理 profile（不建本仓 node_modules 链接）
  *   node scripts/dev-link-subpackages.mjs --no-profiles    # 只建本仓 node_modules 链接
- *   node scripts/dev-link-subpackages.mjs --no-profiles --no-self-link  # 只建子包链接（不建主包自链接）
  *
- * 三个链接点：
+ * 两个链接点：
  *   ① 本仓 `node_modules/<子包名>` —— **主包自己**启动自检时 resolve 的落脚处（开发期子包未发布
  *      ⇒ 不建这条主包 apply 会抛）；
- *   ② 本仓 `node_modules/<主包名>` → **本仓根**（自链接）—— 子包宿主入口里
- *      `import … from 'dsh-plugin-wallpaper-engine/subpackage-boot.js'` 的落脚处。Node 的
- *      "包自引用"只对**最近**那一份 package.json 的 `name` 生效，而 `packages/<pkg>/` 里最近的
- *      是**子包自己的**清单（name = `…-<pkg>`）⇒ 自引用对子包**不成立**，必须有一条真实的
- *      `node_modules` 边（实测：不建它 `verify-route-index` 直接 ERR_MODULE_NOT_FOUND）。
- *      可用 `--no-self-link` 单独关掉；
- *   ③ 各 profile 的 node_modules（宿主解析 patch 行名）。
+ *   ② 各 profile 的 node_modules（宿主解析 patch 行名）。
+ *
+ * 已删除的第三个链接点（2026-10-15）：本仓 `node_modules/<主包名>` → 本仓根（主包**自链接**）。
+ *   它唯一服务的是子包宿主入口里 `import … from 'dsh-plugin-wallpaper-engine/subpackage-boot.js'`
+ *   这条裸说明符；跨包通道改走 **① Cordis Service**（BUNDLE-SPLIT §5.1）后，子包宿主半边
+ *   **零主包说明符**（`test/verify-subpackage-purity.mjs` 的 `ROOT_SPEC_ALLOW` 已收紧为零）
+ *   ⇒ 那条 `node_modules` 边不存在了，`rootSelfLink()` 与 `--no-self-link` 一并删除。
  *
  * 判定与安全：
  *   · 已经是**指向正确目标**的 junction / 符号链接 ⇒ 跳过（幂等）；
@@ -76,27 +75,6 @@ export function collectSubpackages(repoRoot) {
     }
   }
   return out;
-}
-
-/**
- * 本仓根包的「自链接」条目：`node_modules/<根包名>` → 本仓根。
- *
- * 为什么需要它（实证：`verify-route-index` 报 ERR_MODULE_NOT_FOUND）：子包宿主入口
- * `packages/<pkg>/lib/index.js` 里 `import … from 'dsh-plugin-wallpaper-engine/subpackage-boot.js'`
- * 是**裸包名**；Node 的包自引用按「最近的 package.json」判定，而那里最近的是子包自己的清单
- * （name 是 `dsh-plugin-wallpaper-engine-<pkg>`）⇒ 自引用不生效，只能靠一条真实的 node_modules 边。
- *
- * @param {string} repoRoot 本仓根
- * @returns {{dir: string, name: string, target: string}|null} 根清单读不出 name 时返回 null
- */
-export function rootSelfLink(repoRoot) {
-  try {
-    const name = JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf8')).name;
-    if (!name || typeof name !== 'string' || name.startsWith('.')) return null;
-    return { dir: '.', name, target: repoRoot };
-  } catch {
-    return null;
-  }
 }
 
 /** profile 根：`$DSH_HOME` 或 `$USERPROFILE/.dsh`。 */
@@ -194,14 +172,13 @@ function main(argv) {
   }
 
   // 链接点有两处，缺一不可：
-  //   ① 每个 profile 的 node_modules —— **宿主**按裸包名解析 patch 行时的落脚处（§8.1 spike 第 1 条）；
-  //   ② 本仓 node_modules —— **主包自己**在启动自检里 resolve 子包名时走的那条路
+  //   ① 本仓 node_modules —— **主包自己**在启动自检里 resolve 子包名时走的那条路
   //      （lib/index.js 的 apply 用 createRequire(import.meta.url)）。开发期三个子包还没发布，
-  //      不建这条链接，主包一 apply 就直接抛"子包行解析不到"。
+  //      不建这条链接，主包一 apply 就直接抛"子包行解析不到"；
+  //   ② 每个 profile 的 node_modules —— **宿主**按裸包名解析 patch 行时的落脚处（§8.1 spike 第 1 条）。
   const sites = [];
   if (!has('--no-repo-links')) {
-    const self = has('--no-self-link') ? null : rootSelfLink(repoRoot);
-    sites.push({ name: '(repo)', modules: join(repoRoot, 'node_modules'), label: '(repo)', entries: self ? [self, ...subs] : subs });
+    sites.push({ name: '(repo)', modules: join(repoRoot, 'node_modules'), label: '(repo)', entries: subs });
   }
   let profiles = listProfiles(home);
   if (only) profiles = profiles.filter((p) => p.name === only);

@@ -1,5 +1,5 @@
 /**
- * packages/fx/src/client.js —— 「点击效果与拖尾效果」子包的**浏览器半边入口**（P-A，task-3 草案）。
+ * packages/fx/src/client.js —— 「点击效果与拖尾效果」子包的**浏览器半边入口**（拆包草案，task-3）。
  *
  * 构建期形状（与主 bundle 同一套，见 scripts/build-client.mjs:541-565 / stripHeader:792）：
  *   · 本文件 = 入口（对应主 bundle 的 src/client.js）。构建期只取**首个块注释之后**的正文；
@@ -10,10 +10,10 @@
  *     （与宿主 graph row 的 id 逐字相等，客户端 require 才命中）。
  *
  * ⚠️ 本文件**不许**出现 require/import（所以这里没有那行 host 绑定）——
- *    test/verify-subpackage-purity.mjs 只放行两处主包裸名：所有包内文件里的
- *    'dsh-plugin-wallpaper-engine/subpackage-boot.js'，以及**客户端产物**
- *    packages/<pkg>/lib/client.<short>.js 里的 require('dsh-plugin-wallpaper-engine')
- *    （判据 :84 isClientArtifact + :147-148 + 负对照 :212/:214）。源码面写 require 会判红。
+ *    test/verify-subpackage-purity.mjs 的放行清单已**收紧为零**（2026-10-15，ADR-0014 S5.1）：包内任何文件
+ *    都不许出现主包说明符（旧的 'dsh-plugin-wallpaper-engine/subpackage-boot.js' 叶子通道作废）。
+ *    唯一例外是**客户端产物** packages/<pkg>/lib/client.<short>.js 里由构建期发出的
+ *    require('dsh-plugin-wallpaper-engine')（判据 isClientArtifact）。源码面写 require 会判红。
  *    ⇒ 那行绑定由构建循环的 outline 在正文/内联件之前发出（一行，属 task-1）：
  *
  *        const host = require('dsh-plugin-wallpaper-engine');
@@ -31,8 +31,8 @@
  */
 
 /**
- * 缺键**大声失败**，不许静默 undefined（D-8 显式键集 + D3③「宁可显示、不可静默消失」）。
- * 主包被关 ⇒ 本 bundle 根本不会被 require（D-13 B 连坐）；能走到这里却缺键 = 键集与申报表脱钩。
+ * 缺键**大声失败**，不许静默 undefined（ADR-0014 S5.1 / S5.4 服务面显式键集 + ADR-0013 D3③「宁可显示、不可静默消失」）。
+ * 主包被关 ⇒ 本 bundle 根本不会被 require（ADR-0014 S7.2 连坐）；能走到这里却缺键 = 键集与申报表脱钩。
  */
 const FX_HOST_REQUIRED = [
   // 内核（只读面）
@@ -47,7 +47,7 @@ const FX_HOST_REQUIRED = [
 for (const key of FX_HOST_REQUIRED) {
   if (!(key in host)) {
     throw new Error('[wallpaper-engine-fx] 主 bundle 键集缺少 "' + key
-      + '"（D-8 显式键集：要么补键，要么改申报表，不许静默 undefined）');
+      + '"（ADR-0014 S5.1 / S5.4 显式键集：要么补键，要么改申报表，不许静默 undefined）');
   }
 }
 const {
@@ -57,7 +57,7 @@ const {
   registerExtensionModule, registerLayerHooks,
 } = host;
 
-/* ===== 贡献（§7.1 ⑤：主 bundle 的 extensionModules() 改成读注册表，本包是首个贡献点）===== */
+/* ===== 贡献（主 bundle 的 extensionModules() 改成读注册表，本包是首个贡献点）===== */
 
 // ① 「扩展」页签的二号模块描述符。主包 src/panel-tabs.js:261 今天写死
 //    `return [AVATAR_EXTENSION_MODULE, FX_EXTENSION_MODULE, PARALLAX_EXTENSION_MODULE];`
@@ -68,5 +68,5 @@ registerExtensionModule('fx', FX_EXTENSION_MODULE);
 // ② 行为层的生命周期。主包 src/client.js 今天对这几个裸名有 3 处直接引用，拆包后必须走注册表：
 //      5365 `const unsubFx = subscribe(syncFxLayer);` · 5492 `syncFxLayer();` · 5536 `disposeFxLayer();`
 //    sync 由主包在 sel 变化 / 订阅回调里调用，dispose 由主包在行停用时调用（主包侧替本包起停 rAF
-//    的"内容驱动"节奏不变）。本包不自建订阅、不自起定时器（§13 风险 #11）。
+//    的"内容驱动"节奏不变）。本包不自建订阅、不自起定时器（ADR-0014 S6.3）。
 registerLayerHooks('fx', { sync: syncFxLayer, dispose: disposeFxLayer });

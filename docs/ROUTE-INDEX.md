@@ -58,8 +58,8 @@
 | 39 | `/now-playing` | lib/components/media-bridge/now-playing.js:116 | 箭头 | disposers base | 3 |
 | 40 | `/now-playing/artwork` | lib/components/media-bridge/now-playing.js:130 | 箭头 | disposers base serveFile | 2 |
 | 41 | `/media-control` | lib/components/media-bridge/now-playing.js:148 | 箭头 | disposers base CONTROL_JSON_MAX_BYTES | 3 |
-| 42 | `/fontsets` | packages/fonts/lib/routes/fontsets.js:254 | async 箭头 | disposers base readFontSetId | 4 |
-| 43 | `/system-fonts` | packages/fonts/lib/routes/system-fonts.js:477 | async 箭头 | disposers base | 2 |
+| 42 | `/fontsets` | packages/fonts/lib/routes/fontsets.js:255 | async 箭头 | disposers base readFontSetId | 4 |
+| 43 | `/system-fonts` | packages/fonts/lib/routes/system-fonts.js:487 | async 箭头 | disposers base http | 2 |
 
 **零提及（拆分前必须先补守卫）**：（无）
 
@@ -87,7 +87,7 @@
 | `lib/routes/upload.js` | `registerUploadRoutes(webServer, c)` | 3 | `disposers` `base` `tokenFor` `UPLOAD_EXT` `UPLOAD_MAX_BYTES` `CONTROL_JSON_MAX_BYTES` `ensureUploadDir` `readUploadMeta` `metaEntry` `setUploadMeta` `removeUploadMeta` `resolveUploadFile` `setUploadDir` `normalizeUserDir` `armBodyIdleTimeout` `lingerClose` | — |
 | `lib/routes/we-assets.js` | `registerWeAssetsRoutes(webServer, c)` | 2 | `disposers` `base` `serveFile` `CONTROL_JSON_MAX_BYTES` `normalizeUserDir` `setWeAssetsDir` `listWeAssetNames` `weAssetsAvailable` `WE_ASSETS_SOURCE_ID` `getWeAssetsDir` | — |
 | `packages/fonts/lib/routes/fontsets.js` | `registerFontsetsRoutes(webServer, c)` | 1 | `disposers` `base` `readFontSetId` | — |
-| `packages/fonts/lib/routes/system-fonts.js` | `registerSystemFontsRoutes(webServer, c)` | 1 | `disposers` `base` `cachePath` `log` `platform` `home` `fontDirs` `runFontCommand` | — |
+| `packages/fonts/lib/routes/system-fonts.js` | `registerSystemFontsRoutes(webServer, c)` | 1 | `disposers` `base` `cachePath` `log` `schema` `http` `platform` `home` `fontDirs` `runFontCommand` | — |
 | `lib/components/about-notice/about-qr.js` | `registerAboutQrRoutes(webServer, c)` | 1 | `disposers` `base` `aboutDir` `serveFile` | — |
 | `lib/components/about-notice/github-stars.js` | `registerGithubStarsRoutes(webServer, c)` | 1 | `disposers` `base` `repoSlug` `cachePath` `log` `fetchJson` | — |
 | `lib/components/mascot-avatar/avatar.js` | `registerAvatarRoutes(webServer, c)` | 1 | `disposers` `base` `serveFile` `avatarDir` `avatarPath` `AVATAR_SIDES` `AVATAR_EXT` `AVATAR_MAX_BYTES` `atomicWriteFileP` `armBodyIdleTimeout` `lingerClose` | — |

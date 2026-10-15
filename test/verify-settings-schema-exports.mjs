@@ -92,8 +92,8 @@
  *
  * Usage:  node test/verify-settings-schema-exports.mjs
  */
-import { readFileSync, readdirSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { existsSync, readFileSync, readdirSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stripComments } from './tools/js-text.mjs';
 import { createCheck } from './tools/assert-harness.mjs';
@@ -102,6 +102,14 @@ import { createCheck } from './tools/assert-harness.mjs';
 import { listFace, gitViewDiff, diffFace } from './tools/repo-face.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+
+/**
+ * 绝对路径 ⇒ 仓库相对路径，**统一 POSIX 分隔符**（本判据面的唯一口径）。
+ * 为什么承重：扫描键必须与 `publicSet`（来自 `package.json`，POSIX）同风格，否则 `publicSet.has(mod)`
+ * 恒 false ⇒ 公开入口被当成内部模块查死导出（2026-10-15 实测：Windows 上 `lib\subpackage-boot.js`
+ * 的 `schemaView` / `subpackageKeys` 被这样误报，而 CI（POSIX）上豁免生效、不出现）。
+ */
+const relOf = (abs) => abs.slice(ROOT.length + 1).split(sep).join('/');
 const { check, stats } = createCheck();
 
 /**
@@ -369,17 +377,39 @@ const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
 const publicSet = publicEntriesOf(pkg.exports);
 
 const moduleFiles = [...listFace(join(ROOT, 'lib'), { exts: ['.js'] }), ...listFace(join(ROOT, 'src'), { exts: ['.js'] })]
-  .map((p) => p.slice(ROOT.length + 1))
+  .map((p) => relOf(p))
   .filter((p) => !p.startsWith('lib/types/') && p !== BUILD_PRODUCT)
   .sort();
 const modules = new Map(moduleFiles.map((f) => [f, readFileSync(join(ROOT, f), 'utf8')]));
 
 const consumerAbs = listFace(ROOT, { exts: CODE_EXT });
 const consumerFiles = consumerAbs
-  .map((p) => p.slice(ROOT.length + 1))
+  .map((p) => relOf(p))
   .filter((p) => !p.startsWith('lib/types/') && !p.startsWith('node_modules/'))
   .sort();
 const consumers = new Map(consumerFiles.map((f) => [f, readFileSync(join(ROOT, f), 'utf8')]));
+
+// ── 自检：扫描面键 == publicSet 键（都 POSIX；否则豁免静默失效）──────────────────
+// 承重性见 relOf() 注释：`listFace()` 给的是绝对路径，切片后必须转 POSIX，才能与 `package.json`
+// 的 exports 取值对上。这一条是"本机红 / CI 绿"那类假红的守门人。
+{
+  const posixKeys = [...modules.keys(), ...consumers.keys()].every((k) => !k.includes('\\'));
+  const publicOnDisk = [...publicSet].filter((p) => p !== BUILD_PRODUCT && existsSync(join(ROOT, p)));
+  const missing = publicOnDisk.filter((p) => !modules.has(p));
+  const buggy = judge({
+    modules: new Map([['lib\\subpackage-boot.js', 'export const DEAD = 1;\n']]),
+    publicSet: new Set(['lib/subpackage-boot.js']),
+    consumers: new Map([['test/clean.mjs', 'const x = 1;\n']]),
+  });
+  check('自检：扫描面键统一 POSIX 分隔符（Windows 上 join 出反斜杠 ⇒ 公开入口豁免静默失效）',
+    posixKeys, `modules=${modules.size} 个键 · consumers=${consumers.size} 个键`);
+  check('自检：package.json exports 的公开入口在面内用同一个键（豁免才对得上）',
+    publicOnDisk.length >= 4 && missing.length === 0,
+    `公开入口（在盘上，除构建产物）${publicOnDisk.length} 个 · 面内按键命中 ${publicOnDisk.length - missing.length} 个 · 缺 ${JSON.stringify(missing)}`);
+  check('负对照：面键带反斜杠而 publicSet 是 POSIX ⇒ 公开入口被误当内部模块、死导出误报（本机旧形态）',
+    buggy.ok === false && buggy.offenders.length === 1 && buggy.offenders[0].name === 'DEAD',
+    buggy.ok ? '未判红（负对照失效）' : buggy.offenders.map((o) => o.mod + '⇒' + o.name).join(' '));
+}
 
 // ── 自检：扫描面非空（空面会让主判据"恒绿"，是最危险的失败形态）──────────────
 check('自检：内部模块面非空（lib/** + src/** 现算）', modules.size >= 40, `${modules.size} 个模块`);
@@ -551,7 +581,6 @@ const syntheticModule = 'const SYNTH_EXPORT = 1;\nexport { SYNTH_EXPORT };\n';
 {
   const probeNested = join(ROOT, 'zz-dirty-face-nested');
   const probeIgnored = join(ROOT, '.integration-notes', 'scratch', 'dirty-face-nc');
-  const relOf = (abs) => abs.slice(ROOT.length + 1).split('\\').join('/');
   const probeFiles = [join(probeNested, 'lib', 'dup.js'), join(probeIgnored, 'lib', 'dup.js')];
   try {
     for (const p of probeFiles) {

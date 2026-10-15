@@ -253,9 +253,17 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
   且撞 `verify-module-layout` 的"共享内核白名单只许一项"。
 - **③ 把内核下沉成独立小包**（`dsh-plugin-we-core`）：边界最干净；代价 = 多一个发布面 + 新包名要进各守卫的顶层目录地板。
 
-> **决策（2026-10-14，用户拍板 —— 见 §14 的 D-4 与 D-8）**：**先走 ②**（零新机制、可立即验证），
-> 把 ① 作为"② 撞到白名单/耦合墙时"的升级路径；**跨包贡献/服务面**先走**宿主注入显式键集**
-> （§5.2 允许清单第 2 条），P-A…P-B **不新开 Service**。
+> **决策（2026-10-15，用户拍板 —— 取代 §14 的 D-4 与 D-8）**：**走 ①（主包以 Cordis Service 提供共享面）**。
+> 为什么改：② 的叶子 import 是**模块图上的边** —— 关掉主包后子包仍握着**旧代 exports**（§5.2 反模式表第 2 行），
+> 而 `inject` 是 Cordis **唯一**有级联语义的判据（`name in fiber.inject`）⇒ 只有 ① 能让 D-13 的 B
+> 「关主包 = 关整族」有物理基础；② 的另一半代价（把内核内部面公开进 `files`、撞 `verify-module-layout` 的
+> "共享内核白名单只许一项"）也随之消失。
+> **落地形态**：服务名 `wallpaperEngineHost`（真源 = `lib/subpackage-boot.js` 的 `HOST_SERVICE_NAME`），
+> 值 = `createSubpackageHost()` 的**冻结六键** `{ ids, keyNames, keys, handOff, schema, http }`；
+> 主包 `apply()` 的**第一件事**是 `provideSubpackageHost(ctx)`（真宿主走 `ctx.provide` ⇒ 服务记在**主包自己的 fiber** 上）；
+> 子包宿主半边 `export const inject = ['wallpaperEngineHost']` 且**零主包说明符**
+> （`test/verify-subpackage-purity.mjs` 的 `ROOT_SPEC_ALLOW` 已收紧为零）。
+> ① 的代价照付：`verify-component-face` 的分级面复算口径（§10.1 #4）已同步。
 
 ### 5.2 跨包通讯纪律（**写进判据，不靠人记**）
 
@@ -284,8 +292,10 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 - 或"值 + 回调"（子包只是渲染器，写权留主包）；
 - **不要**用 `external` + `require` 传长命对象。
 
-> **决策（2026-10-14，§14 D-8）**：P-A 的三个子包先走**宿主注入显式键集**（值由主包注入、子包只读），
-> 不做长命对象跨包 `require`，也不新开 Service；§5.1 ① 仍是升级路径。
+> **决策（2026-10-15，取代 §14 D-8）**：P-A 的三个子包走**Cordis Service**（§5.1 ①，即本节的允许清单第 1 条）——
+> 主包 `ctx.provide('wallpaperEngineHost', …)`，子包 `inject` 后从 `ctx.wallpaperEngineHost` **只读**取用；
+> 仍不做长命对象跨包 `require`。允许清单第 2 条的"宿主注入显式键集"降级为**包内**形态
+> （组件门面 `c` 契约仍是它），**不再承担跨包通道**。
 
 ---
 
@@ -294,7 +304,7 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 | 问题 | 状态 | 决策 / 期限 |
 |---|---|---|
 | §6.1 配置项归属（代码 / 状态） | **阶段前置** | **P-C 之前必须表态**（§7.3 已把它列为前置）；**字体收口的层 2 就是它的一个实例**（`lib/settings-schema.js` 字体专属 283/1969 行，见 §7.8） |
-| §6.2 客户端半边怎么协作（服务面形状） | **已定案（2026-10-14）** | P-A…P-B 走**宿主注入显式键集**（§5.2 允许清单第 2 条）、不做长命对象跨包 `require`、**不新开 Service**（升级路径 = §5.1 ①）；"provider 缺席"的期望 = 注入键缺席，按 D3③「宁可显示、不可静默消失」 |
+| §6.2 客户端半边怎么协作（服务面形状） | **已定案（2026-10-15，取代 10-14 口径）** | 跨包通道走 **Cordis Service**（§5.1 ①）：主包 `provide('wallpaperEngineHost', …)`、子包 `inject` 后只读取用；不做长命对象跨包 `require`；**包内**的组件门面仍走宿主注入显式键集（§5.2 允许清单第 2 条）。"provider 缺席"的期望 = 子包 fiber 因 `inject` **级联而 park**（D-13 B），不再是"注入键缺席" |
 | §6.3 设置簇要不要按插件重画 | **阶段前置** | **P-C 之前必须表态**（与 §6.1 同批）；**首个真实客户 = 外观页签的字体节**（今天与玻璃 / 圆角节同文件，见 §7.8 层 1） |
 | §6.4 预设怎么跨包 | **阶段前置** | **P-D 之前必须表态**（与 §7.4 同批） |
 
@@ -380,7 +390,7 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 
 **动作**：① 建三包，落点 = **同仓 `packages/<pkg>/`**（§8.1，2026-10-14 定案）；② 主包 `dependencies` 精确依赖三者；
 ③ 主包 patch 里 `insert` 三行；④ 加启动自检与"行在 patch 里"的判据（§7.6）；
-⑤ 把 `extensionModules()` 从**静态数组**改成"读注册表"（**首个跨包贡献点**，通道 = **宿主注入显式键集**，见 §6.2 / §14 D-8）。
+⑤ 把 `extensionModules()` 从**静态数组**改成"读注册表"（**首个跨包贡献点**，通道 = **Cordis Service**：子包 `inject: ['wallpaperEngineHost']`，见 §6.2 / §5.1 ①）。
 **判据**：三包能被**逐行单独停用／恢复**，且界面/路由各自消失（复用 D3 的可见面判据 + §7.6 第 4 条的往返判据）。
 ⚠️ **字体包这半条今天不成立**（只交付宿主半边 ⇒ 关掉该行只撤路由、界面还在）：见下面的实况块与 §7.8。
 ⚠️ **"复用主包子路径承载客户端半边"不成立**：客户端 graph row 是**包级**的、子路径行不参与扫描（`C1`），
@@ -477,8 +487,9 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 1. **层 1 · 能力与面板节（P-B 提供能力，P-C 动手）**
    - P-B 侧：`SUBPACKAGE_BUILDS`（`scripts/build-client.mjs:509`）改成"数据驱动 N 项"（§7.2）；
      注入键集按字体半边**真实依赖**设计（`selection` / `weT` / `apiFetch`·`apiJson` / `applyEffects` /
-     `hostFailureReason` / `createThemeLayer`）；补**仓库根 self-link**（§8.1 追加条；
-     `packages/fonts/lib/index.js:33` 已自报这个缺口）。
+     `hostFailureReason` / `createThemeLayer`）；~~补**仓库根 self-link**（§8.1 追加条）~~
+     —— ✅ **已作废（2026-10-15，跨包改走 ① Service）**：子包宿主半边不再裸名 import 主包，
+     该前置连同 §8.1 的 self-link 一起消失（§10.1 #16）。
    - P-C 侧：先把字体节从 `src/panel-tabs-appearance.js` 切成独立模块（它就是 §6.3 的第一个实例），
      再让 `packages/fonts` 具备包级 `src/client.js` ⇒ `dsh.client` + `exports['./client']` +
      `lib/client.fonts.js` 三件齐（`C2`）；主 patch 的**行名不变**（§3）。
@@ -502,7 +513,8 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
    —— 本节与 §7.1 的实况块就是这条声明的落点；
 2. **包描述漂移**：✅ **已修（2026-10-15）** —— `packages/fonts/package.json:4` 与 `packages/fonts/locale/{en,zh}.json:4`
    原先都声称带 "the typography/colour-role browser half"，已改成"仅宿主半边、字体界面不住本包"；
-3. 补 §8.1 追加条的**仓库根 self-link**，让字体包在仓内可跑。
+3. ~~补 §8.1 追加条的**仓库根 self-link**，让字体包在仓内可跑。~~ ✅ **已作废（2026-10-15，① Service）** ——
+   字体包宿主入口改从 `ctx.wallpaperEngineHost` 取用，仓内可直接跑（§10.1 #16）。
 
 **复算入口**：`node test/verify-subpackage-client-half.mjs`（今天只覆盖 fx / parallax）·
 `node test/verify-subpackage-toggle-roundtrip.mjs` · `node test/verify-bundle-rows.mjs`（脱链手动）。
@@ -565,6 +577,11 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 > 仍需要一条**仓库根 self-link**（`node_modules/dsh-plugin-wallpaper-engine` → 仓库根）。这条今天没建 ⇒
 > `packages/fonts` 的宿主入口**在仓内不能直接跑**（`packages/fonts/lib/index.js:33` 自报同一件事）。
 > 归属：P-B（§7.8 层 1 的第三件前置）。
+>
+> **追加（2026-10-15，已消除）**：跨包通道改走 ① **Cordis Service**（§5.1）后，子包宿主半边**零主包说明符**
+> （`test/verify-subpackage-purity.mjs` 的 `ROOT_SPEC_ALLOW` 已收紧为零）⇒ 这条 self-link 边不存在了：
+> 根 `devDependencies` 的自链 `"dsh-plugin-wallpaper-engine": "file:."` 已删，`scripts/dev-link-subpackages.mjs`
+> 的 `rootSelfLink()` 与 `--no-self-link` 同步删除；`file:packages/<pkg>` 三条**保留**。
 
 ### 8.2 每个子包的清单（照抄用）
 
@@ -662,7 +679,9 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 | 11 | `scripts/prepare.mjs`（`prepack`） | 源码与产物同包根、只有一份 | 按包循环或只挂主包 |
 | 12 | 读 `package.json` 的 `test/` + `scripts/` 文件（复算：`Select-String -Path test\*.mjs,scripts\*.mjs -Pattern package\.json`） | 单包 | 同 #1（先做"包发现"层） |
 | 13 | `test/verify-settings-schema-exports.mjs` 的**扫描面自检**（`gitViewDiff` + `allowedExtra`） | 只豁免**一个**产物 `lib/client.js` ⇒ P-A 的两个子包产物（`packages/<pkg>/lib/client.<pkg>.js`，被 `.gitignore` 排除）一律按"脏面"判红 | ✅ **已修（2026-10-15）**：豁免名单改成**从各包 `package.json` 的 `exports['./client']` 现算**，并加"逐条来自包清单（含 `dsh.client`）"自检 + "同族但不在名单里的产物名仍判红"负对照 |
-| 14 | 根清单 `dependencies`（P-A 把三条子包依赖写进清单、**没动** `package-lock.json`） | 「清单改了 lock 必须同步」才是**能装**的声明 —— `npm ci` 把清单当理想树去 registry 解析；未发布的包锁不出来 | ✅ **已修（2026-10-15）**：① 开发期（子包未发布）**不声明**这三条（§12 检查表 ⑤ 在发布后才加回）；② `test/verify-package-publish.mjs` 新增 ⑧「根清单 ⇄ `package-lock.json` 同步」判据（含覆盖面自检 + 五种漂移负对照）—— 实测把 `3842584e` 的清单放回去，⑧ 立刻红并点出三条 `锁里缺 …@1.3.3` |
+| 14 | 根清单 `dependencies`（P-A 把三条子包依赖写进清单、**没动** `package-lock.json`） | 「清单改了 lock 必须同步」才是**能装**的声明 —— `npm ci` 把清单当理想树去 registry 解析；未发布的包锁不出来 | ✅ **已修（2026-10-15）**：① 子包未发布期间**不写进 `dependencies`**，改用 `devDependencies` + `file:packages/<pkg>` 开发期链接（`npm ci` **不 omit dev** ⇒ 干净检出装出链接；dev 不进发布清单 ⇒ 用户侧看不到 `file:` 规格；发布形态仍按 §12 第 1 条）；② `test/verify-package-publish.mjs` 新增 ⑧「根清单 ⇄ `package-lock.json` 同步」判据（含覆盖面自检 + 五种漂移负对照）—— 实测把 `3842584e` 的清单放回去，⑧ 立刻红并点出三条 `锁里缺 …@1.3.3` |
+| 15 | 三条子包依赖从清单删掉后，**运行期**的启动自检在干净检出里红（`lib/subpackage-boot.js:226`「子包启动自检失败：3 个子包行解析不到」），CI `verify` 第 7 步（`test/verify-scene.mjs`）短路 | dev 期子包必须**装得进 `node_modules`**：`devDependencies` + `file:packages/<pkg>`（见 #14） |
+| 16 | 三个子包的宿主半边都 `import 'dsh-plugin-wallpaper-engine/subpackage-boot.js'`（`packages/fx/lib/index.js:22` / `packages/parallax/lib/index.js:23` / `packages/fonts/lib/index.js:40`）⇒ 干净检出里**主包自己也不在 `node_modules`**：第 32 步（`test/verify-route-index.mjs` ⑤ 真跑 `apply()`）当场 `ERR_MODULE_NOT_FOUND: Cannot find package 'dsh-plugin-wallpaper-engine' imported from packages/fonts/lib/index.js` | ✅ **已消除（2026-10-15，跨包改走 ① Cordis Service）**：子包宿主半边**零主包说明符** ⇒ 这条解析边不存在了 ⇒ 根 `devDependencies` 的 `"dsh-plugin-wallpaper-engine": "file:."` **自链已删**，`scripts/dev-link-subpackages.mjs` 的 `rootSelfLink()` 与 `--no-self-link` 开关同步删除。子包真名的 `file:packages/<pkg>` 链接**保留**（#15 的"dev 期子包必须装得进 `node_modules`"仍在） |
 
 ### 10.2 顺序纪律
 
@@ -673,7 +692,8 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 5. **靠 `git ls-files` 对账的自检必须在 git 可用的环境里跑过一次**：DSH 沙箱禁子进程时 `repo-face.mjs` 报**具名 SKIP**
    （`fatal:EPERM`）⇒ 本机全绿**不等于** CI 全绿。实测代价：P-A 落地后本机 82/82 绿，提权后第 63 步立刻红
    （CI `verify.yml` 先 `npm run build` 再 `npm run verify` ⇒ 产物一定在场），即 §10.1 #13 那一处。
-6. **改根清单必须同一次提交重算锁文件**：`dependencies` / `devDependencies` / `peerDependencies` 任何一格与 `package-lock.json` 根条目漂移，`npm ci` 就会拿清单去 registry 解析 ⇒ 未发布的包当场 404（P-A 实测：`3842584e` 本机 82/82 全绿、CI 的 install 步两条腿同时红）。判据在 `test/verify-package-publish.mjs` ⑧；子包未发布期间**不声明**它们（§12 检查表 ⑤）。
+6. **改根清单必须同一次提交重算锁文件**：`dependencies` / `devDependencies` / `peerDependencies` 任何一格与 `package-lock.json` 根条目漂移，`npm ci` 就会拿清单去 registry 解析 ⇒ 未发布的包当场 404（P-A 实测：`3842584e` 本机 82/82 全绿、CI 的 install 步两条腿同时红）。判据在 `test/verify-package-publish.mjs` ⑧。子包未发布期间**不写进 `dependencies`**，改用 `devDependencies` + `file:packages/<pkg>`（§10.1 #14），主包自链 `file:.`（§10.1 #16）。
+7. **彩排副本必须建在仓库树之外**：Node 解析 `node_modules` 是**逐级向上**的 ⇒ 副本若嵌在仓库里（如 `.integration-notes/scratch/`），会命中仓库自己的 `node_modules`（含 `scripts/dev-link-subpackages.mjs` 建的链接）⇒ verify **假绿**。实测代价：第一轮彩排 `npm ci`/`build`/`verify`/`smoke` 全 0，把同一份内容 `git archive` 到 `%TEMP%` 后立刻逐字复现 CI 的 `✗ [7/67]`。
 
 ---
 
@@ -700,14 +720,14 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 
 ## 12. 发布与升级流程（版本一致）
 
-1. **版本**：主包与所有子包**同号**（同一个 `version`）；主包以**精确版本**依赖子包（不用 `^`）——⚠️ 这是**发布形态**：子包发布到 npm **之前**不许把这行写进主包 `dependencies`（未发布的包锁不出来 ⇒ 干净检出 `npm ci` 直接 E404，见 §10.1 #14 / §13 #15）；加回时**必须同一次提交重算 `package-lock.json`**；
+1. **版本**：主包与所有子包**同号**（同一个 `version`）；主包以**精确版本**依赖子包（不用 `^`）——⚠️ 这是**发布形态**：子包发布到 npm **之前**不许把这行写进主包 `dependencies`（未发布的包锁不出来 ⇒ 干净检出 `npm ci` 直接 E404，见 §10.1 #14 / §13 #15）。**开发期形态**（子包未发布，且仓库要能干净检出后自举）＝ 三个子包装在根 `devDependencies` 里用 `file:packages/<pkg>` 链接（`npm ci` 不 omit dev ⇒ 装得出 `node_modules` 链接；devDeps 不进发布清单 ⇒ 用户侧看不到 `file:` 规格），~~另加主包**自链** `"dsh-plugin-wallpaper-engine": "file:."`~~（三个子包的宿主半边曾从主包 `import` 冻结键表；2026-10-15 改走 ① Service 后**自链已删**，见 §10.1 #16）；两种形态都得**同一次提交重算 `package-lock.json`**；
 2. **安装**：用户只装主包一个名字（Web / 工具 / CLI 都行）；
 3. **升级**：`dsh plugin add <主包>@<新版本>` + **重启**（无 `update_bundle`，I8）；
    或 `dsh plugin --profile <p> remove <主包>` 后重装；
 4. **禁止**：把子包名单独写进 profile 的 `dependencies`（会产生两个副本/双实例，I7）；
 5. **发布检查表**：① 各子包 `peerDependencies` 与主包**逐字对齐**（I6，否则整次安装被拒）；
    ② 三份生成物已重算；③ `npm run verify:all` 全绿；④ 本地真机走一遍"装 → 开 → 关一行 → 重启 → 卸载"；
-   ⑤ **顺序**：先发布三个子包（与主包同号）→ 再把三条精确版本加回主包 `dependencies` 并**重算 `package-lock.json`** → 最后发布主包。顺序反了 ⇒ 干净检出与用户侧安装都在 install 步 404。
+   ⑤ **顺序**：先发布三个子包（与主包同号）→ 再把三条精确版本加回主包 `dependencies`、**同一次提交**把 `devDependencies` 里的三条 `file:` 规格删掉（发布物不带 `file:`；主包自链已于 2026-10-15 删除）、并**重算 `package-lock.json`** → 最后发布主包。顺序反了 ⇒ 干净检出与用户侧安装都在 install 步 404。
 
 ---
 
@@ -717,7 +737,7 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 |---|---|---|
 | 1 | **行级失败静默**（子包没落地 ⇒ 那一行悄悄消失） | §7.6 的启动自检 |
 | 2 | **浏览器半边静默不存在**（行不在任何 bundle patch 里） | §7.6 的在场判据 |
-| 3 | **共享内核各一份**（写队列 / 租约 / 媒体源） | §5.1 三选一，先走 ② |
+| 3 | **共享内核各一份**（写队列 / 租约 / 媒体源） | §5.1 **已定案（2026-10-15）：走 ①**（主包 `provide('wallpaperEngineHost', …)`，子包 `inject`） |
 | 4 | **跨包耦合静默半挂**（`ctx.get` 缓存 / import / 单例） | §5.2 的禁止清单 + 纯度判据 |
 | 5 | **守卫静默失去覆盖**（扫描面按路径钉死） | §10.2 顺序纪律 + 每改一条证"牙还在" |
 | 6 | **设置键被别的包抹掉**（白名单消毒） | schema 归主包；子包只消费结果 |
@@ -729,7 +749,8 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 | 12 | 停用被依赖的行 ⇒ 管理器报 failed 且不回滚 YAML（U5） | 用户文档讲清；或避免让共享能力走硬 `inject` |
 | 13 | **把"开关"当"更新"用**（开关只改配置与在场性，不重读源码、不换依赖版本 ⇒ "开关能开、功能还是旧的"被读成修复无效） | §1.1 的两条档位边界 + **§11 的边界表**（用户文档以此为准）；验收里用 §7.6 第 4 条把"开关生效"与"已重启"分开 |
 | 14 | **子包只有宿主半边、UI 留在主包** ⇒ 关掉该行只撤路由、**界面还在**（`C1` 子路径行不参与客户端扫描） | §2.4 的粒度事实 + §5.3 的表态：带 UI 的功能族要么自带客户端半边，要么明说它不可单独开关。**本风险当前就是实况**：`packages/fonts` 只有宿主半边（P-A 裁决见 §7.1 实况块）⇒ 过渡期口径与收口线见 §7.8 |
-| 15 | **清单声明了装不上的依赖**（子包尚未发布到 npm 期间，主包 `dependencies` 写了它们）⇒ 干净检出 `npm ci` 在 **install 步**就 E404、CI 两条腿同时红；本机因 `node_modules` 早已存在而完全看不见（同 §10.2 第 5 条的"本机 ≠ CI"） | 开发期不声明（§12 检查表 ⑤：发布后才加回并重算锁）+ `verify-package-publish` ⑧ 的清单⇄锁同步判据（未发布就锁不出来 ⇒ 提交前就红） |
+| 15 | **清单声明了装不上的依赖**（子包尚未发布到 npm 期间，主包 `dependencies` 写了它们）⇒ 干净检出 `npm ci` 在 **install 步**就 E404、CI 两条腿同时红；本机因 `node_modules` 早已存在而完全看不见（同 §10.2 第 5 条的"本机 ≠ CI"） | 子包未发布期间**不写进 `dependencies`**，改为 `devDependencies` + `file:packages/<pkg>`（`npm ci` 装得出链接、dev 不进发布清单，§12 第 1 条 / §10.1 #14）；`verify-package-publish` ⑧ 的清单⇄锁同步判据（漂移 ⇒ 提交前就红）。**修完仍会红两处**：删声明后运行期启动自检在第 7 步红（§10.1 #15）、主包自链缺失在第 32 步红（§10.1 #16）—— 两处都已按开发期形态修好（`3f6c9109` + 本次） |
+| 16 | **子包宿主半边要从主包 `import`**（`dsh-plugin-wallpaper-engine/subpackage-boot.js`，fx/parallax/fonts 三处）：干净检出里主包不在自己的 `node_modules`（npm 不会把根包自链），解析逐级向上 ⇒ `ERR_MODULE_NOT_FOUND`。本机因 `scripts/dev-link-subpackages.mjs` 建过链接而完全看不见（同 §10.2 第 5 条） | ✅ **已消除（2026-10-15，跨包改走 ① Cordis Service）**：三处裸名 import 全部改为 `inject: ['wallpaperEngineHost']` + `ctx.wallpaperEngineHost` ⇒ 根 `devDependencies` 的自链已删、`rootSelfLink()` / `--no-self-link` 同步删除。历史缓解（自链 `"file:."`，npm 装成指向仓库根的 junction，探针 `%TEMP%\selflink-probe`）不再需要 |
 
 ### 13.1 拆包整线（`6385b62e`）审查的**未完成项**
 
@@ -762,17 +783,26 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 | D-1 | 目标形态 | **多包**（主包 + 子包，版本一致）。**已就地改写 ADR-0013 的 D6 / D8**（§1.2） |
 | D-2 | 行标识兼容 | **保留老行 id 与 name**（零迁移，§3） |
 | D-3 | "一次安装"语义 | **A：主包 patch 引用子包**（三通道可用，§2.3） |
-| D-4 | 共享内核怎么给子包 | ② 叶子 import（先）→ ① Service（升级路径），§5.1 |
+| D-4 | 共享内核怎么给子包 | **已被取代（2026-10-15）**：① Service 定案（§5.1）；原"② 叶子 import（先）"作废，理由 = 叶子 import 是模块图上的边、`inject` 才是 Cordis 的级联判据 |
 | D-5 | 第三方代码 | **主包持有 npm 依赖 `webwallgl`、不随子包**（§9.4；形态已随上游 npm 化更新） |
 | D-6 | 配置项 = 代码归属还是状态归属 | **阶段前置：P-C 之前必须表态**（§6.1 / §7.3） |
 | D-7 | 设置簇要不要按插件重画 | **阶段前置：P-C 之前必须表态**（§6.3 / §7.3，与 D-6 同批） |
-| D-8 | 跨包贡献 / 服务面形状 | **定案（2026-10-14）：宿主注入显式键集**（§5.2 允许清单第 2 条）；不开新 Service，升级路径 = §5.1 ① |
+| D-8 | 跨包贡献 / 服务面形状 | **已被取代（2026-10-15）**：跨包通道 = **Cordis Service**（§5.1 ①，服务名 `wallpaperEngineHost`）；"宿主注入显式键集"降级为**包内**形态（组件门面 `c` 契约） |
 | D-9 | 预设怎么跨包 | **阶段前置：P-D 之前必须表态**（§6.4 / §7.4） |
 | D-10 | 目录布局 | **定案（2026-10-14）：同仓 `packages/<pkg>/`**（§8.1；不用 workspace 协议） |
 | D-11 | 从哪个子包开始 | **建议三个小包试点**（§7.1） |
 | D-12 | **开关档位 / 重启边界**（"不用重启"的射程） | **已定案（本轮细化）**：开关只承诺**能力**（同行切换宿主半边 + 浏览器可见面，§1.1 边界 1、§11）；**代码 / 版本 / 清单 / 增删行一律重启**（`U3` / `R3` / `I8`，§1.1 边界 2）。判据 = §7.6 第 4 条 |
 | D-13 | **主包被关掉时的用户可见语义**（§6.5） | ✅ **已定案（2026-10-15，用户口径）：B 明确连坐** —— 主包被关掉 = 整包被关掉，理由是大批组件在机制上依赖主包（配置模板逻辑 / `applyComponent` 门面 / §5.1 ② 的子包→主包 value import），见 §6.5 的表态块。**残余开口**：子包行是否随主包行一并撤走、"整族已停用"提示的渲染点 —— 属实现细节，卡 §7.6 开关往返判据，不再卡阶段开工 |
 | D-14 | **字体系统子插件的收口形态** | **定案（2026-10-15，用户口径 A）：目标 = 整个「字体自定义」配置类**（宿主半边 + 浏览器半边 + 外观页签字体节 + 字体键所有权）；**不必现在完成** —— 收口线 = P-B 的能力 + P-C（§6.1 / §6.3 表态）+ P-D（§6.4 预设）之后，见 §7.8 |
+
+### 14.1 源码注释里的阶段号 `P2-*`（`P2-7A`）—— **暂保持现状（2026-10-15 用户裁决）**
+
+- **事实**：`lib/**` 与 `packages/**` 的注释里有一批 `（P2-7A / ADR-0013 D12）` 形态的标签。复算：`git grep -n 'P2-7A' -- lib packages`（2026-10-15 = `lib/**` 21 处：`lib/routes/*` 15 + `lib/kernel/component-session.js` 1 + `lib/components/**` 5；`packages/fonts/lib/routes/*` 2 处）。
+- **它是什么**：`P2-*` 是**历史重构阶段号**（`P2-7` = 契约收紧 / 路由族注入契约声明制，见 `docs/CHANGELOG.md`），**不是条款号** —— 全仓没有 `P2-7A` 的条款正文。同一行里的 `ADR-0013 D12` 才是可查的稳定条款（已具名）。
+- **为什么不改引 `S*`**：没有对应条款可引，硬套等于伪造条款号；整条删掉又会丢「这批注释是哪一轮立的」这层历史锚点。
+- **裁决**：**暂保持现状，不逐个改**。第二条理由：它是全仓惯例（上面 23 处里 21 处住主包），只改其中几处会让同一惯例出现两种写法。
+- **与 ADR-0014 S9.1 的关系**：`docs/adr/0014-subpackage-contract.md` 的 §现状偏差表已把这类阶段号（连同 `mNNNNN` 消息引用）**排除在 S9.1 计数之外** —— S9.1 管的是「引用 `docs/wip/**` 这类会腐化的位置」，阶段号不属于该类（它只指向历史轮次，不指向任何会改的文件）。
+- **复核触发线**：只有把「统一阶段号命名」单独立项时才动，且必须**全仓一单**（候选做法：全删阶段号只留 `ADR-0013 D*`，或整批保留作历史锚点）；**不要在子包拆分的其余收口里零散改**。
 
 ---
 

@@ -16,11 +16,13 @@
  *   · `atomicWriteFileP` / `ensureDirOnce`    ← 落地：临时文件 + rename 发布
  *   · `armBodyIdleTimeout` / `lingerClose`    ← 请求体 idle 超时与"写应答后再断"的收尾
  *   · `log`                                   ← 降级要留痕（读不懂的文件 / 迁移失败）
+ *   · `schema`                                ← 共享内核的纯符号面（见下）
+ *   · `http`                                  ← JSON 应答 / 请求体读取的纯函数面（见下）
  * 键集与消毒规则**不在这里**：它们复用共享内核 `lib/settings-schema.js` 的
  * `FONTSET_KEYS` / `sanitizeFontset` / `isFontSetId` ⇒ 与 settings 同一条消毒路径，
  * 且不必新建 `lib/**` 共享模块（`verify-module-layout` 的『共享内核白名单』因此不动）。
  *
- * ══ 两层存储（D3：写时复制）══════════════════════════════════════════════════════
+ * ══ 两层存储（写时复制）══════════════════════════════════════════════════════
  * 预设来自两层，**同一 id 时用户层胜**：
  *   · **随包层** `lib/fontsets/<id>.json` —— 随包发布，供"开箱就有几个能用的预设"与分享；
  *   · **用户层** `<pluginDataDir>/fontsets/<id>.json` —— 导入、覆盖、以及一次性迁移的产物。
@@ -60,14 +62,13 @@
 
 import { readdirSync, readFileSync, unlinkSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
-import { schemaView, httpView } from 'dsh-plugin-wallpaper-engine/subpackage-boot.js';
-// 跨包通道（BUNDLE-SPLIT §5.1 出路②）：本族只 import **唯一受控叶子**
-// `dsh-plugin-wallpaper-engine/subpackage-boot.js`，不 import 主包的其他任何模块。
-// 共享内核的**纯函数 / 常量**在模块求值期就该可用（模块级 helper 与守卫的直读都依赖这一点）
-// ⇒ 走叶子的具名视图 `schemaView` / `httpView` **静态取用**；
-// 运行期才存在的**实例**（disposers / 目录 / 设置读写 / 清理句柄 …）仍逐键从 `c` 消费。
-const { isFontSetId, sanitizeFontset, FONTSET_MIGRATED_ID, FONTSET_SCHEMA_TAG } = schemaView;
-const { sendJson, bodyReader } = httpView;
+// 跨包通道（ADR-0014 S5.1 / S5.3）：本族**零主包 specifier** —— 共享内核的纯符号面也不静态
+// import，而由 `registerFontsetsRoutes` 的 `c` 显式收下两个面（调用点 = 子包入口
+// packages/fonts/lib/index.js，值来自 `ctx.wallpaperEngineHost`）：
+//   · `c.schema` —— isFontSetId / sanitizeFontset / FONTSET_MIGRATED_ID / FONTSET_SCHEMA_TAG（纯函数 / 常量）
+//   · `c.http`   —— sendJson / bodyReader（JSON 应答 / 请求体读取）
+// 运行期才存在的**实例**（disposers / 目录 / 设置读写 / 清理句柄 …）同样逐键从 `c` 消费。
+// 模块作用域**不持有**主包的任何值（ADR-0014 S5.1 / S5.3 反模式：HMR 后旧代 exports）。
 
 /** 一份字体集正文的上限（键集 = `FONTSET_KEYS`，每键至多几十项 ⇒ 下方 `FONTSET_MAX_BYTES` 已极宽松）。 */
 const FONTSET_MAX_BYTES = 256 * 1024;
@@ -93,7 +94,7 @@ function userDir(c) { return c.fontSetsDir(); }
 function builtinDir(c) { return c.fontSetsBuiltinDir; }
 
 /** 文件名 → id；不合白名单的（手放进去的怪名字）不进列表、也永不被写。 */
-function listFontSetIds(dir) {
+function listFontSetIds(dir, schema) {
   let entries;
   try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return []; }
   const ids = [];
@@ -101,7 +102,7 @@ function listFontSetIds(dir) {
     if (typeof e.isFile !== 'function' || !e.isFile()) continue;
     if (!e.name.endsWith('.json')) continue;
     const id = e.name.slice(0, -'.json'.length);
-    if (!isFontSetId(id)) continue;
+    if (!schema.isFontSetId(id)) continue;
     ids.push(id);
     if (ids.length >= FONTSET_LIST_MAX) break;
   }
@@ -112,7 +113,7 @@ function listFontSetIds(dir) {
  * 读**某一层**里的字体集。返回 `{ ok: true, doc }` 或 `{ ok: false, reason }`，
  * reason ∈ `missing` / `bad-json` / `bad-shape` / `bad-version` / `unsafe-path`。
  */
-function readFontSetAt(dir, id) {
+function readFontSetAt(dir, id, schema) {
   const abs = fontSetPath(dir, id);
   if (!insideDir(dir, abs)) return { ok: false, reason: 'unsafe-path' };
   let text;
@@ -120,10 +121,10 @@ function readFontSetAt(dir, id) {
   let parsed;
   try { parsed = JSON.parse(text); } catch { return { ok: false, reason: 'bad-json' }; }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { ok: false, reason: 'bad-shape' };
-  if (parsed.$schema !== FONTSET_SCHEMA_TAG) return { ok: false, reason: 'bad-version' };
+  if (parsed.$schema !== schema.FONTSET_SCHEMA_TAG) return { ok: false, reason: 'bad-version' };
   const name = typeof parsed.name === 'string' && parsed.name.trim()
     ? parsed.name.trim().slice(0, FONTSET_NAME_MAX) : id;
-  return { ok: true, doc: { $schema: FONTSET_SCHEMA_TAG, id, name, values: sanitizeFontset(parsed.values) } };
+  return { ok: true, doc: { $schema: schema.FONTSET_SCHEMA_TAG, id, name, values: schema.sanitizeFontset(parsed.values) } };
 }
 
 /**
@@ -132,23 +133,23 @@ function readFontSetAt(dir, id) {
  * 像没事；如实报 `broken` 才是可判定的形态（删掉覆盖即可回到随包原样）。
  */
 function resolveFontSet(c, id) {
-  const user = readFontSetAt(userDir(c), id);
+  const user = readFontSetAt(userDir(c), id, c.schema);
   if (user.ok) return { ok: true, doc: user.doc, origin: 'user' };
   if (user.reason !== 'missing') {
     return {
       ok: false, reason: user.reason, origin: 'user',
-      shadowsBuiltin: readFontSetAt(builtinDir(c), id).ok,
+      shadowsBuiltin: readFontSetAt(builtinDir(c), id, c.schema).ok,
     };
   }
-  const builtin = readFontSetAt(builtinDir(c), id);
+  const builtin = readFontSetAt(builtinDir(c), id, c.schema);
   if (builtin.ok) return { ok: true, doc: builtin.doc, origin: 'builtin' };
   return { ok: false, reason: 'missing', origin: null };
 }
 
 /** 两层合并（用户层胜）+ `origin` / `overrides` / `broken` 标记，按 id 排序。 */
 function listFontSets(c) {
-  const userIds = listFontSetIds(userDir(c));
-  const builtinIds = listFontSetIds(builtinDir(c));
+  const userIds = listFontSetIds(userDir(c), c.schema);
+  const builtinIds = listFontSetIds(builtinDir(c), c.schema);
   const ids = [...new Set([...userIds, ...builtinIds])].sort();
   return ids.slice(0, FONTSET_LIST_MAX).map((id) => {
     const resolved = resolveFontSet(c, id);
@@ -169,10 +170,10 @@ async function writeFontSet(c, id, name, values) {
   const dir = userDir(c);
   c.ensureDirOnce(dir);
   const doc = {
-    $schema: FONTSET_SCHEMA_TAG,
+    $schema: c.schema.FONTSET_SCHEMA_TAG,
     id,
     name: typeof name === 'string' && name.trim() ? name.trim().slice(0, FONTSET_NAME_MAX) : id,
-    values: sanitizeFontset(values),
+    values: c.schema.sanitizeFontset(values),
   };
   await c.atomicWriteFileP(fontSetPath(dir, id), JSON.stringify(doc, null, 2) + '\n');
   return doc;
@@ -190,30 +191,30 @@ async function writeFontSet(c, id, name, values) {
  */
 async function migrateLegacyFontSet(c) {
   if (c.readFontSetId()) return { migrated: false };
-  const existing = readFontSetAt(userDir(c), FONTSET_MIGRATED_ID);
-  if (!existing.ok) await writeFontSet(c, FONTSET_MIGRATED_ID, '默认', c.readSettings() || {});
-  await c.commitFontSetMigration(FONTSET_MIGRATED_ID);
+  const existing = readFontSetAt(userDir(c), c.schema.FONTSET_MIGRATED_ID, c.schema);
+  if (!existing.ok) await writeFontSet(c, c.schema.FONTSET_MIGRATED_ID, '默认', c.readSettings() || {});
+  await c.commitFontSetMigration(c.schema.FONTSET_MIGRATED_ID);
   return { migrated: true, adopted: existing.ok };
 }
 
 /** 取一个未被占用的 id（导入用）：`<base>`、`<base>-2`、`<base>-3` … 到上限为止。 */
 function freeFontSetId(c, wanted) {
-  const base = isFontSetId(wanted) ? wanted : 'imported';
+  const base = c.schema.isFontSetId(wanted) ? wanted : 'imported';
   // 两层都算占用：导入撞上随包 id 会立刻变成一份"覆盖"，那是用户的意图之外。
-  const taken = new Set([...listFontSetIds(userDir(c)), ...listFontSetIds(builtinDir(c)), 'import', 'export']);
+  const taken = new Set([...listFontSetIds(userDir(c), c.schema), ...listFontSetIds(builtinDir(c), c.schema), 'import', 'export']);
   if (!taken.has(base)) return base;
   for (let i = 2; i <= FONTSET_LIST_MAX; i++) {
     const id = (base + '-' + i).slice(0, 64);
-    if (isFontSetId(id) && !taken.has(id)) return id;
+    if (c.schema.isFontSetId(id) && !taken.has(id)) return id;
   }
   return null;
 }
 
 /** 注入契约（P2-7A / ADR-0013 D12）：本族从 `c` 消费的**必需**键 —— 门面/组件行调用点必须逐键给到（判据 test/verify-inject-contracts.mjs 双向对账；本族多数键经模块级 helper 的 `c` 形参消费）。 */
-// 全部 13 键都是**运行期实例**（清理句柄 / 目录 / 设置读写 …），值域由主包 `subpackageKeys('fonts')` 冻结，
-// 调用点 = `packages/fonts/lib/index.js`。共享内核的 6 个**纯函数 / 常量**不在这里：
-// 它们走叶子 `subpackage-boot.js` 的 `schemaView` / `httpView` 静态取用（见文件头）。
-export const DEPS = ['disposers', 'base', 'readFontSetId', 'fontSetsDir', 'fontSetsBuiltinDir', 'ensureDirOnce', 'atomicWriteFileP', 'readSettings', 'commitFontSetMigration', 'lingerClose', 'armBodyIdleTimeout', 'log', 'setFontSetId'];
+// 全部 13 个运行期实例（清理句柄 / 目录 / 设置读写 …）由主包 `host.keys('fonts')` 冻结供给；
+// `schema` / `http` 是共享内核的纯符号面，由调用点（`packages/fonts/lib/index.js`）从
+// `ctx.wallpaperEngineHost` 显式传下（见文件头）—— 本文件零主包 specifier。
+export const DEPS = ['disposers', 'base', 'readFontSetId', 'fontSetsDir', 'fontSetsBuiltinDir', 'ensureDirOnce', 'atomicWriteFileP', 'readSettings', 'commitFontSetMigration', 'lingerClose', 'armBodyIdleTimeout', 'log', 'setFontSetId', 'schema', 'http'];
 
 export function registerFontsetsRoutes(webServer, c) {
   const { disposers, base: BASE, readFontSetId } = c;
@@ -224,14 +225,14 @@ export function registerFontsetsRoutes(webServer, c) {
     const fail = (code, payload) => {
       if (settled) return;
       settled = true;
-      sendJson(res, code, payload);
+      c.http.sendJson(res, code, payload);
       c.lingerClose(req, res);
     };
     c.armBodyIdleTimeout(req, () => fail(408, { error: 'request timeout' }));
     // 字节计上限 + 收完**一次性**解码（不变量见 lib/routes/upload.js 文件头）：
     // 逐块 `body += chunk` 会把跨 TCP 分片的多字节码点切成 U+FFFD，而字体集名 / 字体族
     // 正是会被这样静默写坏的用户可见字符串。
-    const reader = bodyReader(req, {
+    const reader = c.http.bodyReader(req, {
       maxBytes: FONTSET_MAX_BYTES,
       shouldStop: () => settled,
       onOverflow: () => fail(413, { error: 'fontset payload too large' }),
@@ -243,7 +244,7 @@ export function registerFontsetsRoutes(webServer, c) {
       const body = reader.text();
       let parsed;
       try { parsed = JSON.parse(body || '{}'); } catch {
-        sendJson(res, 400, { error: 'invalid JSON body' });
+        c.http.sendJson(res, 400, { error: 'invalid JSON body' });
         return;
       }
       onBody(parsed);
@@ -256,7 +257,7 @@ export function registerFontsetsRoutes(webServer, c) {
     path: `${BASE}/fontsets`,
     handler: async (req, res) => {
       const method = (req.method || 'GET').toUpperCase();
-      const json = (code, payload) => sendJson(res, code, payload);
+      const json = (code, payload) => c.http.sendJson(res, code, payload);
       // ⚠️ `new URL` 会先把 `..` / `%2e%2e` / 反斜杠形式的点段规范化掉（WHATWG 语义）
       // ⇒ 穿越路径到不了这里；能到这里的都是"看起来像 id"的段，随后还要过 `isFontSetId`。
       let url;
@@ -294,8 +295,8 @@ export function registerFontsetsRoutes(webServer, c) {
           if (!body || typeof body !== 'object' || Array.isArray(body)) {
             json(400, { error: '字体集文件必须是一个 JSON 对象' }); return;
           }
-          if (body.$schema !== FONTSET_SCHEMA_TAG) {
-            json(400, { error: '无法读取的字体集版本（需要 ' + FONTSET_SCHEMA_TAG + '）' }); return;
+          if (body.$schema !== c.schema.FONTSET_SCHEMA_TAG) {
+            json(400, { error: '无法读取的字体集版本（需要 ' + c.schema.FONTSET_SCHEMA_TAG + '）' }); return;
           }
           const id = freeFontSetId(c, body.id);
           if (!id) { json(409, { error: '字体集数量已达上限' }); return; }
@@ -308,7 +309,7 @@ export function registerFontsetsRoutes(webServer, c) {
       }
 
       if (segments.length === 1) {
-        if (!isFontSetId(first)) { json(400, { error: 'invalid fontset id' }); return; }
+        if (!c.schema.isFontSetId(first)) { json(400, { error: 'invalid fontset id' }); return; }
         if (method === 'GET') {
           const read = resolveFontSet(c, first);
           if (read.ok) { json(200, { ok: true, origin: read.origin, ...read.doc }); return; }
@@ -330,8 +331,8 @@ export function registerFontsetsRoutes(webServer, c) {
             const prev = resolveFontSet(c, first);
             const name = typeof body.name === 'string' && body.name.trim()
               ? body.name : (prev.ok ? prev.doc.name : first);
-            // 写时复制（D3）：改一份随包预设 ⇒ 落一份同名**用户层**覆盖；随包那份字节不动。
-            const overrides = readFontSetAt(builtinDir(c), first).ok;
+            // 写时复制：改一份随包预设 ⇒ 落一份同名**用户层**覆盖；随包那份字节不动。
+            const overrides = readFontSetAt(builtinDir(c), first, c.schema).ok;
             writeFontSet(c, first, name, body.values).then(
               (doc) => json(200, {
                 ok: true, id: doc.id, name: doc.name, values: doc.values,
@@ -349,17 +350,17 @@ export function registerFontsetsRoutes(webServer, c) {
           }
           // 只有**用户层**的文件可删。删掉一份覆盖 ⇒ 随包那份重新可见（= 恢复原样）。
           const userAbs = fontSetPath(userDir(c), first);
-          const inUser = readFontSetAt(userDir(c), first).reason !== 'missing';
+          const inUser = readFontSetAt(userDir(c), first, c.schema).reason !== 'missing';
           if (inUser) {
             try { unlinkSync(userAbs); } catch {
               json(500, { error: '删除失败（文件被占用或权限不足）' });
               return;
             }
-            const restored = readFontSetAt(builtinDir(c), first);
+            const restored = readFontSetAt(builtinDir(c), first, c.schema);
             json(200, { ok: true, removed: first, origin: 'user', ...(restored.ok ? { restored: 'builtin' } : {}) });
             return;
           }
-          if (readFontSetAt(builtinDir(c), first).ok) {
+          if (readFontSetAt(builtinDir(c), first, c.schema).ok) {
             json(400, {
               error: '随包预设不能删除（可以直接覆盖它；要恢复原样就删掉你的覆盖）',
               origin: 'builtin',
@@ -377,7 +378,7 @@ export function registerFontsetsRoutes(webServer, c) {
       // 切到一个读不懂的文件等于把用户的字体外观变成"说不清"，宁可拒绝。
       if (segments.length === 2 && second === 'activate') {
         if (method !== 'POST') { json(405, { error: 'method not allowed' }); return; }
-        if (!isFontSetId(first)) { json(400, { error: 'invalid fontset id' }); return; }
+        if (!c.schema.isFontSetId(first)) { json(400, { error: 'invalid fontset id' }); return; }
         const read = resolveFontSet(c, first);
         if (!read.ok) {
           json(read.reason === 'missing' ? 404 : 422, { error: 'fontset file is unreadable', reason: read.reason });
@@ -394,7 +395,7 @@ export function registerFontsetsRoutes(webServer, c) {
       // 因此不会被导出成"看起来能分享"的东西）。
       if (segments.length === 2 && second === 'export') {
         if (method !== 'GET') { json(405, { error: 'method not allowed' }); return; }
-        if (!isFontSetId(first)) { json(400, { error: 'invalid fontset id' }); return; }
+        if (!c.schema.isFontSetId(first)) { json(400, { error: 'invalid fontset id' }); return; }
         const read = resolveFontSet(c, first);
         if (!read.ok) {
           json(read.reason === 'missing' ? 404 : 422, { error: 'fontset file is unreadable', reason: read.reason });

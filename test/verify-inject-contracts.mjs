@@ -436,9 +436,10 @@ export function parseModuleContract(raw, rel) {
  * 只认**这一种语句形态**（行首即函数名）—— 与 `host-route-index` 的调用点正则同源；带赋值前缀
  * 的写法会让本守卫与路由索引一起把整族判成孤儿。
  *
- * `spreadTable`（可选，子包行入口用）= `{ names: Set<绑定名>, keys: string[] }`：把
- * `...subpackageKeys('<id>')` 的运行期展开在**静态**面上补成叶子冻结表（叶子表是子包入口声明面的
- * 唯一真源）。不给这项就沿用旧口径：展开名解析不到本文件里的对象字面量 ⇒ `site.dynamic` 判红。
+ * spreadTable（可选，子包行入口用）= { names: Set<绑定名>, keys: string[] }：把
+ * ...subpackageKeys('<id>')（旧形态）或 ...host.keys('<id>', ctx)（服务面形态，§5.1 ①）的运行期
+ * 展开在**静态**面上补成叶子冻结表（叶子表是子包入口声明面的唯一真源）。不给这项就沿用旧口径：
+ * 展开名解析不到本文件里的对象字面量 ⇒ site.dynamic 判红。
  */
 export function parseCallSitesText(raw, rel, knownFns, spreadTable = null) {
   const text = neutralize(raw);
@@ -547,10 +548,12 @@ export function reconcileCallSite(site, mod) {
   return issues;
 }
 
-// ── 子包行入口（`packages/<pkg>/<main>`）：叶子冻结表 = 声明面唯一真源 ─────────
-// 子包入口的 `c` 是运行期 `{ ...subpackageKeys('<id>'), disposers, cachePath }` 展开：静态扫描
-// 看不见那些键。⇒ 判据把叶子的 `subpackageKeyNames(id)` 读进来当给定面（不然要么判 dynamic
-// 恒红，要么把共享 c 误判成"少给 N 键"）。
+// ── 子包行入口（packages/<pkg>/<main>）：叶子冻结表 = 声明面唯一真源 ────────────
+// 子包入口的 c 是运行期键表展开：旧形态 { ...subpackageKeys('<id>'), disposers, cachePath }，
+// 重构后（§5.1 ①）是 const host = ctx.<服务名>; const keys = host.keys('<id>', ctx);
+// { ...keys, disposers, schema: host.schema, http: host.http } —— 两种形态静态扫描都看不见那些键。
+// ⇒ 判据把叶子的 subpackageKeyNames(id) 读进来当给定面（不然要么判 dynamic 恒红，要么把共享 c
+// 误判成"少给 N 键"）。绑定形态由 tableBindingNames() 同一处认（真动态对象仍然判红）。
 
 /** 根包名（子包行的行名 = `<根包名>-<id>`，子包入口判定的数据来源）。 */
 const ROOT_NAME = (() => {
@@ -567,13 +570,30 @@ export function subpackageEntryId(rel) {
   return typeof name === 'string' && name.startsWith(prefix) && name.length > prefix.length ? name.slice(prefix.length) : null;
 }
 
-/** 入口文本里 `const NAME = subpackageKeys('<id>'[, ctx])` / `subpackageKeyNames('<id>')` 的绑定名。 */
+/**
+ * 入口文本里"冻结键表"的绑定名（两种形态都认）：
+ *   · 旧叶子形态：const NAME = subpackageKeys('<id>'[, ctx]) / subpackageKeyNames('<id>')
+ *   · 服务面形态（§5.1 ① 重构后的真实写法）：const NAME = <host>.keys('<id>'[, ctx]) /
+ *     <host>.keyNames('<id>')，其中 <host> **必须**是本文件里从 ctx.<服务名> 取到的绑定
+ *     （形如 const host = ctx.wallpaperEngineHost）。
+ * 服务名本身不进正则（它是 lib/subpackage-boot.js 的 HOST_SERVICE_NAME，只该有一处真源）；
+ * 但"接收者必须源自 ctx.<某个键>"这条不能省 —— 否则任何 X.keys('fonts') 都会被当成冻结表，
+ * "认表"就退化成"看见 .keys 就放行"（负对照 nc-sub7）。
+ */
 export function tableBindingNames(raw, id) {
   const text = stripComments(String(raw));
   const names = new Set();
-  const re = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:subpackageKeys|subpackageKeyNames)\s*\(\s*['"]([^'"]*)['"][^)]*\)/g;
   let m;
-  while ((m = re.exec(text)) !== null) if (m[2] === id) names.add(m[1]);
+  // 形态 a：旧叶子（subpackageKeys / subpackageKeyNames）
+  const leafRe = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:subpackageKeys|subpackageKeyNames)\s*\(\s*['"]([^'"]*)['"][^)]*\)/g;
+  while ((m = leafRe.exec(text)) !== null) if (m[2] === id) names.add(m[1]);
+  // 形态 b：服务面（<host>.keys / <host>.keyNames），但 <host> 必须源自本文件里的 ctx.<服务名>：
+  // 没有这条约束就退化成"看见 .keys 就放行"（nc-sub7 钉住）。
+  const fromCtx = new Set();
+  const recvRe = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*ctx\s*\.\s*[A-Za-z_$][\w$]*/g;
+  while ((m = recvRe.exec(text)) !== null) fromCtx.add(m[1]);
+  const svcRe = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([A-Za-z_$][\w$]*)\s*\.\s*(?:keys|keyNames)\s*\(\s*['"]([^'"]*)['"][^)]*\)/g;
+  while ((m = svcRe.exec(text)) !== null) if (m[3] === id && fromCtx.has(m[2])) names.add(m[1]);
   return names;
 }
 
@@ -758,6 +778,36 @@ function selftest(ok) {
     withTable.length === 1 && !withTable[0].dynamic && withTable[0].keys.includes('base') && withTable[0].keys.includes('disposers')
     && withoutTable.length === 1 && Boolean(withoutTable[0].dynamic),
     '认得表=[' + (withTable[0] ? withTable[0].keys.join(',') : '无') + '] 不认得表=' + (withoutTable[0] && withoutTable[0].dynamic ? 'dynamic' : '未判红'));
+
+  // nc-sub6：**服务面形态**（§5.1 ① 重构后的真实写法）必须同样被认成冻结表绑定。
+  const svcRaw = [
+    'const host = ctx.wallpaperEngineHost;',
+    "const keys = host.keys('probe', ctx);",
+    'export const DEPS = [];',
+    'export function registerProbeRoutes(webServer, c) {',
+    '  void c;',
+    '}',
+    'registerProbeRoutes(webServer, { ...keys, disposers });',
+  ].join('\n');
+  const svcSites = parseCallSitesText(svcRaw, 'packages/probe/lib/index.js', new Set(['registerProbeRoutes']),
+    { names: tableBindingNames(svcRaw, 'probe'), keys: ['base'] });
+  ok2('nc-sub6 服务面形态（const host = ctx.<服务名>; host.keys(id, ctx)）也被认成冻结表绑定',
+    svcSites.length === 1 && !svcSites[0].dynamic && svcSites[0].keys.includes('base') && svcSites[0].keys.includes('disposers'),
+    '认得表=[' + (svcSites[0] ? svcSites[0].keys.join(',') : '无') + ']');
+
+  // nc-sub7：接收者**不是**从 ctx 取来的 X.keys(id) 不许被认（"看见 .keys 就放行" = 判据没牙）。
+  const alienRaw = [
+    'const other = something;',
+    "const keys = other.keys('probe');",
+    'export const DEPS = [];',
+    'export function registerProbeRoutes(webServer, c) { void c; }',
+    'registerProbeRoutes(webServer, { ...keys, disposers });',
+  ].join('\n');
+  const alienSite = parseCallSitesText(alienRaw, 'packages/probe/lib/index.js', new Set(['registerProbeRoutes']),
+    { names: tableBindingNames(alienRaw, 'probe'), keys: ['base'] })[0];
+  ok2('nc-sub7 负对照：接收者不源自 ctx.<服务名> 的 X.keys(id) 不被认成冻结表（仍判 dynamic）',
+    tableBindingNames(alienRaw, 'probe').size === 0 && Boolean(alienSite && alienSite.dynamic),
+    '绑定=' + [...tableBindingNames(alienRaw, 'probe')].join(',') + ' 站点=' + (alienSite && alienSite.dynamic ? 'dynamic' : '未判红'));
 }
 
 // ── 主流程 ────────────────────────────────────────────────────────────────────
@@ -819,8 +869,10 @@ async function main() {
 
   console.log('\n② 声明面 ↔ 调用点实参键（门面 + 出户组件行入口 + 子包行入口，数据驱动）');
   const knownFns = new Set(byFn.keys());
-  // 子包行入口的声明面**唯一真源** = 叶子冻结表（`subpackageKeyNames(id)`）：静态扫描看不见
-  // `{ ...subpackageKeys('fonts'), disposers }` 的运行期展开，必须把表读进来当给定面。
+  // 子包行入口的声明面**唯一真源** = 叶子冻结表（subpackageKeyNames(id)）：静态扫描看不见
+  // { ...subpackageKeys('fonts'), disposers }（旧形态）或
+  // const keys = host.keys('fonts', ctx); { ...keys, disposers }（服务面形态）的运行期展开，
+  // 必须把表读进来当给定面 —— 两种绑定形态由 tableBindingNames() 同一处认。
   const leaf = await loadLeafKeyNames();
   const sites = [];
   const siteIssues = [];
@@ -856,7 +908,7 @@ async function main() {
     leaf.error || (subpackageRels.length + ' 个子包行入口 · 冻结表 ' + [...leaf.tables.keys()].join(' / ')
       + (unreadable.length ? ' · 取不到冻结表：' + unreadable.join(' ') : '')));
   const subpackageDynamic = sites.filter((s) => subpackageEntryId(s.rel) !== null && s.dynamic);
-  check('② 子包入口的 `...subpackageKeys(id)` 展开必须被认出来（认不出 = 整包调用点不可对账）',
+  check('② 子包入口的 ...subpackageKeys(id) / ...host.keys(id, ctx) 展开必须被认出来（认不出 = 整包调用点不可对账）',
     entryReports.length === subpackageRels.length && subpackageDynamic.length === 0,
     '子包入口 ' + entryReports.map((e) => e.id + ':' + e.tableKeys + ' 键 / ' + e.fns.length + ' 族').join(' · ')
       + (subpackageDynamic.length ? ' · 判 dynamic：' + subpackageDynamic.map((s) => s.rel + ':' + s.line).join(' ') : ''));

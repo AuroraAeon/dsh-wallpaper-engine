@@ -167,6 +167,9 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/node": "^26.6.5",
+    "dsh-plugin-wallpaper-engine-fonts": "file:packages/fonts",
+    "dsh-plugin-wallpaper-engine-fx": "file:packages/fx",
+    "dsh-plugin-wallpaper-engine-parallax": "file:packages/parallax",
     "eslint": "^10.12.0",
     "typescript": "^7.0.2"
   }

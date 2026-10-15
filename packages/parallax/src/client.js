@@ -1,5 +1,5 @@
 /**
- * packages/parallax/src/client.js —— 「3D 效果」子包的**浏览器半边入口**（P-A，task-3 草案）。
+ * packages/parallax/src/client.js —— 「3D 效果」子包的**浏览器半边入口**（拆包草案，task-3）。
  *
  * 构建期形状与 packages/fx/src/client.js 完全同形（见那份文件头的长注释）：本文件 = 入口，
  * 构建期只取**首个块注释之后**的正文；包内 INLINE_MODULES（src/parallax-layer.js、
@@ -19,7 +19,7 @@
  *   在接缝上唯一的差别）。
  */
 
-/** 缺键**大声失败**，不许静默 undefined（D-8 + D3③）。理由同 packages/fx/src/client.js。 */
+/** 缺键**大声失败**，不许静默 undefined（ADR-0014 S5.1 / S5.4 服务面显式键集 + ADR-0013 D3③「宁可显示、不可静默消失」）。理由同 packages/fx/src/client.js。 */
 const PARALLAX_HOST_REQUIRED = [
   // 内核（只读面）
   'selection', 'weNow', 'weClampTo', 'weBody',
@@ -31,7 +31,7 @@ const PARALLAX_HOST_REQUIRED = [
 for (const key of PARALLAX_HOST_REQUIRED) {
   if (!(key in host)) {
     throw new Error('[wallpaper-engine-parallax] 主 bundle 键集缺少 "' + key
-      + '"（D-8 显式键集：要么补键，要么改申报表，不许静默 undefined）');
+      + '"（ADR-0014 S5.1 / S5.4 显式键集：要么补键，要么改申报表，不许静默 undefined）');
   }
 }
 const {
