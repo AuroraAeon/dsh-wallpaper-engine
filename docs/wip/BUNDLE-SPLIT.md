@@ -662,6 +662,7 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 | 11 | `scripts/prepare.mjs`（`prepack`） | 源码与产物同包根、只有一份 | 按包循环或只挂主包 |
 | 12 | 读 `package.json` 的 `test/` + `scripts/` 文件（复算：`Select-String -Path test\*.mjs,scripts\*.mjs -Pattern package\.json`） | 单包 | 同 #1（先做"包发现"层） |
 | 13 | `test/verify-settings-schema-exports.mjs` 的**扫描面自检**（`gitViewDiff` + `allowedExtra`） | 只豁免**一个**产物 `lib/client.js` ⇒ P-A 的两个子包产物（`packages/<pkg>/lib/client.<pkg>.js`，被 `.gitignore` 排除）一律按"脏面"判红 | ✅ **已修（2026-10-15）**：豁免名单改成**从各包 `package.json` 的 `exports['./client']` 现算**，并加"逐条来自包清单（含 `dsh.client`）"自检 + "同族但不在名单里的产物名仍判红"负对照 |
+| 14 | 根清单 `dependencies`（P-A 把三条子包依赖写进清单、**没动** `package-lock.json`） | 「清单改了 lock 必须同步」才是**能装**的声明 —— `npm ci` 把清单当理想树去 registry 解析；未发布的包锁不出来 | ✅ **已修（2026-10-15）**：① 开发期（子包未发布）**不声明**这三条（§12 检查表 ⑤ 在发布后才加回）；② `test/verify-package-publish.mjs` 新增 ⑧「根清单 ⇄ `package-lock.json` 同步」判据（含覆盖面自检 + 五种漂移负对照）—— 实测把 `3842584e` 的清单放回去，⑧ 立刻红并点出三条 `锁里缺 …@1.3.3` |
 
 ### 10.2 顺序纪律
 
@@ -672,6 +673,7 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 5. **靠 `git ls-files` 对账的自检必须在 git 可用的环境里跑过一次**：DSH 沙箱禁子进程时 `repo-face.mjs` 报**具名 SKIP**
    （`fatal:EPERM`）⇒ 本机全绿**不等于** CI 全绿。实测代价：P-A 落地后本机 82/82 绿，提权后第 63 步立刻红
    （CI `verify.yml` 先 `npm run build` 再 `npm run verify` ⇒ 产物一定在场），即 §10.1 #13 那一处。
+6. **改根清单必须同一次提交重算锁文件**：`dependencies` / `devDependencies` / `peerDependencies` 任何一格与 `package-lock.json` 根条目漂移，`npm ci` 就会拿清单去 registry 解析 ⇒ 未发布的包当场 404（P-A 实测：`3842584e` 本机 82/82 全绿、CI 的 install 步两条腿同时红）。判据在 `test/verify-package-publish.mjs` ⑧；子包未发布期间**不声明**它们（§12 检查表 ⑤）。
 
 ---
 
@@ -698,13 +700,14 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 
 ## 12. 发布与升级流程（版本一致）
 
-1. **版本**：主包与所有子包**同号**（同一个 `version`）；主包以**精确版本**依赖子包（不用 `^`）；
+1. **版本**：主包与所有子包**同号**（同一个 `version`）；主包以**精确版本**依赖子包（不用 `^`）——⚠️ 这是**发布形态**：子包发布到 npm **之前**不许把这行写进主包 `dependencies`（未发布的包锁不出来 ⇒ 干净检出 `npm ci` 直接 E404，见 §10.1 #14 / §13 #15）；加回时**必须同一次提交重算 `package-lock.json`**；
 2. **安装**：用户只装主包一个名字（Web / 工具 / CLI 都行）；
 3. **升级**：`dsh plugin add <主包>@<新版本>` + **重启**（无 `update_bundle`，I8）；
    或 `dsh plugin --profile <p> remove <主包>` 后重装；
 4. **禁止**：把子包名单独写进 profile 的 `dependencies`（会产生两个副本/双实例，I7）；
 5. **发布检查表**：① 各子包 `peerDependencies` 与主包**逐字对齐**（I6，否则整次安装被拒）；
-   ② 三份生成物已重算；③ `npm run verify:all` 全绿；④ 本地真机走一遍"装 → 开 → 关一行 → 重启 → 卸载"。
+   ② 三份生成物已重算；③ `npm run verify:all` 全绿；④ 本地真机走一遍"装 → 开 → 关一行 → 重启 → 卸载"；
+   ⑤ **顺序**：先发布三个子包（与主包同号）→ 再把三条精确版本加回主包 `dependencies` 并**重算 `package-lock.json`** → 最后发布主包。顺序反了 ⇒ 干净检出与用户侧安装都在 install 步 404。
 
 ---
 
@@ -726,6 +729,7 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 | 12 | 停用被依赖的行 ⇒ 管理器报 failed 且不回滚 YAML（U5） | 用户文档讲清；或避免让共享能力走硬 `inject` |
 | 13 | **把"开关"当"更新"用**（开关只改配置与在场性，不重读源码、不换依赖版本 ⇒ "开关能开、功能还是旧的"被读成修复无效） | §1.1 的两条档位边界 + **§11 的边界表**（用户文档以此为准）；验收里用 §7.6 第 4 条把"开关生效"与"已重启"分开 |
 | 14 | **子包只有宿主半边、UI 留在主包** ⇒ 关掉该行只撤路由、**界面还在**（`C1` 子路径行不参与客户端扫描） | §2.4 的粒度事实 + §5.3 的表态：带 UI 的功能族要么自带客户端半边，要么明说它不可单独开关。**本风险当前就是实况**：`packages/fonts` 只有宿主半边（P-A 裁决见 §7.1 实况块）⇒ 过渡期口径与收口线见 §7.8 |
+| 15 | **清单声明了装不上的依赖**（子包尚未发布到 npm 期间，主包 `dependencies` 写了它们）⇒ 干净检出 `npm ci` 在 **install 步**就 E404、CI 两条腿同时红；本机因 `node_modules` 早已存在而完全看不见（同 §10.2 第 5 条的"本机 ≠ CI"） | 开发期不声明（§12 检查表 ⑤：发布后才加回并重算锁）+ `verify-package-publish` ⑧ 的清单⇄锁同步判据（未发布就锁不出来 ⇒ 提交前就红） |
 
 ### 13.1 拆包整线（`6385b62e`）审查的**未完成项**
 

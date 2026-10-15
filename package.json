@@ -158,9 +158,6 @@
     }
   },
   "dependencies": {
-    "dsh-plugin-wallpaper-engine-fonts": "1.3.3",
-    "dsh-plugin-wallpaper-engine-fx": "1.3.3",
-    "dsh-plugin-wallpaper-engine-parallax": "1.3.3",
     "webwallgl": "^3.0.0",
     "x11": "^4.3.1"
   },

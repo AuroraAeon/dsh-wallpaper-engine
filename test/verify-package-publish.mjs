@@ -364,6 +364,75 @@ section('⑦ 安装期不得跑任何仓库脚本（无构建钩子 + 不引用�
     pkg.scripts && pkg.scripts.prepack === 'node scripts/prepare.mjs', String(pkg.scripts && pkg.scripts.prepack));
 }
 
+// ── ⑧ 根清单 ⇄ package-lock.json 同步（干净检出 `npm ci` 的前提）──────────────
+// 为什么单列一条（P-A 的实际事故）：`npm ci` 第一件事是把**清单**当理想树去 registry 解析。
+// `3842584e` 把三条子包依赖写进根 `dependencies`、却没动 `package-lock.json`（那时子包还没
+// 发布到 npm）⇒ 干净检出上直接
+//   `npm error 404  'dsh-plugin-wallpaper-engine-fonts@1.3.3' is not in this registry.`
+// CI 两条腿在第 5 步（install）同时红；而本机 node_modules 早已存在、从没跑过 `npm ci`
+// ⇒ 本机 82/82 全绿照样看不见（同 §10.2 第 5 条的"本机 ≠ CI"）。
+// 判据 = CI 那条不变量的**离线形态**：清单里的每个依赖（连规格）都必须在锁文件根条目里逐字
+// 找到，反向也不许多出条目。它**不**证明"这个包在 npm 上存在"（离线做不到），但"没锁就声明"
+// 会被挡在提交前 —— 而未发布的包根本锁不出来 ⇒ 这类声明在开发期就进不了库。
+section('⑧ 根清单 ⇄ package-lock.json 同步（`npm ci` 的前提）');
+{
+  const lock = JSON.parse(readFileSync(join(ROOT, 'package-lock.json'), 'utf8'));
+  const lockRoot = (lock.packages && lock.packages['']) || {};
+  // npm 把 `optionalDependencies` 并进锁根条目的 `dependencies`（同一个键空间）。
+  const asDeps = (m) => ({ ...(m.dependencies || {}), ...(m.optionalDependencies || {}) });
+  /** 判据本体：清单三组字段 vs 锁根同名条目的逐字差集（正判据与全部负对照调**同一个**函数）。 */
+  const lockDrift = (manifest, rootEntry) => {
+    const drift = [];
+    const fields = [
+      ['dependencies', asDeps(manifest)],
+      ['devDependencies', manifest.devDependencies || {}],
+      ['peerDependencies', manifest.peerDependencies || {}],
+    ];
+    for (const [field, want] of fields) {
+      const got = rootEntry[field] || {};
+      for (const [name, spec] of Object.entries(want)) {
+        if (!(name in got)) drift.push(field + '：锁里缺 ' + name + '@' + spec);
+        else if (got[name] !== spec) drift.push(field + '：' + name + ' 锁 ' + got[name] + ' ≠ 清单 ' + spec);
+      }
+      for (const name of Object.keys(got)) {
+        if (!(name in want)) drift.push(field + '：锁里多 ' + name + '@' + got[name]);
+      }
+    }
+    if (manifest.name !== rootEntry.name || manifest.version !== rootEntry.version) {
+      drift.push('name/version：清单 ' + manifest.name + '@' + manifest.version
+        + ' ≠ 锁 ' + rootEntry.name + '@' + rootEntry.version);
+    }
+    return drift;
+  };
+  const drift = lockDrift(pkg, lockRoot);
+  check('根清单的依赖（连规格）与 package-lock.json 根条目逐字一致（漂移 ⇒ 干净检出 `npm ci` 必红）',
+    drift.length === 0, drift.join('; ') || ('deps ' + Object.keys(asDeps(pkg)).length
+      + ' / dev ' + Object.keys(pkg.devDependencies || {}).length
+      + ' / peer ' + Object.keys(pkg.peerDependencies || {}).length));
+  // 覆盖面：判据面非空（lockfileVersion < 2 没有 `packages` ⇒ 上面会静默比较空集而恒真）。
+  check('覆盖面：锁文件是 v2+ 且根条目确有可比内容（否则这条判据恒真）',
+    Number(lock.lockfileVersion) >= 2 && Object.keys(lockRoot).length > 0
+    && Object.keys(asDeps(pkg)).length > 0,
+    'lockfileVersion=' + lock.lockfileVersion + ' / 根条目键 ' + Object.keys(lockRoot).length + ' 个');
+  // 负对照：同一判据对五种合成漂移都有牙，对"完全一致"与"optionalDependencies 合并"不误报。
+  const m0 = { name: 'demo', version: '1.0.0', dependencies: { a: '^1.0.0' }, devDependencies: { b: '^2.0.0' } };
+  const r0 = { name: 'demo', version: '1.0.0', dependencies: { a: '^1.0.0' }, devDependencies: { b: '^2.0.0' } };
+  const negs = [
+    ['清单多一条（未锁）', { ...m0, dependencies: { a: '^1.0.0', z: '1.0.0' } }, r0, /锁里缺 z@1\.0\.0/],
+    ['规格漂移（改了清单没重锁）', { ...m0, dependencies: { a: '^1.1.0' } }, r0, /a 锁 \^1\.0\.0 ≠ 清单 \^1\.1\.0/],
+    ['锁里多一条（锁比清单旧）', m0, { ...r0, dependencies: { a: '^1.0.0', stale: '1.0.0' } }, /锁里多 stale@1\.0\.0/],
+    ['devDependencies 漂移', { ...m0, devDependencies: { b: '^3.0.0' } }, r0, /devDependencies：b 锁/],
+    ['包名/版本号漂移', { ...m0, version: '1.0.1' }, r0, /name\/version/],
+  ];
+  const missed = negs.filter(([, m, r, re]) => !re.test(lockDrift(m, r).join(' | '))).map(([n]) => n);
+  check('负对照：五种清单⇄锁漂移都被判出', missed.length === 0,
+    missed.length ? '漏判：' + missed.join(' / ') : negs.length + ' 种形态');
+  check('负对照：一致时零漂移、且 optionalDependencies 合并进锁根不误报',
+    lockDrift(m0, r0).length === 0
+    && lockDrift({ ...m0, optionalDependencies: { c: '^3.0.0' } },
+      { ...r0, dependencies: { a: '^1.0.0', c: '^3.0.0' } }).length === 0);
+}
+
 console.log('');
 if (failed) { console.log(`PACKAGE PUBLISH CHECKS FAILED — ${failed} failed`); process.exit(1); }
 console.log('ALL PACKAGE PUBLISH CHECKS PASSED');
