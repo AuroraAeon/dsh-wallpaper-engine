@@ -372,6 +372,18 @@
         sel.videoError && React.createElement("div", { className: "we-picker__current-error" }, sel.videoError),
       ),
       React.createElement("div", { className: "we-qp__current-actions" },
+        // 「点个星喵⭐」：仓库求星入口（用户口径，位置在播放控制左侧）。与「关于」页那枚
+        // Star 按钮**同款式**（.we-picker__btn--primary：实心 accent 底 + 随 accent 的墨色字，
+        // 同一枚 ABOUT_REPO_URL 常量）；用 <a> 而不是 <button> 与关于页一致 —— 外链交给浏览器
+        // 原生行为（新窗、中键、修饰键都对），也让 e2e 的按钮计数判据（该 scope 内 3 枚 button）
+        // 保持字面意义。
+        React.createElement("a", {
+          className: "we-picker__btn we-picker__btn--primary",
+          href: ABOUT_REPO_URL,
+          target: "_blank",
+          rel: "noopener noreferrer",
+          title: weT("在浏览器里打开项目仓库"),
+        }, weT("点个星喵⭐")),
         React.createElement("button", {
           className: "we-picker__btn", type: "button",
           onClick: onTogglePlay, disabled: !sel.url,

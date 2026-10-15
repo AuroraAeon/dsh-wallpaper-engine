@@ -4880,17 +4880,16 @@ function RopeDock() {
 
 // ── One-time "what's new" notice ─────────────────────────────────────────────
 // The notice carries four user-facing stories:
-//   ① the plugin now coexists with the web-all plugin (skins from web-all or
-//      our dynamic wallpaper — the glass family yields while a skin is on
-//      stage and restores from memory afterwards, across restarts),
-//   ② every glass surface got an「独立配置」switch + glass「预设方案」presets
-//      (factory 7 + user-saved, applying overwrites wholesale, factory ones
-//      are gone forever once deleted), and glass no longer requires a
-//      wallpaper to be set,
-//   ③ the mascot art can be replaced with an imported image (96×192 fit,
-//      re-import overwrites, Clear restores the built-ins),
-//   ④ the Extensions tab gained session avatars (left/right chat layout,
-//      importable images for both sides, default off).
+//   ① session avatars got a big import upgrade — SVG / GIF / BMP / AVIF now
+//      supported, oversized images get an「auto-compress & import」escape hatch,
+//      and a crop dialog runs before upload (Extensions tab),
+//   ② a batch of fixes — live scene wallpapers in multiple windows stop kicking
+//      each other off; web-wallpaper audio reactivity under the strict sandbox;
+//      inline code in thinking blocks, native dropdown popups and the preset
+//      dialog display correctly again,
+//   ③ a one-tap star button (「点个星喵⭐」) on the sidebar wallpaper card,
+//   ④ Linux X11 occlusion power saving — a covered window drops frames, a fully
+//      covered one pauses (more battery left).
 // The notice art (GitHub star plea, shipped as lib/about/update-notice.jpg and
 // served by the /about-qr whitelist route — same family as the contact QRs,
 // NOT inlined: see src/about-assets.js) sits at the top with a caption
@@ -4904,10 +4903,10 @@ function RopeDock() {
 // 都从磁盘现读，而后端路由只在 DSH 重启时换血 —— 更新后未重启的窗口期里，旧后端
 // 的 /about-qr 白名单还没有 update-notice.jpg ⇒ 图 404。若照旧立刻弹窗，用户看到
 // 裂图，而「知道了」一关整版公告永久退场，配图等于永远没人看到。
-// ⚠️ 公告整体改版（简洁大字三条 + 配图换「星来」）。1.3.2 尚未对外发布
-//（无人看过旧 1.3.2 正文，仅开发机看过）⇒ 按内容修订惯例用 **r2 后缀**：
-// 看过旧 1.3.2 的机器重弹一次，没看过的当全新公告，效果等价。
-const NOTICE_VERSION = "1.3.2-r2";
+// ⚠️ 2026-10-15 公告随新版本换血：v1.3.2 之后的一整批（头像导入大升级 / 修复一批 /
+// 星链按钮 / Linux 遮挡省电）。配图沿用「星来」那张、caption 保留；哨兵升到下一版号 ——
+// 看过 1.3.2 公告的机器重弹一次，是设计意图。
+const NOTICE_VERSION = "1.3.3";
 // 公告内容改版（新增「侧边栏只是简略版」大字说明 + 配图缩小）必须升哨兵：
 // 否则看过旧版的用户永远看不到新说明，改了等于没改 ⇒ 重弹一次是设计意图。
 // 配图就绪探针的节奏：HEAD 轮询到新白名单在场（= 后端已重启）才弹；旧后端一直
@@ -5008,7 +5007,7 @@ function UpdateNotice() {
   };
   if (!show) return null;
   return React.createElement("div", { className: "we-update-notice", role: "alert" },
-    React.createElement("div", { className: "we-update-notice__title" }, weT("🎉 更新：吉祥物新朋友 · 一键预设 · 缓存路径自选")),
+    React.createElement("div", { className: "we-update-notice__title" }, weT("🎉 更新：头像导入大升级 · 一组修复 · 一键点星")),
     // 只有 ready 才渲染配图与说明行（timeout 降级态无图弹出，正文信息自足）。
     // 配图换「星来」，但**求星路径指引保留**（用户口径）：图下那行
     // 「关于页一键直达」是用户找到点星入口的唯一指引，不随配图换血退场。
@@ -5023,20 +5022,20 @@ function UpdateNotice() {
     art === "ready" ? React.createElement("div", { className: "we-update-notice__art-cap" },
       React.createElement("strong", null, weT("在设置中的壁纸引擎页面中的关于中可一键直达，谢谢喵！"))) : null,
     React.createElement("div", { className: "we-update-notice__body" },
-      // 用户口径：摒弃以往「字小条多」的清单式公告，改**简洁 + 大字** ——
-      // 只讲三件事，全部走 16pt callout（.we-update-notice__callout），每条一句不加尾巴长文。
+      // 2026-10-15 换血（用户口径：简单公告）：延续「简洁 + 大字」——只讲四件事，
+      // 全部走 16pt callout（.we-update-notice__callout），每条一句不加尾巴长文。
       React.createElement("p", { className: "we-update-notice__callout" },
-        "① ", noticeEx(2), React.createElement("strong", null, weT("我们的吉祥物系统来了很多新朋友！")),
-        weT("都在本插件设置里。")),
+        "① ", noticeEx(2), React.createElement("strong", null, weT("头像导入大升级！")),
+        weT("现支持 SVG / GIF 等更多格式，超大图可自动压缩，上传前还能先裁切 —— 都在「扩展」分页。")),
       React.createElement("p", { className: "we-update-notice__callout" },
-        "② ", noticeEx(2), React.createElement("strong", null, weT("新的预设系统给你带来更一键式的操作")),
-        weT("：「作者自用」「黑客绿」「紫色心情」都可尝试！")),
+        "② ", noticeEx(2), React.createElement("strong", null, weT("修复一批")),
+        weT("：多窗口实时渲染不再互相踢掉；网页壁纸音频可视化恢复跳动；设置图标对齐、思考块行内代码与下拉弹层显示恢复正常。")),
       React.createElement("p", { className: "we-update-notice__callout" },
-        "③ ", noticeEx(2), React.createElement("strong", null, weT("可以选择壁纸的缓存路径")),
-        weT("：在本插件设置中的「系统」分页，避免占用 C 盘。")),
+        "③ ", noticeEx(2), React.createElement("strong", null, weT("新增「点个星喵⭐」按钮")),
+        weT("：侧栏壁纸卡片一键直达仓库，欢迎来点颗星！")),
       React.createElement("p", { className: "we-update-notice__callout" },
-        "④ ", noticeEx(2), React.createElement("strong", null, weT("圆角效果也可以调了")),
-        weT("：在本插件设置的「外观」分页。")),
+        "④ ", noticeEx(2), React.createElement("strong", null, weT("Linux 用户更省电")),
+        weT("：窗口被遮挡时自动降帧，完全遮挡时暂停渲染。")),
       React.createElement("p", { className: "we-update-notice__hint" },
         weT("升级后建议重启一次 DSH，改动才完整生效；本提示每个新版本只出现一次，点下方按钮关闭后不再弹出。")),
     ),

@@ -173,18 +173,18 @@ const WE_I18N_EN_EXT = {
   "正在应用…": "Applying…",
   "采用「作者自用」": "Apply “Author's preset”",
   "保持我的设置": "Keep my settings",
-  // ── 更新公告（改版：简洁大字三条；旧清单条目全部退役）──
-  "🎉 更新：吉祥物新朋友 · 一键预设 · 缓存路径自选": "🎉 Update: new mascot friends · one-click presets · pick your cache drive",
+  // ── 更新公告（2026-10-15 换血：头像导入大升级 / 修复一批 / 点星按钮 / Linux 省电）──
+  "🎉 更新：头像导入大升级 · 一组修复 · 一键点星": "🎉 Update: avatar import overhaul · a batch of fixes · one-tap star",
   "新朋友「星来」登场": "The blue-haired maid mascot says hi",
   "在设置中的壁纸引擎页面中的关于中可一键直达，谢谢喵！": "One click away under Settings → Wallpaper Engine → About — thank you, meow!",
-  "我们的吉祥物系统来了很多新朋友！": "Our mascot system has lots of new friends!",
-  "都在本插件设置里。": "All in this plugin's settings.",
-  "新的预设系统给你带来更一键式的操作": "The new preset system makes things one-click",
-  "：「作者自用」「黑客绿」「紫色心情」都可尝试！": ": try “Author's preset”, “Hacker Green (Fish)” and “Purple Mood”!",
-  "可以选择壁纸的缓存路径": "Pick where your wallpaper cache lives",
-  "：在本插件设置中的「系统」分页，避免占用 C 盘。": ": under this plugin's System tab, so it stops eating your C drive.",
-  "圆角效果也可以调了": "Rounded corners are adjustable too",
-  "：在本插件设置的「外观」分页。": ": under this plugin's Appearance tab.",
+  "头像导入大升级！": "Avatar imports leveled up!",
+  "现支持 SVG / GIF 等更多格式，超大图可自动压缩，上传前还能先裁切 —— 都在「扩展」分页。": "SVG / GIF and more formats are supported, oversized images can be auto-compressed, and you can crop before uploading — all under the Extensions tab.",
+  "修复一批": "A batch of fixes",
+  "：多窗口实时渲染不再互相踢掉；网页壁纸音频可视化恢复跳动；设置图标对齐、思考块行内代码与下拉弹层显示恢复正常。": ": live scene wallpapers in multiple windows no longer kick each other off; web-wallpaper audio visuals react to music again; settings icons, inline code in thinking blocks and dropdown popups render correctly again.",
+  "新增「点个星喵⭐」按钮": "A new “Star us, meow” button",
+  "：侧栏壁纸卡片一键直达仓库，欢迎来点颗星！": ": one tap from the sidebar wallpaper card straight to the repo — go leave a star!",
+  "Linux 用户更省电": "Linux users save more battery",
+  "：窗口被遮挡时自动降帧，完全遮挡时暂停渲染。": ": a covered window drops frames, a fully covered one pauses rendering.",
   "升级后建议重启一次 DSH，改动才完整生效；本提示每个新版本只出现一次，点下方按钮关闭后不再弹出。": "Restart DSH once after upgrading so changes fully apply; this notice shows once per version — dismiss it and it won't come back.",
 };
 
