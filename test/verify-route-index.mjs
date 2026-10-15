@@ -23,7 +23,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { buildIndex, parseRouteModuleText, COMPONENT_MODULES, rowRegistrationCounts } from './tools/host-route-index.mjs';
+import { buildIndex, parseRouteModuleText, COMPONENT_MODULES, SUBPACKAGE_MODULES, rowRegistrationCounts } from './tools/host-route-index.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 let failed = 0;
@@ -195,7 +195,27 @@ console.log('\n⑤ 索引 == 运行时真实注册的路由（唯一能发现"�
   check('每个组件行在同一个 mock 上注册的条数 == 它调用的路由族条数（逐行数据驱动）',
     COMPONENT_MODULES.length >= 1 && countIssues.length === 0,
     countIssues.join('；') || perComponent.join(' '));
-  check('运行时注册条数 == 索引行数（裸行 + 组件行的并集）', registered.length === routes.length,
+  // P-A：**子包行**也是独立 plugin（patch 里裸真名一行）⇒ 与组件行同款在同一个 mock 上逐行跑一遍。
+  // 这一遍同时是 D3③ 的机器事实：跨行注册面若重合，本节的 (kind, path) 重复判据当场现形
+  // （fonts 搬迁期实测：主包门面与子包行都注册 fontsets ⇒ 装第二行时 "duplicate prefix route"）。
+  const subpackageDisposers = [];
+  const perSubpackage = [];
+  for (const rel of SUBPACKAGE_MODULES) {
+    const short = rel.replace(/^packages\//, '').split('/')[0];
+    const before = registered.length;
+    const entry = await import(pathToFileURL(join(ROOT, rel)).href);
+    const applyFn = entry.apply || (entry.default && entry.default.apply);
+    subpackageDisposers.push(typeof applyFn === 'function' ? applyFn(mock) : undefined);
+    const got = registered.length - before;
+    const exp = rowRegistrationCounts(rel, modules);
+    if (exp.unknown.length) countIssues.push(short + ' 调用点解析不到路由模块：' + exp.unknown.join(' '));
+    else if (got !== exp.expected) countIssues.push(short + ' 注册 ' + got + ' 条 ≠ 路由族 ' + exp.expected + ' 条（' + exp.fns.join(' ') + '）');
+    perSubpackage.push(short + '=' + got);
+  }
+  check('每个子包行在同一个 mock 上注册的条数 == 它调用的路由族条数（逐行数据驱动，含零路由空壳行）',
+    SUBPACKAGE_MODULES.length >= 1 && countIssues.length === 0,
+    countIssues.join('；') || perSubpackage.join(' '));
+  check('运行时注册条数 == 索引行数（裸行 + 组件行 + 子包行的并集）', registered.length === routes.length,
     `运行时 ${registered.length} / 索引 ${routes.length}`);
   // 跨行 (kind, path) 不得重复：宿主对重复注册**可能**抛错（R1 未证实），这里兜底钉住"两行注册面不相交"。
   const keyed = registered.map((r) => r.kind + ' ' + r.path);
@@ -216,6 +236,7 @@ console.log('\n⑤ 索引 == 运行时真实注册的路由（唯一能发现"�
   check('运行时注册的路径都在索引里（没有路由绕过索引）', unindexed.length === 0, unindexed.join(' ') || '全部在索引');
   if (typeof dispose === 'function') { try { dispose(); } catch { /* 清理失败不影响判定 */ } }
   for (const d of componentDisposers) { if (typeof d === 'function') { try { d(); } catch { /* 同上 */ } } }
+  for (const d of subpackageDisposers) { if (typeof d === 'function') { try { d(); } catch { /* 同上 */ } } }
 }
 
 console.log('');

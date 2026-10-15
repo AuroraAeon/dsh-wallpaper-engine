@@ -200,8 +200,10 @@ const components = readdirSync(join(ROOT, 'lib', 'components'), { withFileTypes:
     rel: 'lib/components/' + name + '/index.js',
     src: stripComments(readFileSync(join(ROOT, 'lib', 'components', name, 'index.js'), 'utf8')),
   }));
-const routeRels = readdirSync(join(ROOT, 'lib', 'routes')).filter((f) => f.endsWith('.js')).sort()
-  .map((f) => 'lib/routes/' + f);
+// ② 的路由族扫描面 = `host-route-index` 的候选文件面**同一份真源**（`lib/routes/*.js` ∪
+// `packages/<pkg>/lib/routes/*.js` ∪ 组件目录直接子文件）。写死 `lib/routes/` 会让随子包行出户的族
+// **静默掉出** M9 面（P-A：fonts 两族已在 `packages/fonts/lib/routes/`）—— 与下方覆盖面判据同源。
+const routeRels = routeModuleCandidates();
 // 组件目录下的**全部** `.js`（不只是 `index.js`）：P2-8 起组件的路由实现随组件住进这里 ——
 // ② 的扫描面若只认 `index.js`，那些实现会**静默脱离** M9 判据（§10 风险 12 的同款）。
 const componentImplRels = readdirSync(join(ROOT, 'lib', 'components'), { withFileTypes: true })
@@ -280,6 +282,14 @@ section('② 组件与路由族不得直接消费内核对象（`const { … } =
     candidates.length > 0 && missed.length === 0 && extra.length === 0,
     '候选 ' + candidates.length + ' 个' + (missed.length ? ' · 漏扫 ' + missed.join(' ') : '')
       + (extra.length ? ' · 多扫 ' + extra.join(' ') : '') + ' · 组件目录 ' + componentImplRels.length + ' 个 .js');
+  // negative control：把扫描面塌回 `lib/routes/`-only（本判据修复前的形态）⇒ 随子包行出户的族必须
+  // 被**同一条**覆盖面判据点名（否则"覆盖面对账"只是把当前文件数复述一遍，没有牙）。
+  const pkgRouteRels = candidates.filter((rel) => rel.startsWith('packages/'));
+  const narrowedSet = new Set([...routeRels.filter((rel) => rel.startsWith('lib/routes/')), ...componentImplRels]);
+  const missedNarrowed = candidates.filter((rel) => !narrowedSet.has(rel));
+  check('negative control：扫描面塌回 `lib/routes/`-only ⇒ 子包路由族被同一条判据点名',
+    pkgRouteRels.length > 0 && missedNarrowed.join() === pkgRouteRels.join(),
+    '塌陷后面外 = ' + (missedNarrowed.join(' ') || '（一个都没点名）') + ' · 子包族 = ' + pkgRouteRels.join(' '));
   check('覆盖面：组件入口目录 == `COMPONENT_MODULES` 真源（行入口清单数据驱动，双向对账）',
     components.length > 0 && components.length === COMPONENT_MODULES.length
     && components.every((c) => COMPONENT_MODULES.includes(c.rel)),

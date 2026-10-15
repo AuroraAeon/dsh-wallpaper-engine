@@ -21,11 +21,14 @@ import { EventEmitter } from 'node:events';
 import { createHash } from 'node:crypto';
 // 剥注释：共享的字符串感知实现（test/tools/js-text.mjs）。
 import { stripComments } from './tools/js-text.mjs';
+// 路由族文件面（`lib/routes/*.js` ∪ `packages/<pkg>/lib/routes/*.js`）的**同一份**发现真源。
+import { routeModuleCandidates } from './tools/host-route-index.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 /**
- * 宿主半的**全部注册面** = `lib/index.js` + `lib/routes/*.js`。
+ * 宿主半的**全部注册面** = `lib/index.js` + `lib/routes/*.js` + `packages/<pkg>/lib/routes/*.js`
+ * （P-A 起路由族随子包走；面不跟着长 ⇒ 搬走的族静默掉出，相关断言变空真）。
  * 路由族拆出 `apply(ctx)` 之后 ⇒ 凡断言"宿主仍实现某契约"的判据都必须覆盖
  * 那个目录，否则"已搬走"会被误报成"契约丢了"（假红）。反之，断言"某路由**已不在正文**"的
  * 判据仍必须只读 `lib/index.js`。
@@ -35,16 +38,21 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 //     随 P0 库化搬进 `lib/kernel/**` 与 `lib/media/*`）。
 //   · `readKeyDerivationSurface()` —— **键派生点计数面**：只数"缓存键在哪几处被拼出来"，
 //     历史口径 = 门面 + 路由族（对齐本文件头 30–31 行的约定：族里的派生点随族搬走）。
+/** P-A：路由族也会住在子包里（`packages/<pkg>/lib/routes/*.js`）⇒ 两个扫描面都必须走**同一份**发现真源
+ *  （`host-route-index.mjs` 的 `routeModuleCandidates()`），否则搬走的族会**静默掉出**"宿主半"面
+ *  （面塌陷 ⇒ 相关断言恒真）。组件目录里的直接子文件不属"宿主半路由族"面（那条面由
+ *  verify-component-face 守），故从这里剔除。 */
+const routeFamilyFiles = () => routeModuleCandidates().filter((rel) => !rel.startsWith('lib/components/'));
 const readHostHalf = () => [
   'lib/index.js',
   'lib/scene-probe.js',
-  ...readdirSync(resolve(root, 'lib', 'routes')).filter((f) => f.endsWith('.js')).map((f) => 'lib/routes/' + f),
+  ...routeFamilyFiles(),
   ...readdirSync(resolve(root, 'lib', 'kernel')).filter((f) => f.endsWith('.js')).map((f) => 'lib/kernel/' + f),
   ...readdirSync(resolve(root, 'lib', 'media')).filter((f) => f.endsWith('.js')).map((f) => 'lib/media/' + f),
 ]
   .map((f) => { try { return readFileSync(resolve(root, f), 'utf8'); } catch { return ''; } }).join('\n');
 const readKeyDerivationSurface = () => ['lib/index.js', 'lib/scene-probe.js',
-  ...readdirSync(resolve(root, 'lib', 'routes')).filter((f) => f.endsWith('.js')).map((f) => 'lib/routes/' + f),
+  ...routeFamilyFiles(),
   ...readdirSync(resolve(root, 'lib', 'kernel')).filter((f) => f.endsWith('.js')).map((f) => 'lib/kernel/' + f),
   ...readdirSync(resolve(root, 'lib', 'media')).filter((f) => f.endsWith('.js')).map((f) => 'lib/media/' + f)]
   .map((f) => { try { return readFileSync(resolve(root, f), 'utf8'); } catch { return ''; } }).join('\n');

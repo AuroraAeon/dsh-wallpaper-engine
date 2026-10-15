@@ -45,3 +45,18 @@
       # webServer is a hard dependency (`inject = ['webServer']` in lib/index.js):
       # the Loader waits for the HTTP server to mount, so a headless/TUI profile
       # without one does not load this bundle at all.
+    # ── P-A 子包行（BUNDLE-SPLIT §7.1）────────────────────────────────────────────
+    # 行的 name 是**子包的真名**（不是主包的子路径）：开发期解析靠
+    # `scripts/dev-link-subpackages.mjs` 在 <profile>/node_modules 下建的目录 junction，
+    # 与发布期 pnpm hoist 布局同形（§8.1 spike 结论）。主包 apply 会先 resolve 这三行，
+    # 解析不到就**大声抛错**（宿主对行级失败是静默的 —— §4.1 I5）。
+    # fx：点击拖尾 + 特效扩展（src/fx-layer.js、src/ext-fx.js），浏览器半边在本包自己的产物里。
+    - id: wallpaper-engine-fx
+      name: 'dsh-plugin-wallpaper-engine-fx'
+    # parallax：3D 视差层（src/parallax-layer.js、src/ext-parallax.js），同上。
+    - id: wallpaper-engine-parallax
+      name: 'dsh-plugin-wallpaper-engine-parallax'
+    # fonts：字体系统的**宿主半边**（lib/routes/fontsets.js、lib/routes/system-fonts.js
+    # 两条路由族）；字体浏览器半边仍留在主 bundle 里（P-A 不动设置面板）⇒ 本行没有 dsh.client。
+    - id: wallpaper-engine-fonts
+      name: 'dsh-plugin-wallpaper-engine-fonts'

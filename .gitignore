@@ -24,6 +24,8 @@ scene-layers-out/
 # 构建产物出库（v1.4）：lib/client.js 由 `npm run build` 现场生成（开发者 / CI / prepack 三条路径），
 # 不再入库。安装 npm 包与 Release tgz 时由打包期的 prepack 构建。
 /lib/client.js
+# P-A 起每包一产物（ADR-0003/0012 的同一口径）：子包的浏览器半边同样由 `npm run build` 现场生成。
+packages/*/lib/client.*.js
 
 /.git.bak-broken/
 

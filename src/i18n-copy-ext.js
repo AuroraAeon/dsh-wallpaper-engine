@@ -14,7 +14,7 @@ const WE_I18N_EN_EXT = {
   "还没有可用的扩展模块": "No extension modules yet",
   "后续新增的功能会以模块形式收在这里，每个模块自带它的控件": "Features added later are collected here as modules, each with its own controls",
 
-  // ── src/ext-fx.js · 「扩展」页签二号模块（点击效果与拖尾效果）──
+  // ── packages/fx/src/ext-fx.js · 「扩展」页签二号模块（点击效果与拖尾效果）──
   //    范围/默认值不在这里写死：真源是 lib/settings-schema.js 的 14 个 `fx*` 键。
   //    最后那几条是**通用档位名**（混合模式与配色档），登记在本段。
   "点击效果与拖尾效果": "Click and trail effects",
@@ -61,9 +61,9 @@ const WE_I18N_EN_EXT = {
   "变亮": "Lighten",
   "跟随主题色": "Follow theme color",
 
-  // ── src/ext-parallax.js · 「扩展」页签三号模块（3D 效果）──
+  // ── packages/parallax/src/ext-parallax.js · 「扩展」页签三号模块（3D 效果）──
   //    范围/默认值不在这里写死：真源是 lib/settings-schema.js 的 11 个 `parallax*` 键
-  //    （插件槽位那一档的缺省值是 src/parallax-layer.js 的 PARALLAX_PLUGIN_DEFAULT）。
+  //    （插件槽位那一档的缺省值是 packages/parallax/src/parallax-layer.js 的 PARALLAX_PLUGIN_DEFAULT）。
   //    这一节刻意不登记 `%`（SliderRow 的单位后缀是代码里的字面量，不进词表），
   //    也没有与另两个模块共用的键 —— 文案都是这一个模块自己的。
   //    距离的口径只有一条（用户口径 m02697-①）：**最大位移 = 屏幕最长对角线的百分比**。

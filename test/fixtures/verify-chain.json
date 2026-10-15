@@ -505,6 +505,38 @@
         {
           "kind": "guard",
           "npm": null,
+          "file": "test/verify-subpackage-boot.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-subpackage-client-half.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-subpackage-purity.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-subpackage-toggle-roundtrip.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
           "file": "test/tools/js-text.mjs",
           "args": [
             "selftest"
@@ -1141,6 +1173,38 @@
           "kind": "guard",
           "npm": null,
           "file": "test/verify-settings-schema-exports.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-subpackage-boot.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-subpackage-client-half.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-subpackage-purity.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-subpackage-toggle-roundtrip.mjs",
           "args": [],
           "tier": "hard",
           "probe": false

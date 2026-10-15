@@ -49,7 +49,7 @@
  * ⚠️ 阈值型判据（"每族都有声明"）必须配**非空地板**：解析器一旦静默返回空表，逐族相等会变成
  *    "空对空"而恒真。下面 `M8` 的计数与 `modules.length >= 21` / `declaredKeys >= 40` 就是那个地板。
  */
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 // 剥注释：共享的字符串感知实现（同目录 js-text.mjs）。等长 + 保留换行 ⇒ 行号可用来报错。
@@ -228,7 +228,8 @@ function templateInterpolationSpans(text) {
   return spans;
 }
 
-/** 文件里 `const NAME = { … }` 的本地对象（给"第二实参是标识符/展开"时解析用）。 */
+/** 文件里 `const NAME = { … }` 的本地对象（给"第二实参是标识符/展开"时解析用）。
+ * 返回 `name → { keys, spreads }`：`spreads` 是字面量里的 `...X` 名（判断这层展开能不能在本文件里解掉）。 */
 function localObjectLiterals(text) {
   const map = new Map();
   const re = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*\{/g;
@@ -236,7 +237,7 @@ function localObjectLiterals(text) {
   while ((m = re.exec(text)) !== null) {
     if (map.has(m[1])) continue;
     const parsed = objectLiteralKeys(text, m.index + m[0].length - 1);
-    if (parsed && !parsed.dynamic) map.set(m[1], parsed.keys);
+    if (parsed && !parsed.dynamic) map.set(m[1], { keys: parsed.keys, spreads: parsed.spreads || [] });
   }
   return map;
 }
@@ -434,8 +435,12 @@ export function parseModuleContract(raw, rel) {
  * 一个"行"模块（MAIN_MODULES）里的 `NAME(webServer, <第二实参>)` 调用点。
  * 只认**这一种语句形态**（行首即函数名）—— 与 `host-route-index` 的调用点正则同源；带赋值前缀
  * 的写法会让本守卫与路由索引一起把整族判成孤儿。
+ *
+ * `spreadTable`（可选，子包行入口用）= `{ names: Set<绑定名>, keys: string[] }`：把
+ * `...subpackageKeys('<id>')` 的运行期展开在**静态**面上补成叶子冻结表（叶子表是子包入口声明面的
+ * 唯一真源）。不给这项就沿用旧口径：展开名解析不到本文件里的对象字面量 ⇒ `site.dynamic` 判红。
  */
-export function parseCallSitesText(raw, rel, knownFns) {
+export function parseCallSitesText(raw, rel, knownFns, spreadTable = null) {
   const text = neutralize(raw);
   const locals = localObjectLiterals(text);
   const sites = [];
@@ -447,7 +452,7 @@ export function parseCallSitesText(raw, rel, knownFns) {
     const line = lineOf(text, m.index + m[1].length);
     let p = re.lastIndex;
     while (p < text.length && /\s/.test(text[p])) p++;
-    const site = { rel, line, fn, keys: [], dynamic: null, raw: '' };
+    const site = { rel, line, fn, keys: [], spreads: [], dynamic: null, raw: '' };
     if (text[p] === '{') {
       const parsed = objectLiteralKeys(text, p);
       if (!parsed) site.dynamic = '第二实参对象字面量的花括号不配对';
@@ -455,15 +460,31 @@ export function parseCallSitesText(raw, rel, knownFns) {
       else {
         site.keys = parsed.keys.slice();
         for (const sp of parsed.spreads) {
-          if (locals.has(sp)) site.keys.push(...locals.get(sp));
-          else site.dynamic = '展开 `...' + sp + '` 解析不到本文件里的对象字面量';
+          site.spreads.push(sp);
+          const local = locals.get(sp);
+          if (local) site.keys.push(...local.keys);
+          else if (spreadTable && spreadTable.names.has(sp)) site.keys.push(...spreadTable.keys);
+          else site.dynamic = '展开 `...' + sp + '` 解析不到本文件里的对象字面量（子包入口还认了叶子表绑定）';
         }
       }
     } else if (/[A-Za-z_$]/.test(text[p] || '')) {
       const idm = /^[A-Za-z_$][\w$]*/.exec(text.slice(p));
       const id = idm ? idm[0] : '';
-      if (locals.has(id)) site.keys = locals.get(id).slice();
-      else site.dynamic = '第二实参是标识符 `' + id + '`，本文件里找不到它的对象字面量';
+      const local = locals.get(id);
+      if (local) {
+        site.keys = local.keys.slice();
+        for (const sp of local.spreads) {
+          site.spreads.push(sp);
+          const nested = locals.get(sp);
+          if (nested) site.keys.push(...nested.keys);
+          else if (spreadTable && spreadTable.names.has(sp)) site.keys.push(...spreadTable.keys);
+          else site.dynamic = '展开 `...' + sp + '` 解析不到本文件里的对象字面量';
+        }
+      } else if (spreadTable && spreadTable.names.has(id)) {
+        site.keys = spreadTable.keys.slice();
+      } else {
+        site.dynamic = '第二实参是标识符 `' + id + '`，本文件里找不到它的对象字面量';
+      }
     } else {
       site.dynamic = '第二实参不是对象字面量也不是本地对象（形如 `' + text.slice(p, p + 12).trim() + '`）';
     }
@@ -522,6 +543,92 @@ export function reconcileCallSite(site, mod) {
   }
   for (const k of given) {
     if (!allowed.has(k)) issues.push(issue('given-not-declared', '调用点多给：' + k, k));
+  }
+  return issues;
+}
+
+// ── 子包行入口（`packages/<pkg>/<main>`）：叶子冻结表 = 声明面唯一真源 ─────────
+// 子包入口的 `c` 是运行期 `{ ...subpackageKeys('<id>'), disposers, cachePath }` 展开：静态扫描
+// 看不见那些键。⇒ 判据把叶子的 `subpackageKeyNames(id)` 读进来当给定面（不然要么判 dynamic
+// 恒红，要么把共享 c 误判成"少给 N 键"）。
+
+/** 根包名（子包行的行名 = `<根包名>-<id>`，子包入口判定的数据来源）。 */
+const ROOT_NAME = (() => {
+  try { return JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).name || ''; } catch { return ''; }
+})();
+
+/** `packages/<dir>/…` 的入口相对路径 → 子包 id（对账该包的 `name`）；不是子包入口则 null。 */
+export function subpackageEntryId(rel) {
+  const m = /^packages\/([^/]+)\//.exec(rel);
+  if (!m || !ROOT_NAME) return null;
+  let name;
+  try { name = JSON.parse(readFileSync(join(ROOT, 'packages', m[1], 'package.json'), 'utf8')).name; } catch { return null; }
+  const prefix = ROOT_NAME + '-';
+  return typeof name === 'string' && name.startsWith(prefix) && name.length > prefix.length ? name.slice(prefix.length) : null;
+}
+
+/** 入口文本里 `const NAME = subpackageKeys('<id>'[, ctx])` / `subpackageKeyNames('<id>')` 的绑定名。 */
+export function tableBindingNames(raw, id) {
+  const text = stripComments(String(raw));
+  const names = new Set();
+  const re = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:subpackageKeys|subpackageKeyNames)\s*\(\s*['"]([^'"]*)['"][^)]*\)/g;
+  let m;
+  while ((m = re.exec(text)) !== null) if (m[2] === id) names.add(m[1]);
+  return names;
+}
+
+/**
+ * 叶子冻结表（`lib/subpackage-boot.js` 的 `subpackageKeyNames()`）—— 子包入口声明面的唯一真源。
+ * 读不到 / 表为空都是红：空表会让子包入口的"逐键对账"退化成空对空（R-5 的空转形态）。
+ */
+async function loadLeafKeyNames() {
+  const rel = 'lib/subpackage-boot.js';
+  if (!existsSync(join(ROOT, rel))) return { error: rel + ' 不存在（子包入口声明面无真源）', tables: new Map() };
+  let mod;
+  try { mod = await import(pathToFileURL(join(ROOT, rel)).href); }
+  catch (error) { return { error: rel + ' 装载失败：' + (error && error.message), tables: new Map() }; }
+  if (typeof mod.subpackageKeyNames !== 'function' || typeof mod.subpackageIds !== 'function') {
+    return { error: rel + ' 没有具名导出 subpackageKeyNames()/subpackageIds()（声明面无真源）', tables: new Map() };
+  }
+  const tables = new Map();
+  for (const id of mod.subpackageIds()) {
+    try { tables.set(id, [...mod.subpackageKeyNames(id)]); } catch { tables.set(id, null); }
+  }
+  return { error: null, tables };
+}
+
+/** 子包入口的调用点给定键 = 叶子冻结表 ∪ 该实参里显式写出的键。 */
+export function subpackageGivenKeys(table, site) {
+  return [...new Set([...(table || []), ...((site && site.keys) || [])])];
+}
+
+/**
+ * 子包入口的调用点对账（② 的子包口径）：**只判"没给"**。
+ * `c` 是整包共享的键集（叶子表 + 本文件自带键），逐族判"多给"在这里没有意义（另一族要的键当然
+ * 也在共享 c 上）——"多给"改由 `reconcileSubpackageEntry()` 按**整包**判。
+ */
+export function reconcileSubpackageCallSite(site, mod, table) {
+  const issue = (kind, text, key = null) => ({ kind, text, key });
+  if (site.dynamic) return [issue('dynamic-arg', '第二实参无法机械解析（' + site.dynamic + '）⇒ 声明面与调用点不可对账')];
+  if (!mod || !mod.ok) return [issue('unknown-family', '调用点解析不到路由族模块（名字拼错 / 不是路由族模块的 register 函数？）')];
+  if (mod.deps === null) return [issue('no-deps', '该族没有 DEPS 声明面 ⇒ 调用点无处对账')];
+  const given = new Set(subpackageGivenKeys(table, site));
+  const issues = [];
+  for (const k of mod.deps) if (!given.has(k)) issues.push(issue('declared-not-given', '调用点没给：' + k, k));
+  return issues;
+}
+
+/**
+ * 子包入口的**整包**对账：入口显式给的键（叶子表以外的：`disposers` / `cachePath` 这类）必须被本包
+ * 某个族的声明面认领（DEPS ∪ OPTIONAL_DEPS）。共享 c 上的"多给"只有在这一层才有意义 —— 塞一个
+ * 没有任何族认识的键 = 契约漂移（负对照 nc-sub3）。
+ */
+export function reconcileSubpackageEntry(entry) {
+  const issues = [];
+  const families = entry.families || [];
+  const declaredAny = new Set(families.flatMap((f) => [...(f.deps || []), ...(f.optionalDeps || [])]));
+  for (const k of entry.explicit || []) {
+    if (!declaredAny.has(k)) issues.push({ kind: 'given-not-declared', text: '子包入口给了没有任何族声明的键：' + k, key: k });
   }
   return issues;
 }
@@ -613,11 +720,49 @@ function selftest(ok) {
   ok2('nc8 只在模板插值里出现的键必须算消费（否则会漏键）',
     nc8.consumed.has('tokenFor') && reconcileModule(nc8).length === 0 && nc8.unusedLocal.length === 0,
     '消费面=[' + [...nc8.consumed.keys()].join(',') + '] 死解构=[' + nc8.unusedLocal.join(',') + ']');
+
+  // ── 子包行入口（packages/<pkg>/）：叶子冻结表 = 声明面唯一真源 ─────────────────
+  // nc-sub1 / nc-sub2：`c = { ...subpackageKeys('probe'), disposers }` 的静态展开面必须是叶子表的
+  // 逐字复制；表里少一键（或调用点多给）都会让声明面对账失真。
+  const subSite = (keys, dynamic) => ({ rel: 'packages/probe/lib/index.js', line: 1, fn: 'registerProbeRoutes', keys, dynamic: dynamic || null });
+  ok2('nc-sub1 子包入口：叶子表里少一个族要求的键必须红',
+    reconcileSubpackageCallSite(subSite(['disposers']), good, ['disposers']).some((s) => s.kind === 'declared-not-given' && s.key === 'base'));
+  ok2('nc-sub2 正控：叶子表 ∪ 调用点显式键覆盖声明面 ⇒ 子包入口调用点无问题',
+    reconcileSubpackageCallSite(subSite(['disposers']), good, ['disposers', 'base']).length === 0);
+
+  // nc-sub3 / nc-sub4：共享 c 上的"多给"只在**整包**层判 —— 入口显式键必须被某族认领。
+  const subEntry = (explicit, table, deps, optional) => ({
+    rel: 'packages/probe/lib/index.js', id: 'probe', table,
+    explicit,
+    families: [{ rel: 'probe.js', fn: 'registerProbeRoutes', deps, optionalDeps: optional || [] }],
+  });
+  ok2('nc-sub3 子包入口显式多给一个没有族声明的键必须红',
+    reconcileSubpackageEntry(subEntry(['disposers', 'phantom'], ['base'], ['base'], ['disposers']))
+      .some((s) => s.kind === 'given-not-declared' && s.key === 'phantom'));
+  ok2('nc-sub4 正控：入口显式键被族声明（DEPS / OPTIONAL_DEPS 皆可）⇒ 整包对账无问题',
+    reconcileSubpackageEntry(subEntry(['disposers'], ['base'], ['base'], ['disposers'])).length === 0);
+
+  // nc-sub5：`...subpackageKeys(id)` 只有在**认得叶子表绑定**时才展开；不给表仍判 dynamic（原有牙没丢）
+  const subRaw = [
+    "import { subpackageKeys } from 'dsh-plugin-wallpaper-engine/subpackage-boot.js';",
+    "const keys = subpackageKeys('probe');",
+    "export const DEPS = ['base'];",
+    'export function registerProbeRoutes(webServer, c) {',
+    '  void c;',
+    '}',
+    'registerProbeRoutes(webServer, { ...keys, disposers });',
+  ].join('\n');
+  const withTable = parseCallSitesText(subRaw, 'packages/probe/lib/index.js', new Set(['registerProbeRoutes']), { names: tableBindingNames(subRaw, 'probe'), keys: ['base'] });
+  const withoutTable = parseCallSitesText(subRaw, 'packages/probe/lib/index.js', new Set(['registerProbeRoutes']));
+  ok2('nc-sub5 `...subpackageKeys(id)` 认表时展开成表键、不认表时仍判 dynamic',
+    withTable.length === 1 && !withTable[0].dynamic && withTable[0].keys.includes('base') && withTable[0].keys.includes('disposers')
+    && withoutTable.length === 1 && Boolean(withoutTable[0].dynamic),
+    '认得表=[' + (withTable[0] ? withTable[0].keys.join(',') : '无') + '] 不认得表=' + (withoutTable[0] && withoutTable[0].dynamic ? 'dynamic' : '未判红'));
 }
 
 // ── 主流程 ────────────────────────────────────────────────────────────────────
 
-function main() {
+async function main() {
   const dump = process.argv.includes('--dump');
   let failed = 0;
   const check = (name, cond, detail) => {
@@ -672,15 +817,54 @@ function main() {
   check('① 每个族的声明面与消费面逐键相等（少声明 / 多声明 / 死解构都算红）', moduleIssues.length === 0,
     moduleIssues.length ? moduleIssues.length + ' 个族不一致' : modules.length + ' 个族逐键相等');
 
-  console.log('\n② 声明面 ↔ 调用点实参键（门面 + 出户组件行入口，数据驱动）');
+  console.log('\n② 声明面 ↔ 调用点实参键（门面 + 出户组件行入口 + 子包行入口，数据驱动）');
   const knownFns = new Set(byFn.keys());
+  // 子包行入口的声明面**唯一真源** = 叶子冻结表（`subpackageKeyNames(id)`）：静态扫描看不见
+  // `{ ...subpackageKeys('fonts'), disposers }` 的运行期展开，必须把表读进来当给定面。
+  const leaf = await loadLeafKeyNames();
   const sites = [];
-  for (const rel of MAIN_MODULES) sites.push(...parseCallSitesText(readFileSync(join(ROOT, rel), 'utf8'), rel, knownFns));
   const siteIssues = [];
-  for (const s of sites) {
-    const issues = reconcileCallSite(s, byFn.get(s.fn));
-    if (issues.length) siteIssues.push([s, issues]);
+  const entryReports = [];
+  for (const rel of MAIN_MODULES) {
+    const raw = readFileSync(join(ROOT, rel), 'utf8');
+    const id = subpackageEntryId(rel);
+    const table = id ? (leaf.tables.get(id) || null) : null;
+    const bindings = id ? tableBindingNames(raw, id) : new Set();
+    const spreadTable = id && table ? { names: bindings, keys: table } : null;
+    const rowSites = parseCallSitesText(raw, rel, knownFns, spreadTable);
+    sites.push(...rowSites);
+    for (const s of rowSites) {
+      const issues = id ? reconcileSubpackageCallSite(s, byFn.get(s.fn), table) : reconcileCallSite(s, byFn.get(s.fn));
+      if (issues.length) siteIssues.push([s, issues]);
+    }
+    if (!id) continue;
+    const tableSet = new Set(table || []);
+    const explicit = [...new Set(rowSites.flatMap((s) => s.keys))].filter((k) => !tableSet.has(k));
+    const families = [...new Set(rowSites.map((s) => s.fn))].map((fn) => byFn.get(fn)).filter(Boolean);
+    const problems = rowSites.length
+      ? reconcileSubpackageEntry({
+        rel, id, table: table || [], explicit,
+        families: families.map((f) => ({ rel: f.rel, fn: f.fnName, deps: f.deps || [], optionalDeps: f.optionalDeps || [] })),
+      })
+      : [];
+    entryReports.push({ rel, id, explicit, fns: families.map((f) => f.fnName), tableKeys: (table || []).length, problems });
   }
+  const subpackageRels = MAIN_MODULES.filter((rel) => subpackageEntryId(rel) !== null);
+  const unreadable = subpackageRels.filter((rel) => !leaf.tables.get(subpackageEntryId(rel)));
+  check('② 子包行入口的声明面真源 = 叶子 `subpackageKeyNames(id)`（读不到 / 空表 = 红，不许退化成空对空）',
+    leaf.error === null && subpackageRels.length > 0 && unreadable.length === 0,
+    leaf.error || (subpackageRels.length + ' 个子包行入口 · 冻结表 ' + [...leaf.tables.keys()].join(' / ')
+      + (unreadable.length ? ' · 取不到冻结表：' + unreadable.join(' ') : '')));
+  const subpackageDynamic = sites.filter((s) => subpackageEntryId(s.rel) !== null && s.dynamic);
+  check('② 子包入口的 `...subpackageKeys(id)` 展开必须被认出来（认不出 = 整包调用点不可对账）',
+    entryReports.length === subpackageRels.length && subpackageDynamic.length === 0,
+    '子包入口 ' + entryReports.map((e) => e.id + ':' + e.tableKeys + ' 键 / ' + e.fns.length + ' 族').join(' · ')
+      + (subpackageDynamic.length ? ' · 判 dynamic：' + subpackageDynamic.map((s) => s.rel + ':' + s.line).join(' ') : ''));
+  const entryProblemRows = entryReports.filter((e) => e.problems.length);
+  for (const e of entryProblemRows) console.log('  ✗ ' + e.rel + '（' + e.id + '）: ' + e.problems.map((p) => p.text).join('；'));
+  check('② 子包入口共享 c 面：显式给的键（叶子表以外）必须被本包某个族声明（DEPS ∪ OPTIONAL_DEPS）',
+    entryProblemRows.length === 0,
+    entryProblemRows.length ? entryProblemRows.length + ' 个子包入口有问题' : entryReports.length + ' 个子包入口的显式键都被族认领');
   const calledFns = new Set(sites.map((s) => s.fn));
   const orphans = [...byFn.keys()].filter((f) => !calledFns.has(f));
   // 调用点覆盖面：**对账另一个解析器**（`rowRegistrationCounts()` 按行首形态独立扫同一批行模块），
@@ -697,7 +881,8 @@ function main() {
       + (extraCalls.length ? ' · 本守卫多了 ' + extraCalls.join(' ') : '')
       + (orphans.length ? ' · 无调用点：' + orphans.join(' ') : ''));
   for (const [s, issues] of siteIssues) console.log('  ✗ ' + s.rel + ':' + s.line + ' → ' + s.fn + '(): ' + issues.map((i) => i.text).join('；'));
-  check('② 每个调用点的实参键与声明面双向相等（没给 / 多给都算红）', siteIssues.length === 0,
+  check('② 每个调用点的实参键与声明面对账（门面/组件行双向；子包入口 = 叶子表 ∪ 显式键 ⊇ 族声明面）',
+    siteIssues.length === 0,
     siteIssues.length ? siteIssues.length + ' 个调用点不一致' : sites.length + ' 个调用点逐键对账');
 
   console.log('\n③ 负对照 / 正控（走 ① ② 的同一份判据）');
@@ -745,4 +930,4 @@ function main() {
 }
 
 const invokedDirectly = Boolean(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]).href;
-if (invokedDirectly) main();
+if (invokedDirectly) await main();

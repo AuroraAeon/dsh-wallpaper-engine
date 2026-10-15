@@ -41,6 +41,56 @@ import { createCheck, normCrlf, braceBody, fnNameBody as fnBody } from './tools/
 installWeTShim();
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+
+// ── A3 之后 fx / parallax 两族的浏览器半边住在**自己的子包**里 ─────────────────────
+// 源码在 packages/<pkg>/src/**，产物在 packages/<pkg>/lib/client.<短名>.js（宿主按
+// cordis.patch.yml 的行名加载子包行，行再提供自己的浏览器半边）。本守卫里对这四个文件
+// 的读盘 / import 全都走下面这两枚定位器 —— 落点散在十处，写死字符串必再漂一次。
+const subFxFile = (f) => join(root, 'packages', 'fx', 'src', f);
+const subParallaxFile = (f) => join(root, 'packages', 'parallax', 'src', f);
+const SUB_FX_PRODUCT = join(root, 'packages', 'fx', 'lib', 'client.fx.js');
+const SUB_PARALLAX_PRODUCT = join(root, 'packages', 'parallax', 'lib', 'client.parallax.js');
+
+/** 装配共享注册表（src/extension-registry.js）并登记「扩展」页签的三项。
+ *
+ *  为什么挂载台需要它：三份 bundle（主包 / packages/fx / packages/parallax）的**求值顺序不保证**，
+ *  panel-tabs 的 extensionModules() 只问注册表。挂载台是**按文件** import 的，于是必须自己把表
+ *  装起来 —— 否则 weExtensionModules 是裸标识符（ReferenceError，且只在渲染「扩展」页签时才炸）。
+ *
+ *  ⚠️ 这里用字面量路径 join(root, 'src', 'extension-registry.js') 来 import：本守卫因此是
+ *  src/extension-registry.js 的真实覆盖（test/verify-guard-map.mjs 的「零覆盖」那条判据认它）。
+ *  幂等：两块挂载台共用同一个模块实例，重复登记会撞注册表的「id 重复注册」抛错。
+ */
+let weExtensionRegistryPromise = null;
+function installExtensionRegistry() {
+  // 幂等靠 promise memo：模块级变量只在**同步**段写一次（async 函数里 await 之后回写会被
+  // require-atomic-updates 判成竞态）；两块挂载台 await 同一个 promise ⇒ 同一个模块实例。
+  if (!weExtensionRegistryPromise) weExtensionRegistryPromise = loadExtensionRegistry();
+  return weExtensionRegistryPromise;
+}
+async function loadExtensionRegistry() {
+  const reg = await import(pathToFileURL(join(root, 'src', 'extension-registry.js')).href);
+  Object.assign(globalThis, reg);
+  const avatarMod = await import(pathToFileURL(join(root, 'src', 'ext-avatar.js')).href);
+  const fxMod = await import(pathToFileURL(subFxFile('ext-fx.js')).href);
+  const parallaxMod = await import(pathToFileURL(subParallaxFile('ext-parallax.js')).href);
+  // 故意**乱序**登记：屏上顺序必须由描述符的 order 决定（注册序 / 数组序不是契约）。
+  reg.weRegisterExtensionModule('fx', fxMod.FX_EXTENSION_MODULE);
+  reg.weRegisterExtensionModule('parallax', parallaxMod.PARALLAX_EXTENSION_MODULE);
+  reg.weRegisterExtensionModule('avatar', avatarMod.AVATAR_EXTENSION_MODULE);
+  check('扩展注册表：三项齐 · 顺序 = order（乱序登记下头像仍第一）· 不靠注册序',
+    reg.weExtensionModules().map((m) => m.id).join(',') === 'avatar,fx,parallax'
+    // 第二半是**牙**：注册序确实是 fxp/parallax/avatar，不等于输出序 ⇒ 排序真的在按 order 工作
+    //（把注册表的 (order, seq) 排序去掉，这条会立刻红）。
+    && ['fx', 'parallax', 'avatar'].join(',') !== reg.weExtensionModules().map((m) => m.id).join(','),
+    '注册序=fx,parallax,avatar · 输出序=' + reg.weExtensionModules().map((m) => m.id + '(' + m.order + ')').join(' '));
+  check('扩展注册表：id 唯一（重复注册当场抛 —— 注册链不许静默吞掉抢 id 的那一份）',
+    (() => {
+      try { reg.weRegisterExtensionModule('avatar', avatarMod.AVATAR_EXTENSION_MODULE); return false; }
+      catch { return true; }
+    })());
+  return reg;
+}
 // Keep every cache/config write inside the workspace (same stance as
 // verify-scene.mjs) — apply() may sweep/purge caches on startup.
 const TEST_CACHE_DIR = join(root, '.test-cache', 'scene-live');
@@ -1826,37 +1876,55 @@ const hostLib = hostLibComposed;
   const moduleRegistered = (text) => /file:\s*'src\/live-layer\.js'/.test(text);
   check('negative control: 未登记的模块名会被判出',
     moduleRegistered(build) && /file:\s*'src\/nope\.js'/.test(build.replace("'src/live-layer.js'", "'src/nope.js'")));
-  // ── 点击效果与拖尾效果（「扩展」二号模块）：同样两条登记 + "产物里只有一份" ──
-  check('fx-layer.js 已登记进 INLINE_MODULES 且在产物里只有一份',
-    /file:\s*'src\/fx-layer\.js'/.test(build)
-    && (bundle.match(/function syncFxLayer\(\)/g) || []).length === 1
-    && (bundle.match(/function disposeFxLayer\(\)/g) || []).length === 1
-    // 帧循环只有一条：混回两份就是两个 rAF 各画各的、指针各记一份轨迹。
-    && (bundle.match(/function fxFrame\(\)/g) || []).length === 1);
-  check('ext-fx.js 已登记进 INLINE_MODULES 且在产物里只有一份',
-    /file:\s*'src\/ext-fx\.js'/.test(build)
-    && (bundle.match(/function renderFxIsland\(ctx\)/g) || []).length === 1
-    // 两个模块共用**一张**注册表 ⇒ 注册表本身恰好一份、两项都在。漏登记一项的失效模式
-    // 是静默的：屏上就是"这个功能根本不存在"，没有报错、也没有空态提示。
-    && (bundle.match(/function extensionModules\(\)/g) || []).length === 1
-    && bundle.includes('AVATAR_EXTENSION_MODULE, FX_EXTENSION_MODULE')
-    && bundle.includes('fxColorMode'));
-  // ── 3D 效果（「扩展」三号模块）：与前两个模块不同 —— 行为层不建 DOM（只写 CSS 变量）──
-  check('parallax-layer.js 已登记进 INLINE_MODULES 且在产物里只有一份',
-    /file:\s*'src\/parallax-layer\.js'/.test(build)
-    && (bundle.match(/function syncParallaxLayer\(\)/g) || []).length === 1
-    && (bundle.match(/function disposeParallaxLayer\(\)/g) || []).length === 1
+  // ── 点击效果与拖尾效果（「扩展」二号模块）：A3 起**整族搬进子包 packages/fx** ──────
+  // 口径翻了：不再是"登记进主 bundle 的 INLINE_MODULES"，而是"**不在主产物里、只住在自己的
+  // 子包产物里**"。子包行由宿主按 cordis.patch.yml 的行名加载，它的浏览器半边由
+  // packages/fx/lib/client.fx.js 提供（__ModuleLoader__.load({ id: <子包真名> })）。
+  // 主产物零残留是这条的重点：两份同样实现 = 两个 rAF 各画各的、指针各记一份轨迹。
+  const fxProduct = readFileSync(SUB_FX_PRODUCT, 'utf8');
+  const countOnce = (text, needle) => text.split(needle).length - 1;
+  // ⚠️ 判「不在 INLINE_MODULES 里」必须**切片**：build 文本里还有 SUBPACKAGE_BUILDS，它们的
+  //   file: 是**相对各包子目录**的（子包里本来就有 src/fx-layer.js）—— 拿整份文本判会恒红。
+  const inlineText = build.slice(build.indexOf('const INLINE_MODULES = ['), build.indexOf('\n];', build.indexOf('const INLINE_MODULES = [')));
+  const subBuildText = build.slice(build.indexOf('const SUBPACKAGE_BUILDS = ['));
+  check('fx-layer.js / ext-fx.js 已搬出主 bundle（零残留 · 只住在 packages/fx/lib/client.fx.js）',
+    !/file:\s*'src\/fx-layer\.js'/.test(inlineText) && !/file:\s*'src\/ext-fx\.js'/.test(inlineText)
+    // 正面证据：两处必须**出现在子包构建表**里（否则子包产物从哪来）。
+    && /file:\s*'src\/fx-layer\.js'/.test(subBuildText) && /file:\s*'src\/ext-fx\.js'/.test(subBuildText)
+    && !bundle.includes('function syncFxLayer()') && !bundle.includes('function renderFxIsland(')
+    && countOnce(fxProduct, 'function syncFxLayer()') === 1
+    && countOnce(fxProduct, 'function disposeFxLayer()') === 1
+    // 帧循环只有一条：混回两份就是两个 rAF 各画各的。
+    && countOnce(fxProduct, 'function fxFrame()') === 1
+    && countOnce(fxProduct, 'function renderFxIsland(ctx)') === 1
+    && fxProduct.includes('fxColorMode')
+    // 产物自己是**按子包真名**注册的（与 patch 行名逐字相等）—— 名不对 ⇒ 客户端 require 不到。
+    // 两段分开判：产物头是跨行的（load({ \n \t id: "<包名>"）—— 合成一行会认不中。
+    && fxProduct.includes('__ModuleLoader__.load({')
+    && fxProduct.includes('id: "dsh-plugin-wallpaper-engine-fx"'));
+  // ── 3D 效果（「扩展」三号模块）：同上，整族搬进 packages/parallax ──────────────────
+  // 与前两族不同的设计要点：行为层**不建 DOM**（只写 CSS 变量）——"顺手 appendChild 一版"
+  // 是最容易走偏的写法，所以在**产物**层面断言它没有建 DOM 的痕迹（变量型行为层是它的要点）。
+  const parallaxProduct = readFileSync(SUB_PARALLAX_PRODUCT, 'utf8');
+  check('parallax-layer.js / ext-parallax.js 已搬出主 bundle（零残留 · 只住在 packages/parallax/lib/client.parallax.js）',
+    !/file:\s*'src\/parallax-layer\.js'/.test(inlineText) && !/file:\s*'src\/ext-parallax\.js'/.test(inlineText)
+    && /file:\s*'src\/parallax-layer\.js'/.test(subBuildText) && /file:\s*'src\/ext-parallax\.js'/.test(subBuildText)
+    && !bundle.includes('function syncParallaxLayer()') && !bundle.includes('function renderParallaxIsland(')
+    && countOnce(parallaxProduct, 'function syncParallaxLayer()') === 1
+    && countOnce(parallaxProduct, 'function disposeParallaxLayer()') === 1
     // 位移只有一条帧循环：混回两份就是两个 rAF 各追各的目标，CSS 变量来回打架。
-    && (bundle.match(/function parallaxFrame\(/g) || []).length === 1
-    // 这一层一个节点都不建 —— "顺手 appendChild 一版"是最容易走偏的写法，
-    // 所以在产物层面断言它没有建 DOM 的痕迹（变量型行为层是它的设计要点）。
-    && !bundle.includes('parallaxHost'));
-  check('ext-parallax.js 已登记进 INLINE_MODULES 且在产物里只有一份',
-    /file:\s*'src\/ext-parallax\.js'/.test(build)
-    && (bundle.match(/function renderParallaxIsland\(ctx\)/g) || []).length === 1
-    // 一张注册表、三项都在（漏一版的失效模式是静默的：功能在屏上根本不存在）。
-    && bundle.includes('AVATAR_EXTENSION_MODULE, FX_EXTENSION_MODULE, PARALLAX_EXTENSION_MODULE')
-    && bundle.includes('parallaxSmooth'));
+    && countOnce(parallaxProduct, 'function parallaxFrame(') === 1
+    && countOnce(parallaxProduct, 'function renderParallaxIsland(ctx)') === 1
+    && parallaxProduct.includes('parallaxSmooth')
+    && !parallaxProduct.includes('parallaxHost')
+    && parallaxProduct.includes('id: "dsh-plugin-wallpaper-engine-parallax"'));
+  // 负对照：两侧都要有牙 —— ① 登记被加回 INLINE_MODULES；② 子包产物里少一份实现。
+  check('negative control: 登记被加回 INLINE_MODULES ⇒ 同一条判据判红',
+    !/file:\s*'src\/fx-layer\.js'/.test(inlineText)
+    && /file:\s*'src\/fx-layer\.js'/.test(inlineText.replace('const INLINE_MODULES = [', "const INLINE_MODULES = [\n  { file: 'src/fx-layer.js' },")));
+  check('negative control: 子包产物少一份实现 ⇒ 同一条判据判红（抽掉一处函数声明）',
+    countOnce(fxProduct, 'function disposeFxLayer()') === 1
+    && countOnce(fxProduct.split('function disposeFxLayer()').join('function goneDispose()'), 'function disposeFxLayer()') === 0);
   // ── 自定义会话头像（「扩展」页签**第一个**模块）：装饰层 + 扩展岛同样是两条登记 ──
   //    它跟另三个模块的关键差别是**它动宿主的会话 DOM**（给消息行补头像节点）——
   //    所以"产物里只有一份"在这里更要紧：两份注入逻辑就是同一行补两个头像。
@@ -1870,9 +1938,42 @@ const hostLib = hostLibComposed;
   check('ext-avatar.js 已登记进 INLINE_MODULES 且在产物里只有一份',
     /file:\s*'src\/ext-avatar\.js'/.test(build)
     && (bundle.match(/function renderAvatarIsland\(ctx\)/g) || []).length === 1
-    // 一张注册表、三项都在，且**头像排在第一位**（用户口径：这一项作为「扩展」页签的第一项）。
-    && bundle.includes('AVATAR_EXTENSION_MODULE, FX_EXTENSION_MODULE, PARALLAX_EXTENSION_MODULE')
-    && bundle.includes('avatarRadius') && bundle.includes('avatarUserImage'));
+    && bundle.includes('avatarRadius') && bundle.includes('avatarUserImage')
+    // A3 起**不再**断言"三项写在同一张静态数组里"：avatar 仍住主包，fx / parallax 各住自己的
+    // 子包产物，屏上顺序由共享注册表按描述符 order 排（见下面那批注册表判据）。
+    && bundle.includes('weRegisterExtensionModule("avatar", AVATAR_EXTENSION_MODULE)'));
+  // ── 扩展页签的**注册表**契约（A3 起跨三份 bundle）──────────────────────────────
+  // 三份产物（主 + packages/fx + packages/parallax）的并集恰好注册这三项；屏上顺序**只**由
+  // 描述符的 order 决定（三份 bundle 的求值顺序不保证，静态数组序不是契约 —— §6.2 显式键集）。
+  const regIds = Array.from((bundle + '\n' + fxProduct + '\n' + parallaxProduct)
+    // 两种拼写都要认：宿主注入的显式键是 registerExtensionModule（小写 r），
+    // 包内的冻结表函数是 weRegisterExtensionModule（大写 R）—— 只认一种就会漏掉某一侧。
+    .matchAll(/[Rr]egisterExtensionModule\(\s*['"]([\w-]+)['"]/g)).map((m) => m[1]);
+  const unionIsThree = (ids) => Array.from(new Set(ids)).sort().join(',') === 'avatar,fx,parallax';
+  check('扩展模块 id 三份产物并集恰好三项（avatar 主包 / fx · parallax 各自子包）',
+    unionIsThree(regIds), regIds.join(',') || '一处注册调用都没找到');
+  check('negative control: 并集少一项 / 多一项都判红（同一份判据函数）',
+    !unionIsThree(['fx', 'parallax']) && !unionIsThree(regIds.concat(['zzz'])));
+  check('panel-tabs 的 extensionModules() 只问注册表（不留静态清单 —— 跨包顺序不是契约）',
+    /function extensionModules\(\) \{\s*\n?\s*return weExtensionModules\(\);/.test(tabsHubSrc));
+  // 顺序的真源 = **描述符声明的 order**（avatar=1 / fx=2 / parallax=3），不是任何数组序。
+  // 行为侧的排序在挂载台里由 installExtensionRegistry() 再判一次（乱序登记）。
+  const orderOfModule = (text, name) => {
+    const i = text.indexOf('const ' + name + ' = {');
+    if (i < 0) return null;
+    const m = /order:\s*(\d+)/.exec(text.slice(i, i + 4000));
+    return m ? Number(m[1]) : null;
+  };
+  const avatarExtSrc = readFileSync(join(root, 'src', 'ext-avatar.js'), 'utf8');
+  const fxExtSrc = readFileSync(subFxFile('ext-fx.js'), 'utf8');
+  const parExtSrc = readFileSync(subParallaxFile('ext-parallax.js'), 'utf8');
+  check('屏上顺序 = 描述符的 order（avatar 1 / fx 2 / parallax 3）· 不靠数组序',
+    orderOfModule(avatarExtSrc, 'AVATAR_EXTENSION_MODULE') === 1
+    && orderOfModule(fxExtSrc, 'FX_EXTENSION_MODULE') === 2
+    && orderOfModule(parExtSrc, 'PARALLAX_EXTENSION_MODULE') === 3,
+    [orderOfModule(avatarExtSrc, 'AVATAR_EXTENSION_MODULE'),
+      orderOfModule(fxExtSrc, 'FX_EXTENSION_MODULE'),
+      orderOfModule(parExtSrc, 'PARALLAX_EXTENSION_MODULE')].join('/'));
   // ── 面板页签（C）：渲染器只在 panel-tabs.js，且**只从一个参数取外界** ──
   const TAB_FNS = ['renderWallpaperTab', 'renderAppearanceTab', 'renderAudioTab',
     'renderMascotTab', 'renderEffectsTab', 'renderAdvancedTab', 'renderExtensionsTab',
@@ -3173,6 +3274,8 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
     const mod = await import(pathToFileURL(join(root, rel)).href);
     for (const [k, v] of Object.entries(mod)) globalThis[k] = v;
   }
+  // A3：装共享注册表 —— 三项来自三份不同 bundle（求值顺序不保证）⇒ 挂载台必须自己登记。
+  await installExtensionRegistry();
   const schema = await import(pathToFileURL(join(root, 'lib', 'settings-schema.js')).href);
   const noop = () => null;
   // useState 的值由队列喂（QuickPanel 的调用序：[view, qpTab]）。
@@ -3539,6 +3642,8 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
     const mod = await import(pathToFileURL(join(root, rel)).href);
     for (const [k, v] of Object.entries(mod)) globalThis[k] = v;
   }
+  // A3：装共享注册表 —— 三项来自三份不同 bundle（求值顺序不保证）⇒ 挂载台必须自己登记。
+  await installExtensionRegistry();
   const schemaMod = await import(pathToFileURL(join(root, 'lib', 'settings-schema.js')).href);
   // ⚠️ 先归一成 LF 再切片：工作树是 CRLF，而下面的边界串是 `\n  }\n`（裸 LF）——
   // 在 CRLF 上它**匹配不到**，`indexOf` 回 -1 会让切片一路吃到文件尾（把别人的解构也当成
@@ -3658,8 +3763,8 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
   // 与一号模块同款覆盖方式：单独 import 真模块 + 真渲染一次。这一族的驱动源是**输入事件**
   // 与一个内容驱动的 rAF 循环 —— 沙箱里两者都没有，所以"零副作用"这条比一号模块更要紧：
   // 没有 rAF 时它连 DOM 都不该建（碰一下 `document` 就是 TypeError）。
-  const fxLayerMod = await import(pathToFileURL(join(root, 'src', 'fx-layer.js')).href);
-  const extFxMod = await import(pathToFileURL(join(root, 'src', 'ext-fx.js')).href);
+  const fxLayerMod = await import(pathToFileURL(subFxFile('fx-layer.js')).href);
+  const extFxMod = await import(pathToFileURL(subFxFile('ext-fx.js')).href);
   {
     const PREV_SEL = globalThis.selection;
     const restoreWeBase = stubWeBase();
@@ -3684,7 +3789,7 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
     // 源码口径：这一层最要紧的几件事都是"看不见的行为"（层级、输入过滤、混合写在宿主、
     // 空闲零帧），运行期判据在沙箱里够不着 ⇒ 与一号模块同款用源码断言钉住形态。
     // ⚠️ 归一成 LF 再切片：CI（windows-latest）检出是 CRLF，字面量 \\n 的 includes 在那边恒 miss。
-    const fxSrc = readFileSync(join(root, 'src', 'fx-layer.js'), 'utf8').replace(/\r\n/g, '\n');
+    const fxSrc = readFileSync(subFxFile('fx-layer.js'), 'utf8').replace(/\r\n/g, '\n');
     check('fx-layer.js 内容驱动帧循环 + 层级压在暗化层之上 + 不接管输入 + 混合写在宿主 + 死锁负向',
       fxSrc.includes("const FX_HOST_ID = 'we-fx-layer';")
       && fxSrc.includes('const FX_UI_SELECTOR = ')
@@ -3722,7 +3827,7 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
     // 这条判据用**假 canvas 数贵操作**：只数 stroke / fill / 非零 shadowBlur 赋值，
     // 在最小 DOM 替身下真跑一遍画布层，断言"一帧的贵操作数"落在一个**只许下降**的上界内。
     // 纯源码断言（例如"文件里不许出现 shadowBlur"）挡不住"换成别的贵写法"，故以计数为准。
-    const fxPerfSrc = readFileSync(join(root, 'src', 'fx-layer.js'), 'utf8').replace(/\r\n/g, '\n');
+    const fxPerfSrc = readFileSync(subFxFile('fx-layer.js'), 'utf8').replace(/\r\n/g, '\n');
     const restorePerfBase = stubWeBase();
     const PERF_KEYS = ['document', 'window', 'requestAnimationFrame', 'cancelAnimationFrame', 'selection', 'weNow'];
     const prevPerf = {};
@@ -4406,7 +4511,7 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
       ctxOf(Object.assign({}, schemaMod.DEFAULTS, { fxEnabled: true }))));
     globalThis.FX_BLEND_VALUES = PREV_BLEND;
     const mod = extFxMod.FX_EXTENSION_MODULE;
-    const fxSrc = readFileSync(join(root, 'src', 'ext-fx.js'), 'utf8');
+    const fxSrc = readFileSync(subFxFile('ext-fx.js'), 'utf8');
     const wantOff = [globalThis.weT('启用点击与拖尾效果')];
     const wantOn = wantOff.concat(PARAMS.map((k) => globalThis.weT(k)));
     check('ext-fx.js 可单独 import · 注册表项形状 · 关着只画总开关、开着才画 12 参数',
@@ -4458,8 +4563,8 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
   // 开关属性，位移在 src/styles.js 的视差段里算。所以"沙箱里零副作用"这条比前两层更硬：
   // 碰一下 `document` 就是 TypeError，而运行期判据（真的挪了多少像素）在无头环境够不着
   // ⇒ 一半靠"零抛错"、一半靠源码口径（下面第二条），与前两层同款。
-  const parallaxLayerMod = await import(pathToFileURL(join(root, 'src', 'parallax-layer.js')).href);
-  const extParallaxMod = await import(pathToFileURL(join(root, 'src', 'ext-parallax.js')).href);
+  const parallaxLayerMod = await import(pathToFileURL(subParallaxFile('parallax-layer.js')).href);
+  const extParallaxMod = await import(pathToFileURL(subParallaxFile('ext-parallax.js')).href);
   {
     const PREV_SEL = globalThis.selection;
     const restoreWeBase = stubWeBase();
@@ -4489,7 +4594,7 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
       && !threw, threw);
     // 源码口径：这一层的要点全是"看不见的形态"（不建 DOM、只用独立属性可用量、中心对称、
     // 到位就停、系数可配、特效层不参与）。逐条钉住，改坏了当场红。
-    const parSrc = readFileSync(join(root, 'src', 'parallax-layer.js'), 'utf8');
+    const parSrc = readFileSync(subParallaxFile('parallax-layer.js'), 'utf8');
     const weBaseSrc = readFileSync(join(root, 'src', 'we-base.js'), 'utf8');
     check('parallax-layer.js 不建 DOM + 独立属性直接写位移 + 中心对称(负向) + 收敛驱动 + 特效不参与 + 帧内零测量',
       parSrc.includes("const PARALLAX_DIRECTION = -1;")
@@ -5297,7 +5402,7 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
         && chatRef[0] < 0 && chatRef[1] < 0
         && chatRef[0] === chatRef[1] * 16 / 9;
       // 钳制上界从层源码现读（`10`）—— 台上那份 `__src` 是模块源码，直接正则取，别抄常数。
-      const depthMaxMatch = readFileSync(join(root, 'src', 'parallax-layer.js'), 'utf8')
+      const depthMaxMatch = readFileSync(subParallaxFile('parallax-layer.js'), 'utf8')
         .match(/const PARALLAX_GROUP_DEPTH_MAX = (\d+);/);
       const depthMax = depthMaxMatch ? Number(depthMaxMatch[1]) : 10;
       composerAttrOk = baseOk && !!composerAttrNum
@@ -5363,7 +5468,7 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
     // 顺手把"面板回显的范围就是层那一对常量"钉住），值都是现取的、这里不抄数。
     const PREV_PLUGIN_DEFAULT = globalThis.PARALLAX_PLUGIN_DEFAULT;
     globalThis.PARALLAX_PLUGIN_DEFAULT = parallaxLayerMod.PARALLAX_PLUGIN_DEFAULT;
-    const parSrcIsland = readFileSync(join(root, 'src', 'parallax-layer.js'), 'utf8');
+    const parSrcIsland = readFileSync(subParallaxFile('parallax-layer.js'), 'utf8');
     const parConstNum = (name) => {
       const m = new RegExp('const ' + name + ' = (-?\\d+(?:\\.\\d+)?);').exec(parSrcIsland);
       return m ? Number(m[1]) : NaN;
@@ -5406,7 +5511,7 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
       ctxOf(Object.assign({}, schemaMod.DEFAULTS, { parallaxEnabled: true, parallaxPlugin: true }),
         [SLOT_A, SLOT_B])));
     const mod = extParallaxMod.PARALLAX_EXTENSION_MODULE;
-    const extParSrc = readFileSync(join(root, 'src', 'ext-parallax.js'), 'utf8');
+    const extParSrc = readFileSync(subParallaxFile('ext-parallax.js'), 'utf8');
     const wantOff = [globalThis.weT('启用 3D 效果')];
     const wantOn = wantOff.concat(PARAMS.map((k) => globalThis.weT(k)));
     const wantOnUi = wantOff.concat(UI_PARAMS.map((k) => globalThis.weT(k)));
@@ -5488,7 +5593,7 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
       && !extParSrc.includes('ui && (slots.length') && !extParSrc.includes('ui && slots.map(')
       && clientSrcPar.includes('function onParallaxPlugin(e) { setSetting("parallaxPlugin", e.target.checked); emit(); }')
       // 名单与"真的会动"同源：开关关着 ⇒ 连名单都不给（面板于是画不出行，也不会画完却一动不动）。
-      && clientSrcPar.includes('parallaxPluginSlots: sel.parallaxPlugin === true ? parallaxDiscoveredGroups().sort() : [],')
+      && clientSrcPar.includes('parallaxPluginSlots: sel.parallaxPlugin === true ? weDiscoveredGroupsOf(\'parallax\').sort() : [],')
       && schemaMod.DEFAULTS.parallaxPlugin === false
       && schemaMod.KINDS.parallaxPlugin.kind === 'boolFalse',
       'island=' + (extParSrc.includes('const pluginOn = on && sel.parallaxPlugin === true;') ? '1' : '0')

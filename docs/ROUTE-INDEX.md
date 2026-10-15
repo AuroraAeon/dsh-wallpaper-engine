@@ -45,21 +45,21 @@
 | 26 | `/upload` | lib/routes/upload.js:72 | 箭头 | disposers base tokenFor UPLOAD_EXT UPLOAD_MAX_BYTES ensureUploadDir …(+6) | 4 |
 | 27 | `/remove` | lib/routes/upload.js:222 | 箭头 | disposers base CONTROL_JSON_MAX_BYTES ensureUploadDir removeUploadMeta resolveUploadFile …(+1) | 1 |
 | 28 | `/upload-dir` | lib/routes/upload.js:279 | 箭头 | disposers base CONTROL_JSON_MAX_BYTES setUploadDir normalizeUserDir armBodyIdleTimeout | 3 |
-| 29 | `/fontsets` | lib/routes/fontsets.js:248 | async 箭头 | disposers base readFontSetId | 4 |
-| 30 | `/glass-presets` | lib/routes/presets.js:502 | async 箭头 | disposers base | 1 |
-| 31 | `/system-fonts` | lib/routes/system-fonts.js:465 | async 箭头 | disposers base | 1 |
-| 32 | `/settings` | lib/routes/settings.js:158 | 箭头 | disposers base ctx mediaOriginApi readSettings isBetterSidebarLoaded …(+3) | 20 |
-| 33 | `/cache-dir` | lib/routes/cache-dir.js:47 | 箭头 | disposers base CONTROL_JSON_MAX_BYTES normalizeUserDir cacheBaseDir setCacheDir …(+1) | 1 |
-| 34 | `/cache-dir/browse` | lib/routes/cache-dir.js:115 | 箭头 | disposers base normalizeUserDir | 1 |
-| 35 | `/star-count` | lib/components/about-notice/github-stars.js:110 | async 箭头 | disposers base repoSlug log | 2 |
-| 36 | `/about-qr` | lib/components/about-notice/about-qr.js:69 | 箭头 | disposers base aboutDir serveFile | 3 |
-| 37 | `/mascot` | lib/components/mascot-avatar/mascot.js:53 | 箭头 | disposers base serveFile mascotDir mascotPath MASCOT_EXT …(+4) | 5 |
-| 38 | `/avatar` | lib/components/mascot-avatar/avatar.js:57 | 箭头 | disposers base serveFile avatarDir avatarPath AVATAR_SIDES …(+5) | 5 |
-| 39 | `/media-status` | lib/components/media-bridge/now-playing.js:87 | 箭头 | disposers base | 2 |
-| 40 | `/audio-spectrum` | lib/components/media-bridge/now-playing.js:97 | 箭头 | disposers base | 2 |
-| 41 | `/now-playing` | lib/components/media-bridge/now-playing.js:116 | 箭头 | disposers base | 3 |
-| 42 | `/now-playing/artwork` | lib/components/media-bridge/now-playing.js:130 | 箭头 | disposers base serveFile | 2 |
-| 43 | `/media-control` | lib/components/media-bridge/now-playing.js:148 | 箭头 | disposers base CONTROL_JSON_MAX_BYTES | 3 |
+| 29 | `/glass-presets` | lib/routes/presets.js:502 | async 箭头 | disposers base | 1 |
+| 30 | `/settings` | lib/routes/settings.js:158 | 箭头 | disposers base ctx mediaOriginApi readSettings isBetterSidebarLoaded …(+3) | 20 |
+| 31 | `/cache-dir` | lib/routes/cache-dir.js:47 | 箭头 | disposers base CONTROL_JSON_MAX_BYTES normalizeUserDir cacheBaseDir setCacheDir …(+1) | 1 |
+| 32 | `/cache-dir/browse` | lib/routes/cache-dir.js:115 | 箭头 | disposers base normalizeUserDir | 1 |
+| 33 | `/star-count` | lib/components/about-notice/github-stars.js:110 | async 箭头 | disposers base repoSlug log | 2 |
+| 34 | `/about-qr` | lib/components/about-notice/about-qr.js:69 | 箭头 | disposers base aboutDir serveFile | 3 |
+| 35 | `/mascot` | lib/components/mascot-avatar/mascot.js:53 | 箭头 | disposers base serveFile mascotDir mascotPath MASCOT_EXT …(+4) | 5 |
+| 36 | `/avatar` | lib/components/mascot-avatar/avatar.js:57 | 箭头 | disposers base serveFile avatarDir avatarPath AVATAR_SIDES …(+5) | 5 |
+| 37 | `/media-status` | lib/components/media-bridge/now-playing.js:87 | 箭头 | disposers base | 2 |
+| 38 | `/audio-spectrum` | lib/components/media-bridge/now-playing.js:97 | 箭头 | disposers base | 2 |
+| 39 | `/now-playing` | lib/components/media-bridge/now-playing.js:116 | 箭头 | disposers base | 3 |
+| 40 | `/now-playing/artwork` | lib/components/media-bridge/now-playing.js:130 | 箭头 | disposers base serveFile | 2 |
+| 41 | `/media-control` | lib/components/media-bridge/now-playing.js:148 | 箭头 | disposers base CONTROL_JSON_MAX_BYTES | 3 |
+| 42 | `/fontsets` | packages/fonts/lib/routes/fontsets.js:254 | async 箭头 | disposers base readFontSetId | 4 |
+| 43 | `/system-fonts` | packages/fonts/lib/routes/system-fonts.js:477 | async 箭头 | disposers base | 2 |
 
 **零提及（拆分前必须先补守卫）**：（无）
 
@@ -73,7 +73,6 @@
 |---|---|---|---|---|
 | `lib/routes/cache-dir.js` | `registerCacheDirRoutes(webServer, c)` | 2 | `disposers` `base` `CONTROL_JSON_MAX_BYTES` `normalizeUserDir` `cacheBaseDir` `setCacheDir` `armBodyIdleTimeout` | — |
 | `lib/routes/diag.js` | `registerDiagRoutes(webServer, c)` | 4 | `disposers` `appendDiagLine` `log` `notice` `base` `onHandleDiag` `componentsProbe` | — |
-| `lib/routes/fontsets.js` | `registerFontsetsRoutes(webServer, c)` | 1 | `disposers` `base` `readFontSetId` | — |
 | `lib/routes/inventory.js` | `registerInventoryRoutes(webServer, c)` | 1 | `disposers` `base` `mediaOriginApi` `buildInventory` `componentsProbe` | — |
 | `lib/routes/live-frame.js` | `registerLiveFrameRoutes(webServer, c)` | 1 | `disposers` `base` `mediaMap` `serveFile` `traceRequests` `liveFrameFile` `atomicWriteFileSync` `lingerClose` | — |
 | `lib/routes/media-bytes.js` | `registerMediaBytesRoutes(webServer, c)` | 2 | `disposers` `base` `serveFile` `serveLayout` `mediaMap` `log` `pinnedFaststartVariant` | — |
@@ -85,9 +84,10 @@
 | `lib/routes/scene-media.js` | `registerSceneMediaRoutes(webServer, c)` | 2 | `disposers` `base` `mediaMap` `serveFile` `ensureFrameCacheDir` `sceneVideoProbeKey` `sceneVideoProbeSet` `atomicWriteFileP` `ensureSceneAudio` `SCENE_VIDEO_INFLIGHT` | — |
 | `lib/routes/scene-serve.js` | `registerSceneServeRoutes(webServer, c)` | 4 | `disposers` `base` `WEBWALLGL_DIR` `WEBWALLGL_PKG_DIR` `appendDiagLine` `traceRequests` `serveFile` `handleSceneFiles` `mediaOriginInfo` `payloadProgress` `log` | — |
 | `lib/routes/settings.js` | `registerSettingsRoutes(webServer, c)` | 1 | `disposers` `base` `ctx` `mediaOriginApi` `readSettings` `isBetterSidebarLoaded` `sanitizeSettings` `withLegacyFontValues` `mergeSettings` `armBodyIdleTimeout` `lingerClose` | — |
-| `lib/routes/system-fonts.js` | `registerSystemFontsRoutes(webServer, c)` | 1 | `disposers` `base` `cachePath` `log` `platform` `home` `fontDirs` `runFontCommand` | — |
 | `lib/routes/upload.js` | `registerUploadRoutes(webServer, c)` | 3 | `disposers` `base` `tokenFor` `UPLOAD_EXT` `UPLOAD_MAX_BYTES` `CONTROL_JSON_MAX_BYTES` `ensureUploadDir` `readUploadMeta` `metaEntry` `setUploadMeta` `removeUploadMeta` `resolveUploadFile` `setUploadDir` `normalizeUserDir` `armBodyIdleTimeout` `lingerClose` | — |
 | `lib/routes/we-assets.js` | `registerWeAssetsRoutes(webServer, c)` | 2 | `disposers` `base` `serveFile` `CONTROL_JSON_MAX_BYTES` `normalizeUserDir` `setWeAssetsDir` `listWeAssetNames` `weAssetsAvailable` `WE_ASSETS_SOURCE_ID` `getWeAssetsDir` | — |
+| `packages/fonts/lib/routes/fontsets.js` | `registerFontsetsRoutes(webServer, c)` | 1 | `disposers` `base` `readFontSetId` | — |
+| `packages/fonts/lib/routes/system-fonts.js` | `registerSystemFontsRoutes(webServer, c)` | 1 | `disposers` `base` `cachePath` `log` `platform` `home` `fontDirs` `runFontCommand` | — |
 | `lib/components/about-notice/about-qr.js` | `registerAboutQrRoutes(webServer, c)` | 1 | `disposers` `base` `aboutDir` `serveFile` | — |
 | `lib/components/about-notice/github-stars.js` | `registerGithubStarsRoutes(webServer, c)` | 1 | `disposers` `base` `repoSlug` `cachePath` `log` `fetchJson` | — |
 | `lib/components/mascot-avatar/avatar.js` | `registerAvatarRoutes(webServer, c)` | 1 | `disposers` `base` `serveFile` `avatarDir` `avatarPath` `AVATAR_SIDES` `AVATAR_EXT` `AVATAR_MAX_BYTES` `atomicWriteFileP` `armBodyIdleTimeout` `lingerClose` | — |

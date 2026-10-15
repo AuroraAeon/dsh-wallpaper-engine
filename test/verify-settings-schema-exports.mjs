@@ -115,6 +115,33 @@ const CODE_EXT = ['.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx'];
 /** 构建产物：`src/**` 内联进它 ⇒ 里面的名字不构成独立消费。 */
 const BUILD_PRODUCT = 'lib/client.js';
 
+/**
+ * **子包的浏览器半边产物**（BUNDLE-SPLIT §7.1 / ADR-0013 D9「多包后每包一产物」）。
+ * 与 `BUILD_PRODUCT` 同性质：`npm run build` 现场生成、被 `.gitignore` 排除（`packages/<pkg>/lib/client.<pkg>.js`）
+ * ⇒ 干净检出里没有、构建后才有 ⇒ 走出来的面会比 `git ls-files` **多出**它们。
+ * **真源 = 各包 `package.json` 的 `exports['./client']`**（构建脚本 `SUBPACKAGE_BUILDS[].artifact` 与它逐字相同），
+ * 不写死 fx / parallax：多一个声明了浏览器半边的包，这里自动多一条豁免，而**别的**产物名仍按"脏面"判红。
+ */
+function subpackageClientProducts() {
+  let entries;
+  try { entries = readdirSync(join(ROOT, 'packages'), { withFileTypes: true }); } catch { return []; }
+  const names = entries.filter((e) => e.isDirectory()).map((e) => e.name).sort();
+  const out = [];
+  for (const name of names) {
+    let meta;
+    try { meta = JSON.parse(readFileSync(join(ROOT, 'packages', name, 'package.json'), 'utf8')); } catch { continue; }
+    const target = meta.exports && meta.exports['./client'];
+    if (typeof target !== 'string') continue;
+    out.push({
+      rel: 'packages/' + name + '/' + target.replace(/^\.\//, ''),
+      declaresClient: Boolean(meta.dsh && meta.dsh.client),
+    });
+  }
+  return out;
+}
+const SUBPACKAGE_CLIENT_PRODUCTS = subpackageClientProducts();
+const ALLOWED_BUILD_PRODUCTS = [BUILD_PRODUCT, ...SUBPACKAGE_CLIENT_PRODUCTS.map((p) => p.rel)];
+
 /** 递归列出扩展名命中的文件（相对 ROOT、POSIX 分隔符、字典序）。**仅负对照用**（见 SKIP_DIRS 注释）。 */
 function listFilesNaive(absDir, exts, out = []) {
   let entries;
@@ -367,7 +394,14 @@ check('自检：构建产物（lib/client.js）不在内部模块清单里，且
 // `allowedExtra` 逐条给理由：`lib/client.js` 是 gitignore 的**构建产物**（本地存在、干净检出没有）、
 // 本文件自身在被跟踪之前也短暂地属于"未跟踪"。
 {
-  const diff = gitViewDiff(ROOT, consumerAbs, { exts: CODE_EXT, allowedExtra: [BUILD_PRODUCT] });
+  // 自检（豁免名单的牙）：逐条来自包清单、形状与 `.gitignore` 的产物规则一致、且该包真的声明了 `dsh.client`
+  // （三件齐：`exports['./client']` + `dsh.client` + 产物文件）。名单空了 ⇒ 多包后的产物会当成"脏面"判红，
+  // 所以"一条都没有"本身就是失败（P-A 之后至少 fx / parallax 两个包）。
+  check('自检：子包浏览器半边产物的豁免名单逐条来自包清单（`exports["./client"]` + `dsh.client`）',
+    SUBPACKAGE_CLIENT_PRODUCTS.length >= 1
+      && SUBPACKAGE_CLIENT_PRODUCTS.every((p) => p.declaresClient && /^packages\/[^/]+\/lib\/client\.[^/]+\.js$/.test(p.rel)),
+    SUBPACKAGE_CLIENT_PRODUCTS.map((p) => p.rel + (p.declaresClient ? '' : '（缺 dsh.client）')).join(' ') || '(空)');
+  const diff = gitViewDiff(ROOT, consumerAbs, { exts: CODE_EXT, allowedExtra: ALLOWED_BUILD_PRODUCTS });
   if (diff.reason) {
     // git 不可用 / 沙箱禁子进程（EPERM）：报**具名 SKIP**，不许静默当成"一致"。
     check('自检：扫描面 == git 视角（`git ls-files`）', true,
@@ -386,6 +420,9 @@ check('自检：构建产物（lib/client.js）不在内部模块清单里，且
     diffFace(['lib/a.js', 'lib/b.js', 'zz-dup.js'], T).ok === false
     && diffFace(['lib/a.js', 'lib/b.js', 'zz-dup.js'], T).extra.join() === 'zz-dup.js'
     && diffFace(['lib/a.js', 'lib/b.js', BUILD_PRODUCT], T, { allowedExtra: [BUILD_PRODUCT] }).ok === true);
+  check('负对照：同族但**不在豁免名单**里的产物名仍判红（豁免是逐条清单，不是 `packages/*/lib/client*` 通配）',
+    diffFace(['lib/a.js', 'lib/b.js', 'packages/fx/lib/client.nope.js'], T, { allowedExtra: ALLOWED_BUILD_PRODUCTS }).extra.join() === 'packages/fx/lib/client.nope.js'
+      && diffFace(['lib/a.js', 'lib/b.js', ...SUBPACKAGE_CLIENT_PRODUCTS.map((p) => p.rel)], T, { allowedExtra: ALLOWED_BUILD_PRODUCTS }).ok === true);
   check('负对照：面里**漏掉**一个被跟踪的代码文件 ⇒ 同一条 diffFace 判红（"面变窄"可见）',
     diffFace(['lib/a.js'], T).ok === false && diffFace(['lib/a.js'], T).missing.join() === 'lib/b.js'
     && diffFace(['lib/a.js', 'lib/b.js'], T).ok === true);

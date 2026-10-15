@@ -2,7 +2,9 @@
 /**
  * js-text.mjs — JS/TS 源码的**文本级**工具（守卫读源码时用）。
  *
- * 目前三个入口：`stripComments(src)`（把注释换成等长空格）、`moduleScopeOf(src)`
+ * 入口清单见文件末 `export`（`stripComments` / `blankStringLiterals` / `moduleScopeOf` / `functionBodyOf` /
+ * `stripExportBlocks` / `splitLinesSafe` / `selftest`）。前三个：`stripComments(src)`（把注释换成等长空格）、
+ * `moduleScopeOf(src)`
  * （取出**模块作用域**文本 —— 顶层、任何 `{ … }` 体之外的片段；环的求值期纪律类判据用它）
  * 与 `functionBodyOf(src, header)`（取出某个 `{ … }` 体的原文；`verify-logging` / `verify-types`
  * 的函数体判据用它）。三者共用同一套字符扫描器（注释/字符串/模板/**正则字面量** + 花括号配对）。
@@ -286,6 +288,44 @@ function splitLinesSafe(text) {
   return { lines, eol, join: (ls) => ls.join(eol === 'CRLF' ? '\r\n' : '\n') };
 }
 
+/**
+ * 把**内容匹配 `test`** 的字符串 / 模板字面量的内容换成等长空格（引号保留、换行保留、长度不变）。
+ *
+ * 用途：守卫读源码时，自己为负对照写下的"夹具文本"（形如 `"import x from 'pkg'"`）是**数据**，
+ * 不是依赖 —— 不抹掉就会把守卫自己判红（实测：P5 的裸依赖扫描把 purity 的夹具全当成真依赖）。
+ * 与 `stripComments` **共用同一套正则/字符串识别**（`scanAtom`）：正则字面量里带引号
+ * （`/['"]/`）不会让它错位 —— 朴素的字符扫描器正是在这里翻车，之后整段漏抹且不报错。
+ * @param {string} src 源码（**先过 `stripComments`**：注释里的一句 `from 'pkg'` 不是字符串，
+ *   本函数不认识注释，注释必须由调用方先剥）
+ * @param {(content: string) => boolean} test 内容命中即抹白（内容 = 两引号之间的原文）
+ * @returns {string} 与入参**等长**的文本
+ */
+function blankStringLiterals(src, test) {
+  const text = String(src);
+  const n = text.length;
+  const out = [];
+  let prev = '';
+  let i = 0;
+  while (i < n) {
+    const atom = scanAtom(text, i, prev);
+    if (atom !== null) {
+      let seg = text.slice(i, atom.end);
+      if (atom.kind === 'string' && atom.closed && seg.length >= 2 && test(seg.slice(1, -1))) {
+        seg = seg[0] + seg.slice(1, -1).replace(/[^\n]/g, ' ') + seg[seg.length - 1];
+      }
+      out.push(seg);
+      prev = atom.prevAfter;
+      i = atom.end;
+      continue;
+    }
+    const c = text[i];
+    out.push(c);
+    if (!isSpace(c)) prev = c;
+    i++;
+  }
+  return out.join('');
+}
+
 /** 自检：正/负对照成对；并含一条"朴素实现会吃掉真代码"的**反面参照**。 */
 function selftest() {
   const results = [];
@@ -446,6 +486,21 @@ function selftest() {
     !moduleScopeOf('function f() { return 1; }\n').includes('return 1;')
     && (functionBodyOf('function f() { return 1; }\n', 'function f(') || '').includes('return 1;'));
 
+  // ⑩ 夹具字符串抹白（守卫的负对照文本不得被守卫自己的扫描器当成依赖）。
+  //    真实形态：P5 的裸依赖扫描把 purity 里 `text: "import { x } from 'lodash';"` 当成了真依赖。
+  const fixtureSrc = 'const a = "import { x } from \'lodash\';";\nconst b = 1;\n';
+  const blankFixture = (s) => blankStringLiterals(stripComments(s), (c) => /\b(?:import|export|require)\b/.test(c));
+  ok('正判据：内容含模块语法的字符串被抹白（长度不变、后续代码保留）',
+    blankFixture(fixtureSrc).includes('const b = 1;') && blankFixture(fixtureSrc).length === fixtureSrc.length
+    && !blankFixture(fixtureSrc).includes('lodash'));
+  ok('负对照：真说明符字符串不被抹白（内容不含模块关键字 ⇒ 原样）',
+    blankFixture("import x from 'left-pad';").includes("'left-pad'"));
+  ok('正判据：正则字面量里带引号时不致错位（朴素字符扫描器在这里翻车）',
+    (() => {
+      const s = "const r = /['\"]/;\nconst t = \"import x from 'lodash'\";\n";
+      const out = blankFixture(s);
+      return out.includes("/['\"]/") && !out.includes('lodash');
+    })());
   let failed = 0;
   for (const r of results) {
     console.log((r.cond ? '✓ ' : '✗ ') + r.name + (r.detail ? ' — ' + r.detail : ''));
@@ -459,7 +514,7 @@ function selftest() {
   console.log(`js-text selftest PASSED (${results.length})`);
 }
 
-export { stripComments, moduleScopeOf, functionBodyOf, stripExportBlocks, splitLinesSafe, selftest };
+export { stripComments, blankStringLiterals, moduleScopeOf, functionBodyOf, stripExportBlocks, splitLinesSafe, selftest };
 
 // 作为脚本直接跑时才执行自检（被 `import` 时**不得**有副作用 —— 守卫要 import 这个模块）
 const invokedDirectly = Boolean(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]).href;

@@ -210,7 +210,23 @@ const DICT_MODULE = 'src/i18n-copy.js';
 // 顺序（INLINE_MODULES 单一真源）⇒ 扫描面、切片面、vm 装载面三处用同一份清单，不会各自漂移。
 const DICT_FAMILY = scopeFiles('src/i18n-copy');
 const DICT_MODULES = new Set(DICT_FAMILY);
-const srcFiles = jsFiles(join(ROOT, 'src'));
+// A3（多包，BUNDLE-SPLIT §7.1）之后产品源码分居两处：主包 src/** 与 lib/**，子包 packages/<pkg>/{src,lib}/**。
+// 扫描面必须同源扩到 packages/**：否则迁出去的 weT(…) 调用点（如 packages/fx/src/ext-fx.js）
+// 与宿主「原句」出处（如 packages/fonts/lib/fontsets.js）双双掉出扫描面 —— 症状恰好是
+// 「一堆孤儿键 + 一堆凭空造句」，而源码两半其实都合规。这正是 A3 打崩本守卫的形态。
+const PACKAGES_ROOT = join(ROOT, 'packages');
+/** 子包面里的 <sub> 目录（src / lib）；没有 packages/ 时返回空数组。 */
+const subpackageDirs = (sub) => {
+  let entries;
+  try { entries = readdirSync(PACKAGES_ROOT, { withFileTypes: true }); } catch { return []; }
+  return entries.filter((e) => e.isDirectory())
+    .map((e) => join(PACKAGES_ROOT, e.name, sub))
+    .filter((d) => existsSync(d));
+};
+/** 产物（构建生成的浏览器半边）：主包 lib/client.js 与子包 lib/client.<short>.js —— 它们是源码的副本
+ *  （同一份中文原句已按源码面各判一遍），不是「原句」出处。 */
+const isGeneratedClient = (rel) => rel === 'lib/client.js' || /(^|\/)client\.[^/]+\.js$/.test(rel);
+const srcFiles = [join(ROOT, 'src'), ...subpackageDirs('src')].flatMap((d) => jsFiles(d));
 const srcHits = [];
 for (const file of srcFiles) {
   const rel = relative(ROOT, file).split(/[\\/]/).join('/');
@@ -226,9 +242,10 @@ const dictHits = DICT_FAMILY.flatMap((rel) => scanCjkStrings(readFileSync(join(R
 // 字符，连文件末尾的 `process.exit(failed ? 1 : 0)` 都一起吃掉 ⇒ `audit-guard-teeth` 判据 E 会
 // 假报「本文件既无 process.exit 也无 throw」）。本仓生产路径统一走字符串感知的剥注释，
 // 这里只是不给下一个"守守卫"的工具留同样的坑。
-const libFiles = jsFiles(join(ROOT, 'lib')).filter((f) => {
+const libFiles = [join(ROOT, 'lib'), ...subpackageDirs('lib')].flatMap((d) => jsFiles(d)).filter((f) => {
   const rel = relative(ROOT, f).split(/[\\/]/).join('/');
-  return rel !== 'lib/client.js' && !rel.startsWith('lib/vendor/') && !rel.startsWith('lib/webwallgl/');
+  // vendored 两个前缀对主包与子包同口径；产物见 isGeneratedClient。
+  return !isGeneratedClient(rel) && !/(^|\/)(vendor|webwallgl)\//.test(rel);
 });
 const libValues = new Set();
 for (const file of libFiles) {

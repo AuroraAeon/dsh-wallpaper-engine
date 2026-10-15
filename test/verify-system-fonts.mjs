@@ -36,7 +36,7 @@ import {
   registerSystemFontsRoutes, collectSystemFonts, normalizeFamilies, familyFromFileName, defaultRun,
   parseMacFonts, parseFcList, parseLineFamilies, parseWindowsFontRegistry, parseFontFileNames,
   authoritativeSources, SYSTEM_FONTS_TTL_MS, SYSTEM_FONTS_CACHE_VERSION, FONT_SCAN_TIMEOUT_MS,
-} from '../lib/routes/system-fonts.js';
+} from '../packages/fonts/lib/routes/system-fonts.js';   // P-A：族随子包行出户（packages/fonts）
 import { systemFontKeyOf, sanitizeFamilyValue } from '../lib/settings-schema.js';
 import { panelText } from './tools/src-scope.mjs';
 

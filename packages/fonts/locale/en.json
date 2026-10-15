@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Font System",
+    "description": "Font-set storage (/fontsets) and the local system-font inventory (/system-fonts) — host half only; the typography / colour-role UI is not in this package."
+  }
+}

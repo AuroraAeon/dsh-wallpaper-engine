@@ -177,8 +177,10 @@ export function parseRouteModuleText(raw, rel, fnName) {
 const ROUTE_ENTRY_RE = /export\s+function\s+register[A-Za-z_$][\w$]*Routes\s*\(\s*webServer\b/;
 
 /** 路由族模块的**候选文件面**（从磁盘枚举，不写死组件清单 —— M5）：
- *  `lib/routes/*.js` ∪ `lib/components/<c>/` 的**直接子文件**。
- *  这是"可能住着路由族"的文件面；是否真是路由族由 `ROUTE_ENTRY_RE` 判定（见 `routeModuleFiles()`）。 */
+ *  `lib/routes/*.js` ∪ `lib/components/<c>/` 的直接子文件 ∪ `packages/<pkg>/lib/routes/*.js`。
+ *  这是"可能住着路由族"的文件面；是否真是路由族由 `ROUTE_ENTRY_RE` 判定（见 `routeModuleFiles()`）。
+ *  P-A 起实现随**子包**走（fonts 的两族），所以候选面必须跟着包发现层一起长 —— 否则搬走的族
+ *  会从"孤儿面"里静默消失（文件在、没人调用也判不出来）。 */
 export function routeModuleCandidates() {
   const out = [];
   const push = (dir, prefix) => {
@@ -186,6 +188,14 @@ export function routeModuleCandidates() {
     for (const name of readdirSync(dir).filter((n) => n.endsWith('.js')).sort()) out.push(prefix + name);
   };
   push(join(ROOT, 'lib', 'routes'), 'lib/routes/');
+  const pkgs = join(ROOT, 'packages');
+  if (existsSync(pkgs)) {
+    for (const p of readdirSync(pkgs).sort()) {
+      const dir = join(pkgs, p);
+      if (!statSync(dir).isDirectory()) continue;
+      push(join(dir, 'lib', 'routes'), 'packages/' + p + '/lib/routes/');
+    }
+  }
   const comps = join(ROOT, 'lib', 'components');
   if (existsSync(comps)) {
     for (const c of readdirSync(comps).sort()) {
@@ -226,7 +236,10 @@ function routeModules() {
  *   · 只看 patch ⇒ 缺文件的死行也会算一行。
  * ⇒ **新增一个组件行不需要改本文件**（把目录建好 + patch 加一行即可）。
  */
-export const PKG_MAIN = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).main;
+const PKG_MANIFEST = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
+export const PKG_MAIN = PKG_MANIFEST.main;
+/** 主包真名：子包行的行名 = `<本名>-<pkg>`（见 `subpackageModules()`）。 */
+const PKG_NAME = PKG_MANIFEST.name;
 
 /** `cordis.patch.yml` 里的行名（按文件顺序；手写扫描 —— 构建/守卫链上不引 js-yaml，见 verify-package-files）。 */
 export function patchRowNames() {
@@ -252,10 +265,75 @@ export function componentModules() {
   return out;
 }
 
-export const MAIN_MODULES = [PKG_MAIN, ...componentModules()];
+/**
+ * 子包行的宿主入口（数据驱动，P-A / BUNDLE-SPLIT §8.1）：patch 行名是**子包真名**
+ * （`<主包名>-<pkg>`，裸名、不含 `/`）⇒ 在 `packages/<dir>/package.json` 里找 `name` 逐字相等的
+ * 那个包，取它的 `main`（相对包目录）。
+ *
+ * 与组件行同款**两侧交叉**：只看磁盘 ⇒ 还没登记行（或没落主 patch）的包会被当成"运行时会注册的行"；
+ * 只看 patch ⇒ 缺入口文件的死行也算一行。⇒ 新增一个子包行**不需要改本文件**。
+ * 也不与组件行重叠：`componentModules()` 只认带 `/` 的子路径行（行名 = `<主包名>/<子>`）。
+ */
+export function subpackageModules() {
+  const rows = new Set(patchRowNames().filter((n) => n.startsWith(PKG_NAME + '-') && !n.includes('/')));
+  const out = [];
+  // 清单解析走 subpackageManifests()（与守卫的双向对账同一份发现逻辑，避免两处漂移）。
+  for (const p of subpackageManifests()) {
+    if (!rows.has(p.name)) continue;
+    const rel = 'packages/' + p.dir + '/' + p.main.replace(/^\.\//, '');
+    if (existsSync(join(ROOT, rel))) out.push(rel);
+  }
+  return out;
+}
+
+/**
+ * 子包行的宿主入口**双向对账**（纯函数，供守卫做负对照 —— 合成输入必须喂**同一个**判据）：
+ *   · patch 里每条子包行（`<主包名>-<pkg>`，裸名）都必须在
+ *     `packages/<dir>/package.json` 里被 `name` 逐字认领（否则是死行）；
+ *   · 每个包都必须有行（只看磁盘 ⇒ 还没登记的包会被当成"运行时会注册的行"，§2.2 的静默失效）；
+ *   · 认领到的 `main` 必须解析到**磁盘上存在**的文件（缺入口 = 行装不起来，`MAIN_MODULES` 会静默少一行）。
+ * `fileExists(rel)` 注入 ⇒ 合成 "main 指向不存在的路径" 也能走同一条判据。返回违规清单（空 = 干净）。
+ */
+export function subpackageModuleViolations(rows, packages, fileExists) {
+  const rowSet = new Set(rows.filter((n) => n.startsWith(PKG_NAME + '-') && !n.includes('/')));
+  const bad = [];
+  const claimed = new Set();
+  for (const p of packages) {
+    if (!rowSet.has(p.name)) { bad.push('未登记行：packages/' + p.dir + '（' + p.name + '）不在 cordis.patch.yml 的子包行里'); continue; }
+    const rel = 'packages/' + p.dir + '/' + String(p.main || './lib/index.js').replace(/^\.\//, '');
+    if (!fileExists(rel)) bad.push('入口不存在：' + p.name + ' 的 main → ' + rel + '（行会静默少一行）');
+    claimed.add(p.name);
+  }
+  for (const name of rowSet) if (!claimed.has(name)) bad.push('死行：cordis.patch.yml 的子包行 ' + name + ' 没有任何 packages/<dir>/package.json 认领');
+  return bad;
+}
+
+/** `packages/*` 的清单描述（`{ dir, name, main }`，排序）—— 供 `subpackageModules()` 与守卫共用。 */
+export function subpackageManifests() {
+  const out = [];
+  const pkgs = join(ROOT, 'packages');
+  if (!existsSync(pkgs)) return out;
+  for (const p of readdirSync(pkgs).sort()) {
+    const dir = join(pkgs, p);
+    if (!statSync(dir).isDirectory()) continue;
+    const manifestPath = join(dir, 'package.json');
+    if (!existsSync(manifestPath)) continue;
+    let manifest;
+    try { manifest = JSON.parse(readFileSync(manifestPath, 'utf8')); } catch { continue; }
+    if (typeof manifest.name !== 'string') continue;
+    out.push({ dir: p, name: manifest.name, main: typeof manifest.main === 'string' && manifest.main ? manifest.main : './lib/index.js' });
+  }
+  return out;
+}
+
+/** 一行的宿主入口：门面（主包 `main`）+ 出户的组件行 + 子包行（都在 patch 里有行、且文件在磁盘上）。 */
+export const MAIN_MODULES = [PKG_MAIN, ...componentModules(), ...subpackageModules()];
 
 /** 出户的组件行入口（= `MAIN_MODULES` 去掉门面）。守卫据此**数据驱动**地遍历组件行，不写死名字。 */
-export const COMPONENT_MODULES = MAIN_MODULES.filter((rel) => rel !== PKG_MAIN);
+export const COMPONENT_MODULES = componentModules();
+
+/** 出户的**子包行**入口（= `MAIN_MODULES` 去掉门面与组件行）。运行时对账要把它们当独立 plugin 各跑一遍。 */
+export const SUBPACKAGE_MODULES = subpackageModules();
 
 /**
  * 一个「行」模块里 `registerXxxRoutes(webServer, …)` 调用点 → **期望注册条数**（数据驱动判据用：

@@ -60,11 +60,14 @@
 
 import { readdirSync, readFileSync, unlinkSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
-import { FONTSET_MIGRATED_ID, FONTSET_SCHEMA_TAG, isFontSetId, sanitizeFontset } from '../settings-schema.js';
-// 收 body 的**唯一缓冲实现**（累加 + 字节计闸 + 一次解码）—— 见 lib/http-body.js。
-import { bodyReader } from '../http-body.js';
-// JSON 应答的**唯一实现**（状态码 + 两个头 + end）—— 见 lib/json-response.js。
-import { sendJson } from '../json-response.js';
+import { schemaView, httpView } from 'dsh-plugin-wallpaper-engine/subpackage-boot.js';
+// 跨包通道（BUNDLE-SPLIT §5.1 出路②）：本族只 import **唯一受控叶子**
+// `dsh-plugin-wallpaper-engine/subpackage-boot.js`，不 import 主包的其他任何模块。
+// 共享内核的**纯函数 / 常量**在模块求值期就该可用（模块级 helper 与守卫的直读都依赖这一点）
+// ⇒ 走叶子的具名视图 `schemaView` / `httpView` **静态取用**；
+// 运行期才存在的**实例**（disposers / 目录 / 设置读写 / 清理句柄 …）仍逐键从 `c` 消费。
+const { isFontSetId, sanitizeFontset, FONTSET_MIGRATED_ID, FONTSET_SCHEMA_TAG } = schemaView;
+const { sendJson, bodyReader } = httpView;
 
 /** 一份字体集正文的上限（键集 = `FONTSET_KEYS`，每键至多几十项 ⇒ 下方 `FONTSET_MAX_BYTES` 已极宽松）。 */
 const FONTSET_MAX_BYTES = 256 * 1024;
@@ -207,6 +210,9 @@ function freeFontSetId(c, wanted) {
 }
 
 /** 注入契约（P2-7A / ADR-0013 D12）：本族从 `c` 消费的**必需**键 —— 门面/组件行调用点必须逐键给到（判据 test/verify-inject-contracts.mjs 双向对账；本族多数键经模块级 helper 的 `c` 形参消费）。 */
+// 全部 13 键都是**运行期实例**（清理句柄 / 目录 / 设置读写 …），值域由主包 `subpackageKeys('fonts')` 冻结，
+// 调用点 = `packages/fonts/lib/index.js`。共享内核的 6 个**纯函数 / 常量**不在这里：
+// 它们走叶子 `subpackage-boot.js` 的 `schemaView` / `httpView` 静态取用（见文件头）。
 export const DEPS = ['disposers', 'base', 'readFontSetId', 'fontSetsDir', 'fontSetsBuiltinDir', 'ensureDirOnce', 'atomicWriteFileP', 'readSettings', 'commitFontSetMigration', 'lingerClose', 'armBodyIdleTimeout', 'log', 'setFontSetId'];
 
 export function registerFontsetsRoutes(webServer, c) {

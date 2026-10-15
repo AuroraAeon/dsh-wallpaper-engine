@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "字体系统",
+    "description": "字体集（/fontsets）与本机字体清单（/system-fonts）—— 目前只有宿主半边，字体界面（排版/配色角色）不住在本包。"
+  }
+}

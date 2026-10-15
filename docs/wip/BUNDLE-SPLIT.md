@@ -33,7 +33,7 @@
 | **主包** `dsh-plugin-wallpaper-engine` | 设置面板、配置文件、WE 壁纸获取、多平台识别与差异处理、**留给其它插件的钩子**、以及"大部分组件都依赖的基础模块" | 唯一被"一次安装"的名字 |
 | **壁纸子插件** | WE 壁纸与自定义导入壁纸的**渲染**；壁纸库 + 播放-画面里的配置项、声音、省电 | 以现在的 `lib/components/media-bridge` 为基础，**大改** |
 | **UI 子插件** | 玻璃面板、侧边栏圆角等**前端 UI**；外观里的配置项 | **字体除外** |
-| **字体系统子插件** | 字体集 / 排版 / 应用 | 已可自成一系 |
+| **字体系统子插件** | 字体集 / 排版 / 应用 | 已可自成一系；**目标形态 = 整个「字体自定义」配置类**（宿主半边 + 浏览器半边 + 外观页签字体节 + 字体键所有权），**定案 A**（2026-10-15，§7.8） |
 | **点击与拖尾效果子插件** | `src/fx-layer.js` 一族 | 天然低耦合 |
 | **3D 效果子插件** | `src/parallax-layer.js` 一族 | 天然低耦合 |
 
@@ -275,6 +275,7 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 ### 5.3 客户端半边：拆到哪一层
 
 **必须带客户端半边**：UI 子插件（玻璃/圆角）、字体子插件、点击拖尾效果、3D 效果（它们的实现在 `src/**`）。
+**字体包今天不满足这条**（只交付宿主半边）：P-A 的裁决见 §7.1 实况块，目标形态与收口线见 §7.8（定案 A）。
 **可以只有宿主半边**：以宿主路由/进程为主的功能（例如媒体桥的后端）。
 **"纯浏览器包"用空宿主壳**（§2.2）。
 
@@ -292,9 +293,9 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 
 | 问题 | 状态 | 决策 / 期限 |
 |---|---|---|
-| §6.1 配置项归属（代码 / 状态） | **阶段前置** | **P-C 之前必须表态**（§7.3 已把它列为前置） |
+| §6.1 配置项归属（代码 / 状态） | **阶段前置** | **P-C 之前必须表态**（§7.3 已把它列为前置）；**字体收口的层 2 就是它的一个实例**（`lib/settings-schema.js` 字体专属 283/1969 行，见 §7.8） |
 | §6.2 客户端半边怎么协作（服务面形状） | **已定案（2026-10-14）** | P-A…P-B 走**宿主注入显式键集**（§5.2 允许清单第 2 条）、不做长命对象跨包 `require`、**不新开 Service**（升级路径 = §5.1 ①）；"provider 缺席"的期望 = 注入键缺席，按 D3③「宁可显示、不可静默消失」 |
-| §6.3 设置簇要不要按插件重画 | **阶段前置** | **P-C 之前必须表态**（与 §6.1 同批） |
+| §6.3 设置簇要不要按插件重画 | **阶段前置** | **P-C 之前必须表态**（与 §6.1 同批）；**首个真实客户 = 外观页签的字体节**（今天与玻璃 / 圆角节同文件，见 §7.8 层 1） |
 | §6.4 预设怎么跨包 | **阶段前置** | **P-D 之前必须表态**（与 §7.4 同批） |
 
 ### 6.1 "配置项归子插件" = 代码归属还是**状态归属**？
@@ -375,28 +376,48 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 |---|---|---|
 | 点击与拖尾效果 | `src/fx-layer.js`、`src/ext-fx.js`（`FX_EXTENSION_MODULE`） | 宿主空壳 + 浏览器半边 + 一条行 |
 | 3D 效果 | `src/parallax-layer.js`、`src/ext-parallax.js`（`PARALLAX_EXTENSION_MODULE`） | 同上 |
-| 字体系统 | `src/font/**`、`src/fontset-store.js`、`src/fontset-editor.js`、`src/system-fonts.js`；宿主侧 `lib/routes/{fontsets,system-fonts}.js` | 宿主实现 + 浏览器半边 + 一条行 |
+| 字体系统 | 宿主侧 `lib/routes/{fontsets,system-fonts}.js`（**P-A 实际只搬了这一半**）；浏览器半边 `src/font/**`、`src/fontset-store.js`、`src/fontset-editor.js`、`src/system-fonts.js` + 外观页签字体节 ⇒ 落点见 **§7.8** | 宿主实现（已落）+ 浏览器半边（待落）+ 一条行 |
 
 **动作**：① 建三包，落点 = **同仓 `packages/<pkg>/`**（§8.1，2026-10-14 定案）；② 主包 `dependencies` 精确依赖三者；
 ③ 主包 patch 里 `insert` 三行；④ 加启动自检与"行在 patch 里"的判据（§7.6）；
 ⑤ 把 `extensionModules()` 从**静态数组**改成"读注册表"（**首个跨包贡献点**，通道 = **宿主注入显式键集**，见 §6.2 / §14 D-8）。
 **判据**：三包能被**逐行单独停用／恢复**，且界面/路由各自消失（复用 D3 的可见面判据 + §7.6 第 4 条的往返判据）。
+⚠️ **字体包这半条今天不成立**（只交付宿主半边 ⇒ 关掉该行只撤路由、界面还在）：见下面的实况块与 §7.8。
 ⚠️ **"复用主包子路径承载客户端半边"不成立**：客户端 graph row 是**包级**的、子路径行不参与扫描（`C1`），
 所以"带浏览器半边"的子包必须**自己**是包：`exports["./client"]` + `dsh.client` 三件齐（`C2`），
 且行 `name` 走**真实包名**或子路径两种形态都行（§2.4 的粒度事实）。主包不装子包时**大声报错**。
+
+> **P-A 实况（2026-10-15 落盘，与上表第 3 行的差额）**：`packages/fonts` 实际只交付**宿主半边**
+> （`lib/index.js` 120 行 + `lib/routes/fontsets.js` 415 + `lib/routes/system-fonts.js` 520）：
+> **没有** `src/`、**没有** `dsh.client`、`exports` 里**没有** `'./client'`。
+> 裁决理由：§7.1 自身写着"不动设置面板"，而字体配置面（外观页签字体节 + `selection` 驱动的浏览器通道）
+> 就在设置面板里 ⇒ 声明 `dsh.client` 却没有 `exports['./client']` 会按 `C2` 抛错。
+> **后果**：按 §7.6 第 2 条，本包今天**不在"浏览器半边在场"判据的范围内**
+> （`verify-subpackage-client-half.mjs` 只对声明了 `dsh.client` 的包判红，它的信息行又只扫
+> `packages/<pkg>/{src,lib}` —— 而字体浏览器半边住在主包 `src/**` ⇒ **连信息行都不出现**）。
+> ⇒ 目标形态**不变**（定案 A），落点从 P-A 移到 **§7.8 的收口线**。
 
 ### 7.2 P-B 基础设施
 
 - **构建**：`scripts/build-client.mjs` 从"单产物 + INLINE_MODULES"改成"**按包出产物**"（每包一个 `lib/client.<pkg>.js`），
   主包保留自己的半边；`verify-client-sync` 要覆盖 N 个产物。
 - **守卫**：把单包硬假设参数化（见 §7.5）。
-- **服务**：按 §5.1 选定的出路实现（② 或 ①）。
+- **服务**：按 §5.1 选定的出路实现（② 或 ①）。**第一个真实客户就是字体收口**（§7.8 层 1）：
+  字体浏览器半边依赖的 `selection`（字体一族 5 个文件引用，`fontset-store` 53 次）/ `weT` /
+  `apiFetch`·`apiJson` / `applyEffects` / `hostFailureReason` / `createThemeLayer` 今天全在主包 ——
+  注入键集按这份清单设计，别等搬的时候才发现缺键。
+- **按包出产物不许写死两处**：`scripts/build-client.mjs` 的 `SUBPACKAGE_BUILDS`（:509-544）今天只有
+  `packages/fx` / `packages/parallax` 两项；字体包届时只加一条（包级 `src/client.js` + 包内 inline 表
+  ⇒ `lib/client.fonts.js`）⇒ 配方要写成"数据驱动 N 项"，不是再加一个分支。
 - **纪律判据**：`external` / `inject` 的使用面、"无跨包 value import"。
 
 ### 7.3 P-C UI 子插件
 
 玻璃面板（`src/glass.js` / `src/glass-panel.js` / `src/styles.js` 的 UI 部分）、侧栏圆角、外观里的 UI 配置项。
 **前置**：§6.1 与 §6.3 已表态；§6.2 的服务面已定。
+**首个真实客户 = 外观页签的字体节**（§7.8 层 1）：`src/panel-tabs-appearance.js`（578 行）今天是
+"外观页签"一个文件，字体节（:54-420，约 367 行 = 63.5%）与玻璃 / 圆角节同文件、经 `src/panel-tabs.js:92` 挂载
+⇒ **不先把它切成独立模块，字体半边就无法随包出产物**。这正是 §6.3「设置簇要不要按插件重画」的实例。
 
 ### 7.4 P-D 壁纸子插件（**最大的一块，最后做**）
 
@@ -414,6 +435,10 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
    （因为行级失败是静默的，I5）。
 2. **浏览器半边在场判据**：每个带 `dsh.client` 的子包，其**行必须被某个已选中的 bundle patch 插入**
    （C2 + §2.2 的那条静默失效）。
+   ⚠️ **字体包今天不在本条范围内**（它没声明 `dsh.client`）—— 这是**已知的过渡态、不是覆盖**：
+   `test/verify-subpackage-client-half.mjs` 只对声明了 `dsh.client` 的包判红，它的信息行也只扫
+   `packages/<pkg>/{src,lib}`，而字体的浏览器半边住在主包 `src/**` ⇒ **连信息行都不出现**。
+   收口（§7.8）后本条必须对字体包**真的生效**（正 / 负对照都要）。
 3. **跨包纯度判据**：子包之间**没有** value import（in-box 靠构建期 gate，我们得自己写）；
    `external` / `inject` 的使用面要与声明一致。
 4. **开关往返判据（新增；§7.0 那条"已成立但零覆盖"的补丁）**：对**每一行**做
@@ -426,6 +451,64 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
    `ctx.effect`，本条必须变红（否则它只是把"能显示状态"当成了"切干净"）。
 
 ### 7.7 每阶段验收（命令统一放附录 C）
+
+### 7.8 字体系统收口（**定案 A**，2026-10-15，P-A 收口后复核；不阻塞 P-B）
+
+**定案（用户口径）**：字体系统子插件的**目标形态 = 整个「字体自定义」配置类** —— 宿主半边 + 浏览器半边 +
+外观页签的字体节 + 字体键的所有权（§1.1 的「已可自成一系」按此读）。**不必现在完成**：
+落点挂在 P-B 的能力与 P-C / P-D 的表态之后，它**不阻塞** P-B 开工。
+
+**P-A 实际交付（基线，已落盘）**：`packages/fonts` = 宿主半边 1055 行
+（`lib/index.js` 120 + `lib/routes/fontsets.js` 415 + `lib/routes/system-fonts.js` 520），
+无 `src/`、无 `dsh.client`、`exports` 无 `'./client'`，`dsh` 只有 `bundle.patch`。
+**覆盖率的诚实读法**：按「整个字体自定义」计 ≈ 1055 / ~3700 ≈ **28%**，且搬走的是**没有界面的那一半**。
+
+**缺口四块（量化基线）**：
+
+| # | 缺的那一块 | 今天住哪 | 量 |
+|---|---|---|---|
+| 1 | 浏览器半边（字体集通道 + 应用层 + 系统字体枚举 + 编辑器 + 排版 / 颜色角色） | 主包 `src/**` | 7 文件 **1882 行**：`fontset-store` 539 · `font/components` 316 · `font/apply` 217 · `font/color-roles` 211 · `system-fonts` 210 · `fontset-editor` 206 · `font/typography` 183 |
+| 2 | 外观页签的字体节（总开关 / 默认 + 终端字体 / 颜色角色 / 排版角色 / 组件字体 / 字体集预设） | `src/panel-tabs-appearance.js` :54-420，经 `src/panel-tabs.js:92` 挂载；两档都画（`PICKER_FONT_OPEN_KEY` / `QP_FONT_OPEN_KEY`） | **367 / 578 = 63.5%** |
+| 3 | 配置类内核的字体面 | `lib/settings-schema.js`（S1 唯一共享内核） | 字体专属顶层块 **283 / 1969 = 14.4%**；另有字体键嵌在 `DEFAULTS` / `DEFAULTS_ONLY` / `KINDS` / `RESET_MODULES`·`RESET_TABS` / `sanitizePresetAssets` 里 |
+| 4 | 宿主支撑面（活动字体集 id · 迁移护栏 · 预设里的 font 段 · 内置字体集数据 · 构建接线） | `lib/kernel/config.js` :176-237 · `lib/routes/presets.js` :140/:337/:397/:463 · `lib/fontsets/compact.json` + `lib/we-assets.js:34` · `scripts/build-client.mjs` 的 INLINE_MODULES（9 条字体族条目） | 见左列各行 |
+
+**收口分三层（每层都有硬前置，别提前动）**：
+
+1. **层 1 · 能力与面板节（P-B 提供能力，P-C 动手）**
+   - P-B 侧：`SUBPACKAGE_BUILDS`（`scripts/build-client.mjs:509`）改成"数据驱动 N 项"（§7.2）；
+     注入键集按字体半边**真实依赖**设计（`selection` / `weT` / `apiFetch`·`apiJson` / `applyEffects` /
+     `hostFailureReason` / `createThemeLayer`）；补**仓库根 self-link**（§8.1 追加条；
+     `packages/fonts/lib/index.js:33` 已自报这个缺口）。
+   - P-C 侧：先把字体节从 `src/panel-tabs-appearance.js` 切成独立模块（它就是 §6.3 的第一个实例），
+     再让 `packages/fonts` 具备包级 `src/client.js` ⇒ `dsh.client` + `exports['./client']` +
+     `lib/client.fonts.js` 三件齐（`C2`）；主 patch 的**行名不变**（§3）。
+2. **层 2 · 配置类键的所有权（§6.1 / D-6，P-C 之前表态）**
+   - 取**代码归属** ⇒ schema 按包切片段 + 主包聚合；
+   - 取**状态归属** ⇒ 字体键继续住主包唯一内核、字体包只消费；此时"整个配置类"里仍有一半属主包，
+     **必须在 §1.1 / 本节里明写**，不能当成已完成。
+   - 附带：`lib/fontsets/**` 与 `FONTSET_BUILTIN_DIR` 随包走（§9.1 已记）。
+3. **层 3 · 判据（先落判据再搬 —— ADR-0013 D12 的纪律）**
+   - §7.6 第 2 条的字体实例：`packages/fonts` 声明 `dsh.client` 后，`test/verify-subpackage-client-half.mjs`
+     必须对它**真的生效**（今天 :8-10 明确排除，连信息行也看不到它 —— 字体半边不在 `packages/fonts/` 里）；
+   - §7.6 第 4 条的字体实例：关掉 `wallpaper-engine-fonts` 行 ⇒ 路由整族缺席 **且** 外观页签不再画字体节、
+     客户端无遗留 `style[data-plugin=…]` 与 DOM 节点。**今天的现状是"界面还在、通道 404"**
+     （`src/fontset-store.js:63-71` 把 404/405 译成"宿主里没有字体集路由：重启 DSH 后再试"）——
+     这正是负对照要抓的形态；
+   - 预设面：字体集预设横跨"字体包 + 主包预设路由"（`lib/routes/presets.js` 的 `currentFontSegment`），
+     其判据随 §6.4 / D-9 一起定。
+
+**过渡期必做的三件事（现在就做，不等收口）**：
+1. 按 §5.3 的第二条出路**明说**：`packages/fonts` 当前只提供宿主路由、字体界面随主包、**不可单独开关**
+   —— 本节与 §7.1 的实况块就是这条声明的落点；
+2. **包描述漂移**：✅ **已修（2026-10-15）** —— `packages/fonts/package.json:4` 与 `packages/fonts/locale/{en,zh}.json:4`
+   原先都声称带 "the typography/colour-role browser half"，已改成"仅宿主半边、字体界面不住本包"；
+3. 补 §8.1 追加条的**仓库根 self-link**，让字体包在仓内可跑。
+
+**复算入口**：`node test/verify-subpackage-client-half.mjs`（今天只覆盖 fx / parallax）·
+`node test/verify-subpackage-toggle-roundtrip.mjs` · `node test/verify-bundle-rows.mjs`（脱链手动）。
+量化基线可复算：字体行数 = 对目标文件按 `font|Font|FONT|字体` 命中行计数；字体专属顶层块 = 对
+`lib/settings-schema.js` 顶层声明切块后按名字匹配 `FONT` / `FONT_FAMILY` / `SYSTEM_FONT` /
+`THEME_*_ROLE` / `COMPONENT_FONT` / `FONTSET_` / `isFontSetId` / `sanitizeFontset` / `sanitizeFamily*`。
 
 ---
 
@@ -476,6 +559,12 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 >    **代价照付**：junction 不在 profile 的 `.modules.yaml` / `.package-map.json` 里 ⇒ profile 侧
 >    `pnpm install` 之后要重建（写成一条可重跑的脚本，别手点）。
 > ⇒ **P-A 的"三行都在场"现在可以当成已成立**（前提：先按第 5 条建 junction）。
+>
+> **追加（2026-10-15，P-A 落盘时的实测缺口）**：`scripts/dev-link-subpackages.mjs` 只建**子包真名**的 junction；
+> 子包体内若以**裸名**引用主包（`dsh-plugin-wallpaper-engine`），Node 的**包内自引用**并不因此可用 ——
+> 仍需要一条**仓库根 self-link**（`node_modules/dsh-plugin-wallpaper-engine` → 仓库根）。这条今天没建 ⇒
+> `packages/fonts` 的宿主入口**在仓内不能直接跑**（`packages/fonts/lib/index.js:33` 自报同一件事）。
+> 归属：P-B（§7.8 层 1 的第三件前置）。
 
 ### 8.2 每个子包的清单（照抄用）
 
@@ -520,7 +609,7 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 | 资源 | 现状 | 破局点 |
 |---|---|---|
 | `lib/about/**` | `ABOUT_DIR` 由主包 `pluginRoot` 解析 | 若 about 组件出包 ⇒ 资源跟走或主包继续当宿主（作注入键） |
-| `lib/fontsets/**` | `FONTSET_BUILTIN_DIR` 同上 | 字体子包出包时一并迁 |
+| `lib/fontsets/**` | `FONTSET_BUILTIN_DIR` 同上 | 字体子包出包时一并迁（**定案 A 的一部分**，见 §7.8 层 2） |
 | `lib/glass-presets/**` | 内嵌立绘（`factory-author.json` 的 `assets.mascot.data`） | **跨 UI 与吉祥物两族**，归属要表态 |
 | `lib/webwallgl/**` | **不再是 vendored 引擎**：引擎 = npm 依赖 `webwallgl`；仓库内只剩自家模板/桥文件，零 import，由 `WEBWALLGL_PKG_DIR` / `WEBWALLGL_DIR` 指向 | 见 §9.4 |
 | `assets/**`（仓库根） | 源资产，**不进包** | 派生物目的地会按包变（两份 README 的流程要重指） |
@@ -529,6 +618,7 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 ### 9.2 设置与配置
 
 见 §4.5 / §6.3 / §6.4。**一句话**：schema 与迁移归主包；子包只消费结果（除非 §6.3 选了重画）。
+字体收口的**层 2**（§7.8）就落在这个选择上。
 
 ### 9.3 三个既有组件行
 
@@ -571,13 +661,17 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 | 10 | 三份生成物（`ROUTE-INDEX` / `GUARD-MAP` / `TOKEN-CONTRACT`） | 逐字节对账、单份 | 决定"每包一份还是仓库一份" |
 | 11 | `scripts/prepare.mjs`（`prepack`） | 源码与产物同包根、只有一份 | 按包循环或只挂主包 |
 | 12 | 读 `package.json` 的 `test/` + `scripts/` 文件（复算：`Select-String -Path test\*.mjs,scripts\*.mjs -Pattern package\.json`） | 单包 | 同 #1（先做"包发现"层） |
+| 13 | `test/verify-settings-schema-exports.mjs` 的**扫描面自检**（`gitViewDiff` + `allowedExtra`） | 只豁免**一个**产物 `lib/client.js` ⇒ P-A 的两个子包产物（`packages/<pkg>/lib/client.<pkg>.js`，被 `.gitignore` 排除）一律按"脏面"判红 | ✅ **已修（2026-10-15）**：豁免名单改成**从各包 `package.json` 的 `exports['./client']` 现算**，并加"逐条来自包清单（含 `dsh.client`）"自检 + "同族但不在名单里的产物名仍判红"负对照 |
 
 ### 10.2 顺序纪律
 
 1. **先落"包发现"层**（枚举本仓有哪些包：读各包 `package.json` 的 `dsh.bundle` / `dsh.client`）；
 2. 再改 **#1**（数据驱动的根）；
 3. 然后逐个改下游守卫，**每改一个都要证明"牙还在"**（负对照 + 变异测试）；
-4. 生成物用 `--write` 重算，禁手改。
+4. 生成物用 `--write` 重算，禁手改；
+5. **靠 `git ls-files` 对账的自检必须在 git 可用的环境里跑过一次**：DSH 沙箱禁子进程时 `repo-face.mjs` 报**具名 SKIP**
+   （`fatal:EPERM`）⇒ 本机全绿**不等于** CI 全绿。实测代价：P-A 落地后本机 82/82 绿，提权后第 63 步立刻红
+   （CI `verify.yml` 先 `npm run build` 再 `npm run verify` ⇒ 产物一定在场），即 §10.1 #13 那一处。
 
 ---
 
@@ -631,7 +725,7 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 | 11 | 模块顶层副作用不随停用消失（U3） | 纪律：包内不得在模块级起定时器/挂 window |
 | 12 | 停用被依赖的行 ⇒ 管理器报 failed 且不回滚 YAML（U5） | 用户文档讲清；或避免让共享能力走硬 `inject` |
 | 13 | **把"开关"当"更新"用**（开关只改配置与在场性，不重读源码、不换依赖版本 ⇒ "开关能开、功能还是旧的"被读成修复无效） | §1.1 的两条档位边界 + **§11 的边界表**（用户文档以此为准）；验收里用 §7.6 第 4 条把"开关生效"与"已重启"分开 |
-| 14 | **子包只有宿主半边、UI 留在主包** ⇒ 关掉该行只撤路由、**界面还在**（`C1` 子路径行不参与客户端扫描） | §2.4 的粒度事实 + §5.3 的表态：带 UI 的功能族要么自带客户端半边，要么明说它不可单独开关 |
+| 14 | **子包只有宿主半边、UI 留在主包** ⇒ 关掉该行只撤路由、**界面还在**（`C1` 子路径行不参与客户端扫描） | §2.4 的粒度事实 + §5.3 的表态：带 UI 的功能族要么自带客户端半边，要么明说它不可单独开关。**本风险当前就是实况**：`packages/fonts` 只有宿主半边（P-A 裁决见 §7.1 实况块）⇒ 过渡期口径与收口线见 §7.8 |
 
 ### 13.1 拆包整线（`6385b62e`）审查的**未完成项**
 
@@ -674,6 +768,7 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 | D-11 | 从哪个子包开始 | **建议三个小包试点**（§7.1） |
 | D-12 | **开关档位 / 重启边界**（"不用重启"的射程） | **已定案（本轮细化）**：开关只承诺**能力**（同行切换宿主半边 + 浏览器可见面，§1.1 边界 1、§11）；**代码 / 版本 / 清单 / 增删行一律重启**（`U3` / `R3` / `I8`，§1.1 边界 2）。判据 = §7.6 第 4 条 |
 | D-13 | **主包被关掉时的用户可见语义**（§6.5） | ✅ **已定案（2026-10-15，用户口径）：B 明确连坐** —— 主包被关掉 = 整包被关掉，理由是大批组件在机制上依赖主包（配置模板逻辑 / `applyComponent` 门面 / §5.1 ② 的子包→主包 value import），见 §6.5 的表态块。**残余开口**：子包行是否随主包行一并撤走、"整族已停用"提示的渲染点 —— 属实现细节，卡 §7.6 开关往返判据，不再卡阶段开工 |
+| D-14 | **字体系统子插件的收口形态** | **定案（2026-10-15，用户口径 A）：目标 = 整个「字体自定义」配置类**（宿主半边 + 浏览器半边 + 外观页签字体节 + 字体键所有权）；**不必现在完成** —— 收口线 = P-B 的能力 + P-C（§6.1 / §6.3 表态）+ P-D（§6.4 预设）之后，见 §7.8 |
 
 ---
 
@@ -719,6 +814,7 @@ node test/verify-component-visibility.mjs    # D3 的可见面双向对账
 node test/verify-bundle-rows.mjs   # ⚠️ 脱链判据：行命名空间 / 路由账对账（CI 不跑，必须手动）
 node test/tools/host-route-index.mjs         # 路由与行清单（现算）
 node test/tools/guard-targets.mjs --write    # 生成物重算（禁手改）
+node test/verify-subpackage-client-half.mjs  # §7.8：字体收口后这条必须真的管到字体包（今天只列 fx / parallax）
 # §7.6 第 4 条（开关往返 / 停用零残留）的**手工**部分：在插件管理器里对**某一行的开关**做关→开→再关，
 # 然后复算该行在 profile 覆盖项里的落点（把 <profile> 换成 desktop/web）：
 #   Get-Content "$env:USERPROFILE\.dsh\profiles\<profile>\cordis.patch.yml" | Select-String 'wallpaper-engine'

@@ -135,6 +135,9 @@ function renderParallaxIsland(ctx) {
  *  `title` / `desc` 与另外两个模块同一条理由写成 getter（渲染时才取译文，见 panel-tabs 的契约）。 */
 const PARALLAX_EXTENSION_MODULE = {
   id: 'parallax',
+  // 屏上位置（与 avatar=1 / fx=2 对齐）：三份 bundle 的求值顺序不保证，
+  // 「扩展」页签由 panel-tabs 的注册表按 (order, 注册序) 排序，不能靠注册先后。
+  order: 3,
   // 模块级重置的分组名（issue #192）：键集住在 lib/settings-schema.js 的 RESET_GROUPS。
   resetGroup: 'parallax',
   get title() { return weT("3D 效果"); },

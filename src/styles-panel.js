@@ -395,7 +395,7 @@ const CSS_PANEL = `  /* ── 吉祥物形态**3D 圆环转盘**（四次返工
   .we-picker__slider-row { display: flex; align-items: center; gap: 10px; }
   .we-picker__label { min-width: 28px; flex: 0 0 auto; color: var(--we-ink, inherit); font-size: 0.88em; }
   /* 滑杆行左侧那个标签可能是**第三方自填的槽名**（别的插件注册进来的元素组，槽名就是 data-slot，
-     见 src/parallax-layer.js 的插件组）：超长时不许把滑块与右侧数值挤出卡片 —— 可收缩 + 省略号。
+     见 packages/parallax/src/parallax-layer.js 的插件组）：超长时不许把滑块与右侧数值挤出卡片 —— 可收缩 + 省略号。
      只作用于滑杆行内部，其它地方的 .we-picker__label（都是宿主自己的短标签）保持原样。 */
   .we-picker__slider-row .we-picker__label {
     flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;

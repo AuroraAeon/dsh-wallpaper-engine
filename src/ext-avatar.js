@@ -267,6 +267,10 @@ function renderAvatarIsland(ctx) {
  *  `title` / `desc` 与别的模块同一条理由写成 getter（见 src/panel-tabs.js 的注册表契约）。 */
 const AVATAR_EXTENSION_MODULE = {
   id: 'avatar',
+  // 屏上顺序（P-A 起由描述符声明，不再靠数组序 —— 三份 bundle 的求值顺序不保证）：
+  // 头像必须在**第一**（用户口径），两项子包模块各自声明 2 / 3。
+  // 排序 = (order, 注册序)，唯一实现在 src/extension-registry.js。
+  order: 1,
   // 模块级重置的分组名（issue #192）：键集住在 lib/settings-schema.js 的 RESET_GROUPS，
   // 这一侧只报"我是哪一组" —— 键表不在渲染器里手抄第二份。
   resetGroup: 'avatar',

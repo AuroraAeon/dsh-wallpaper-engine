@@ -56,7 +56,7 @@ import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { moduleScopeOf, stripComments, functionBodyOf } from './tools/js-text.mjs';
-import { buildIndex, rowRegistrationCounts, MAIN_MODULES } from './tools/host-route-index.mjs';
+import { buildIndex, rowRegistrationCounts, MAIN_MODULES, SUBPACKAGE_MODULES } from './tools/host-route-index.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BARE = 'dsh-plugin-wallpaper-engine';
@@ -261,7 +261,7 @@ function namesHit(text, names) {
  * 行不变量判据（**唯一一份**）：正判据与全部负对照都调它。
  * 返回违反项 `[{ kind, detail }]`，空数组 = 通过。
  */
-function rowViolations(inserts, bare) {
+function rowViolations(inserts, bare, allowedSubpackages = new Set()) {
   const out = [];
   if (inserts.length !== 1) out.push({ kind: 'inserts', detail: '顶层 `- insert:` 恰好 1 个（实测 ' + inserts.length + ' 个）' });
   const rows = inserts.flat();
@@ -277,8 +277,50 @@ function rowViolations(inserts, bare) {
   if (nameless.length) out.push({ kind: 'name', detail: '每行都要有 name（第 ' + nameless.map((r) => r.line).join(', ') + ' 行没有）' });
   const bareRows = rows.filter((r) => r.name === bare);
   if (bareRows.length !== 1) out.push({ kind: 'bare', detail: '恰好 1 行的 name 等于裸包名 `' + bare + '`（实测 ' + bareRows.length + ' 行）' });
-  const bad = rows.filter((r) => r.name && r.name !== bare && !r.name.startsWith(bare + '/'));
-  if (bad.length) out.push({ kind: 'subpath', detail: '其余行的 name 必须是 `' + bare + '/<子路径>`（第 ' + bad.map((r) => r.line).join(', ') + ' 行：' + bad.map((r) => r.name).join(' ') + '）' });
+  // P-A 起 patch 里有第二种子行：**子包真名**（宿主按包名加载 `packages/<pkg>/index.js`）。
+  // 判据不能只看前缀（"凭空多一行包名"会被静默放行），必须对着磁盘上真实的子包清单名来认。
+  const bad = rows.filter((r) => r.name && r.name !== bare && !r.name.startsWith(bare + '/') && !allowedSubpackages.has(r.name));
+  if (bad.length) out.push({ kind: 'subpath', detail: '其余行的 name 必须是 `' + bare + '/<子路径>`（组件行）或盘上真实存在的子包真名（P-A；第 ' + bad.map((r) => r.line).join(', ') + ' 行：' + bad.map((r) => r.name).join(' ') + '）' });
+  return out;
+}
+
+/**
+ * 行分类（P-A 起 patch 里是三种行，别再把它们混成一个集合 —— 混了会让组件口径去 apply 子包名）：
+ *   · 裸行    `name === bare`                    → 整包门面 `lib/index.js`
+ *   · 组件行  `name === '<bare>/<sub>'`           → 宿主当独立 plugin 加载 `lib/components/<sub>/index.js`
+ *   · 子包行  `name === '<bare>-<pkg>'`           → P-A 拆出的子包，加载 `packages/<pkg>`（真名 ⇄ 清单名双射）
+ */
+const componentNamesOf = (rows, bare) => rows
+  .filter((r) => r.name && r.name.startsWith(bare + '/'))
+  .map((r) => r.name.slice(bare.length + 1));
+/** 非裸、非组件的行（= 子包行，P-A）；它们的 name 必须能在磁盘上找到对应清单。 */
+const subpackageRowsOf = (rows, bare) => rows
+  .filter((r) => r.name && r.name !== bare && !r.name.startsWith(bare + '/'));
+/**
+ * 子包行 ⇄ 盘上清单名的**双向**问题清单（生产与负对照调**同一份**，不重写判据）。
+ * 两个方向都要报：行指向不存在的包（凭空一行）、盘上有包却没有行（装了但宿主永远不会加载它）。
+ */
+const subpackageRowIssues = (rows, bare, diskNames) => {
+  const rowNames = new Set(subpackageRowsOf(rows, bare).map((r) => r.name));
+  return [
+    ...[...diskNames].filter((n) => !rowNames.has(n)).map((n) => '盘上有包却没有行：' + n),
+    ...[...rowNames].filter((n) => !diskNames.has(n)).map((n) => '有行却没有包：' + n),
+  ];
+};
+
+/** 磁盘上已落盘的子包真名（`packages/<pkg>/package.json` 的 name；无 packages/ 时为空集）。 */
+function subpackageNamesOnDisk() {
+  const dir = join(ROOT, 'packages');
+  if (!existsSync(dir)) return new Set();
+  const out = new Set();
+  for (const entry of readdirSync(dir)) {
+    const manifest = join(dir, entry, 'package.json');
+    if (!existsSync(manifest)) continue;
+    try {
+      const json = JSON.parse(readFileSync(manifest, 'utf8'));
+      if (json && json.name) out.add(json.name);
+    } catch { /* 坏清单由别的判据报，这里不静默吞掉语义 */ }
+  }
   return out;
 }
 
@@ -290,7 +332,8 @@ const patchPath = join(ROOT, PATCH_REL);
 check('仓库根存在 ' + PATCH_REL, existsSync(patchPath));
 const patchText = existsSync(patchPath) ? read(PATCH_REL) : '';
 const inserts = parseInsertRows(patchText);
-const violations = rowViolations(inserts, BARE);
+const SUBPACKAGE_NAMES = subpackageNamesOnDisk();
+const violations = rowViolations(inserts, BARE, SUBPACKAGE_NAMES);
 const rows = inserts.flat();
 const ofKind = (kind) => violations.filter((v) => v.kind === kind);
 const detailOr = (kind, ok) => (ofKind(kind).length ? ofKind(kind).map((v) => v.detail).join('；') : ok);
@@ -302,8 +345,28 @@ check('每行都有 name（patch 行缺 name 等于插了一行加载不了的�
   detailOr('name', rows.map((r) => r.name).join(' ')));
 check('恰好一行 name 等于裸包名 `' + BARE + '`', ofKind('bare').length === 0,
   detailOr('bare', rows.filter((r) => r.name === BARE).length + ' 行'));
-check('其余行的 name 都是 `<裸包名>/<子路径>` 形态', ofKind('subpath').length === 0,
+check('其余行的 name 都是 `<裸包名>/<子路径>`（组件行）或盘上真实子包真名（P-A 子包行）', ofKind('subpath').length === 0,
   detailOr('subpath', rows.filter((r) => r.name && r.name !== BARE).map((r) => r.name).join(' ') || '（没有子行）'));
+{
+  // 子包行（P-A）⇄ 磁盘 `packages/*/package.json` 的 name **双向**对账：既不许行指向不存在的包，
+  // 也不许盘上有包却没插行（后者是"装了但宿主永远不会加载它"的静默缺口）。
+  const subIssues = subpackageRowIssues(rows, BARE, SUBPACKAGE_NAMES);
+  check('子包行 ⇄ packages/*/package.json 的 name 双向对账（P-A）',
+    subIssues.length === 0,
+    subIssues.join('；') || subpackageRowsOf(rows, BARE).length + ' 行 ⇄ ' + SUBPACKAGE_NAMES.size + ' 包');
+  // 负对照：调上面同一份判据（合成输入，两个方向各一条）。
+  const disk = new Set([BARE + '-fx', BARE + '-parallax']);
+  const synthRows = [{ name: BARE + '-fx' }, { name: BARE + '-fonts' }];
+  const synthIssues = subpackageRowIssues(synthRows, BARE, disk);
+  check('negative control：子包行 ⇄ 包清单的两个方向都会判出（少一行 / 凭空一行）',
+    synthIssues.some((t) => /盘上有包却没有行/.test(t) && /parallax/.test(t))
+    && synthIssues.some((t) => /有行却没有包/.test(t) && /fonts/.test(t))
+    && subpackageRowIssues(synthRows, BARE, new Set([BARE + '-fx', BARE + '-fonts'])).length === 0,
+    synthIssues.join('；') || '**没有判出**');
+}
+// 组件行口径独立成一条（否则"组件行 0 行"会被上面那条通用形态判据掩盖）
+check('组件行（`<裸包名>/<子路径>`）仍在 patch 里', componentNamesOf(rows, BARE).length >= 1,
+  componentNamesOf(rows, BARE).join(' ') || '**没有**');
 
 // ═══ ② package.json 的发布面声明 ═════════════════════════════════════════════
 section('② package.json 的发布面声明（红线的第二半：patch 与浏览器半边都在这里挂在包上）');
@@ -396,7 +459,8 @@ section('⑤ 内核租约语义（D5）：共享资源只在最后一个会话�
 section('⑥ 组件行（P2-1/P2-2，逐行数据驱动）：patch 子行 ⇄ exports 三连 / files 覆盖 / 真加载 / 双路径一致 / 未知仍抛 / 合成 N 行并集');
 {
   // patch 里 `name` 形如 `<裸包名>/<sub>` 的行 = 宿主会当**独立 plugin** 加载的组件行。
-  const subs = rows.filter((r) => r.name && r.name !== BARE).map((r) => r.name.slice(BARE.length + 1));
+  // 组件行 = name 形如 `<裸包名>/<sub>`；P-A 起 patch 里还有**子包行**（name 是子包真名），它们不是组件。
+  const subs = componentNamesOf(rows, BARE);
   check('patch 里有组件行（P2-1 起至少一行）', subs.length >= 1, subs.join(' ') || '**没有**');
   const exportsOf = (key) => (pkg.exports ? pkg.exports[key] : undefined);
   const tripleMissing = [];
@@ -718,6 +782,28 @@ section('⑥ 组件行（P2-1/P2-2，逐行数据驱动）：patch 子行 ⇄ ex
     countIssues.join('；') || subs.map((s) => s + '=' + perComponent.get(s)).join(' '));
   check('每个组件入口的独立 plugin 路径（apply）与门面 applyComponent 注册出同一组 (kind, path)',
     subs.length >= 1 && sharedIssues.length === 0, sharedIssues.join('；') || subs.join(' '));
+  // ── P-A：**子包行**也是独立 plugin（patch 里裸真名一行）⇒ 同一条 mock 上逐行跑一遍 ──────────
+  // 为什么必须在这里也跑：下面「合成 N 行」对账用的 `MAIN_MODULES` 已经含子包行
+  //（`subpackageModules()`）⇒ 不跑它们，并集会比 Σ 行声明**少**（实测：少 fonts 的 2 条）。
+  // 那是判据自己缺对象，不是实现少注册 —— 判据必须把每一类行都真跑一遍才配得上"并集"这个词。
+  const subCountIssues = [];
+  const perSubpackage = [];
+  for (const rel of SUBPACKAGE_MODULES) {
+    const short = rel.replace(/^packages\//, '').split('/')[0];
+    const before = registered.length;
+    const subMod = await import(pathToFileURL(join(ROOT, rel)).href);
+    const subApply = subMod.apply || (subMod.default && subMod.default.apply);
+    const dSub = typeof subApply === 'function' ? subApply(mock) : undefined;
+    if (typeof dSub === 'function') componentDisposers.push(dSub);
+    const got = registered.length - before;
+    const exp = rowRegistrationCounts(rel, routeMods);
+    if (exp.unknown.length) subCountIssues.push(short + ' 的调用点解析不到路由模块：' + exp.unknown.join(' '));
+    else if (got !== exp.expected) subCountIssues.push(short + ' 注册 ' + got + ' 条 ≠ 路由族 ' + exp.expected + ' 条（' + exp.fns.join(' ') + '）');
+    perSubpackage.push(short + '=' + got);
+  }
+  check('每个子包行在同一个 mock 上注册的条数 == 它调用的路由族条数（逐行数据驱动，含零路由空壳行）',
+    SUBPACKAGE_MODULES.length >= 1 && subCountIssues.length === 0,
+    subCountIssues.join('；') || perSubpackage.join(' '));
   // ── P2-2b：账本要对**两条装载路径**都有牙 ──────────────────────────────────────────────
   // 上面那段里门面路径与入口路径先后都记了账，账本被先到者填满 ⇒ 单看 afterProbe 分不出"入口路径
   // 忘了记账"。这里先清空账本，再**只走组件入口自己的 `apply()`**（宿主按 patch 行独立加载那条路
@@ -777,7 +863,7 @@ section('⑥ 组件行（P2-1/P2-2，逐行数据驱动）：patch 子行 ⇄ ex
   const keyed = registered.map((r) => r.kind + ' ' + r.path);
   const dupes = [...new Set(keyed.filter((k, i) => keyed.indexOf(k) !== i))];
   // ── 跨源对账（取代原先写死的 `registered.length === 42`）──────────────────────────────
-  // 期望值**现算**：每个 bundle 行（`MAIN_MODULES` = 门面 + 全部组件行，数据驱动）应当注册的条数 =
+  // 期望值**现算**：每个 bundle 行（`MAIN_MODULES` = 门面 + 全部组件行 + 全部子包行，数据驱动）应当注册的条数 =
   // 它调用的路由族的条数之和（`rowRegistrationCounts`）。单点真源 = 这张行清单 × 那份族表。
   //
   // 写死的快照数字会烂：行清单或族表一变它就过期 ⇒ 判据恒红（且红得没有信息量）。
@@ -828,6 +914,11 @@ section('⑦ 判据自身有牙（正负对照调同一条 parseInsertRows / row
     kinds(patchOf(legalRow('a', 'dsh-plugin-somebody-else'))).has('bare'));
   check('负对照：name 不在裸包名命名空间下 ⇒ 判出',
     kinds(patchOf(legalRow('a', BARE), legalRow('b', 'dsh-plugin-other/sub'))).has('subpath'));
+  // ── P-A：子包行（name = 子包**真名**）是第二类合法子行，判据必须按**磁盘清单**认，不能只看前缀 ──
+  check('正对照：子包行（盘上真实存在的名字）零违反（P-A）',
+    rowViolations(parseInsertRows(patchOf(legalRow('wallpaper-engine', BARE), legalRow('wallpaper-engine-fx', BARE + '-fx'))), BARE, new Set([BARE + '-fx'])).length === 0);
+  check('负对照：子包行写成盘上不存在的包名 ⇒ 判出 subpath（否则"凭空一行包名"会被静默放行）',
+    kinds(patchOf(legalRow('wallpaper-engine', BARE), legalRow('wallpaper-engine-nope', BARE + '-nope'))).has('subpath'));
   check('负对照：行没有 name ⇒ 判出', kinds(patchOf('    - id: only-id')).has('name'));
   check('负对照：id 为空 ⇒ 判出',
     kinds(patchOf('    - id:', "      name: '" + BARE + "'")).has('id'));
@@ -852,7 +943,7 @@ section('⑧ 组件行取服务的 inject 姿势 + 装载账本三态（真机�
 {
   // 组件子行在本段**重新派生**一次（⑥ 段里那个 `subs` 是块级作用域，出了 `{}` 就没了）。
   // 派生口径与 ⑥ 段逐字一致：`rows` 来自同一次 `parseInsertRows(patchText)`。
-  const subs8 = rows.filter((r) => r.name && r.name !== BARE).map((r) => r.name.slice(BARE.length + 1));
+  const subs8 = componentNamesOf(rows, BARE);
   const entrySrcOf = new Map();
   for (const sub of subs8) {
     const rel = 'lib/components/' + sub + '/index.js';

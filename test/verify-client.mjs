@@ -288,10 +288,12 @@ assert.ok(code.includes(clearGated(' [class*="_frame"]')) && code.includes(clear
 assert.ok((blockBodyOf(clearGated(' [class*="_root"] {')) || '').includes('background: transparent !important'),
   'the container fallback needs background: transparent !important (host canvas paints an opaque base)');
 console.log('sidebar glass selectors are wallpaper-independent: true · page glass is anchored on data-we-glass-page: true');
-const cap = { handoff: null };
+// A3 之后客户端产物不再只有主 bundle 一份：packages/{fx,parallax}/lib/client.*.js 各自在
+// 同一个 loader 上注册一份 bundle（id = 子包真实包名）。所以这里收**数组**，主 bundle = 第一份。
+const cap = { handoffs: [] };
 const sandbox = {
   window: {
-    __ModuleLoader__: { load: (h) => { cap.handoff = h; } },
+    __ModuleLoader__: { load: (h) => { cap.handoffs.push(h); } },
     setTimeout: (fn, ms) => {
       const token = { fn, ms, cleared: false };
       rotationTimers.push(token);
@@ -343,7 +345,8 @@ sandbox.Date = FakeDate;
 vm.createContext(sandbox);
 new vm.Script(code, { filename: 'client.js' }).runInContext(sandbox);
 
-const { id, factory } = cap.handoff;
+assert.ok(cap.handoffs.length >= 1, '主 bundle 必须且只能在 loader 上注册一份（拿到 ' + cap.handoffs.length + ' 份）');
+const { id, factory } = cap.handoffs[0];
 console.log('registered id:', id);
 
 const requireMock = (spec) => {
@@ -352,6 +355,37 @@ const requireMock = (spec) => {
   throw new Error('unexpected require: ' + spec);
 };
 const exportsObj = factory(requireMock);
+// ── A3：fx/parallax 的扩展模块描述符住在各自子包里 ─────────────────────────────
+// 「扩展」页签的三张卡现在来自三个 bundle：avatar（本 bundle 模块作用域注册）、fx、parallax。
+// 子包产物只在 loader 上注册自己那份 bundle，真正的注册动作发生在它们各自的 factory：
+// 它们用 require('dsh-plugin-wallpaper-engine') 取主 bundle 的**显式键集**
+// （src/client.js 的 HOST_BRIDGE_BINDINGS），再 registerExtensionModule / registerLayerHooks。
+// 所以这里必须在 apply(ctx) **之前**、同一个 vm 上下文里把两份产物求值掉，且 requireMock 要把
+// 主 bundle 的导出面交给它们 —— 否则页签只剩 avatar，:788 会红（这正是本判据要看见的形态）。
+// 求值顺序**故意反着来**（先 parallax 后 fx）：屏上顺序必须由 descriptor.order 决定，
+// 不许靠 bundle 求值顺序（三份 bundle 的到达顺序在真实 loader 里不保证）。
+const SUBPACKAGE_CLIENT_ARTIFACTS = [
+  ['../packages/parallax/lib/client.parallax.js', 'dsh-plugin-wallpaper-engine-parallax'],
+  ['../packages/fx/lib/client.fx.js', 'dsh-plugin-wallpaper-engine-fx'],
+];
+const subRequireMock = (spec) => {
+  if (spec === 'dsh-plugin-wallpaper-engine') return exportsObj;
+  return requireMock(spec);
+};
+for (const [rel, expectedId] of SUBPACKAGE_CLIENT_ARTIFACTS) {
+  const before = cap.handoffs.length;
+  const subCode = readFileSync(new URL(rel, import.meta.url), 'utf8');
+  new vm.Script(subCode, { filename: rel }).runInContext(sandbox);
+  const loaded = cap.handoffs.slice(before);
+  assert.equal(loaded.length, 1, rel + ' 必须恰好注册一份 bundle（实际 ' + loaded.length + ' 份）');
+  assert.equal(loaded[0].id, expectedId, rel + ' 的 bundle id 必须逐字等于子包真实包名（客户端 require 才命中）');
+  const subExports = loaded[0].factory(subRequireMock);
+  assert.equal(typeof subExports.apply, 'function', rel + ' 的浏览器半边必须导出 apply');
+  // 注意：产物在 vm 上下文里求值 ⇒ 它的数组是**另一个 realm** 的 Array，
+  // assert.deepEqual（strict 下即 deepStrictEqual）会因原型不同而误判 ⇒ 只判长度。
+  assert.equal(subExports.inject.length, 0, rel + ' 的浏览器半边不声明 inject');
+}
+console.log('subpackage bundles registered:', JSON.stringify(cap.handoffs.map((h) => h.id)));
 console.log('factory keys:', Object.keys(exportsObj));
 console.log('inject:', JSON.stringify(exportsObj.inject));
 console.log('Symbol.toStringTag:', Object.prototype.toString.call(exportsObj));

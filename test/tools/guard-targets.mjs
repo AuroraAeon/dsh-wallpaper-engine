@@ -58,9 +58,31 @@ function walk(dir, out = [], base = '') {
   return out;
 }
 
-/** 磁盘上的模块面（`src/**` + `lib/**`，含 `lib/client.js` —— 它是"隔着产物"的那一档）。 */
+/** `packages/<pkg>/` 下的子包目录名（P-A 起产品源码分居主包与子包两处；没有 `packages/` 时为空）。 */
+function packageDirs(root = ROOT) {
+  const dir = join(root, 'packages');
+  let names;
+  try { names = readdirSync(dir); } catch { return []; }
+  return names.filter((n) => { try { return statSync(join(dir, n)).isDirectory(); } catch { return false; } }).sort();
+}
+
+/**
+ * 磁盘上的模块面（`src/**` + `lib/**` + **`packages/<pkg>/{src,lib}/**`**，含 `lib/client.js`
+ * —— 它是"隔着产物"的那一档）。
+ *
+ * ⚠️ P-A（BUNDLE-SPLIT §7.1 / §10.1 #8）之前这里只走主包两棵树：子包迁出后，`packages/<pkg>/src|lib/**`
+ * 里的产品代码会**整片脱离**这张映射 —— 症状不是报错，而是这些文件既不进"零覆盖"表、也不会在
+ * "改了 X 该跑哪几条"里出现（静默失去覆盖，正是本工具存在的理由）。
+ */
 function moduleSurface(root = ROOT) {
-  return [...walk(join(root, 'src'), [], 'src'), ...walk(join(root, 'lib'), [], 'lib')].sort();
+  const out = [...walk(join(root, 'src'), [], 'src'), ...walk(join(root, 'lib'), [], 'lib')];
+  for (const pkg of packageDirs(root)) {
+    for (const sub of ['src', 'lib']) {
+      const dir = join(root, 'packages', pkg, sub);
+      try { out.push(...walk(dir, [], `packages/${pkg}/${sub}`)); } catch { /* 该子目录不存在 */ }
+    }
+  }
+  return out.sort();
 }
 
 /** 守卫面：`verify-*` / `*-smoke` / `e2e-*` / `compat-*`。 */
@@ -179,6 +201,12 @@ function targetsOf(srcText, modules, helpers = familyHelpers(), anchors = NO_ANC
     || /join\([^)]*['"]lib['"]\s*,\s*['"]client\.js['"]/.test(code)
     || /['"][^'"]*lib\/client\.js['"]/.test(code)
     || /['"]client\.js['"]/.test(code)) hits.add(ARTIFACT);
+  // B) join(..., 'packages', <pkg>, 'src'|'lib', <parts>) —— 子包面（P-A 起）。
+  for (const m of code.matchAll(/join\([^)]*?['"]packages['"]\s*,\s*((?:['"][^'"]+['"]\s*,?\s*)+)\)/g)) {
+    const parts = [...m[1].matchAll(/['"]([^'"]+)['"]/g)].map((x) => x[1]);
+    const cand = 'packages/' + parts.join('/');
+    if (modules.includes(cand)) hits.add(cand);
+  }
   // B) join(..., 'src'|'lib', <parts>)
   for (const [rootDir, prefix] of [['src', 'src/'], ['lib', 'lib/']]) {
     const re = new RegExp(`join\\([^)]*?['"]${rootDir}['"]\\s*,\\s*((?:['"][^'"]+['"]\\s*,?\\s*)+)\\)`, 'g');

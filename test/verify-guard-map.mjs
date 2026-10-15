@@ -80,6 +80,11 @@ const M = (...p) => p.join('/');
 const ZERO_COVERAGE_WHY = {
   // ── P2 拆包：行为级覆盖（本工具只认"直读 / 隔产物"两列，行为级覆盖按口径算零覆盖）──
   [M('lib', 'components', 'mascot-avatar', 'index.js')]: '组件行入口（P2 拆包）：实现归属由 verify-route-ownership 的"行→入口"对账覆盖（按目录集合派生，非直读本文件）',
+  // ── P-A 拆包：行为级覆盖（同上口径；这些文件由按包目录/按 patch 行**动态派生**的守卫覆盖）──
+  [M('packages', 'fx', 'lib', 'index.js')]: '子包宿主入口（P-A 拆包）：只做 subpackageKeys 校验 + handOffTeardown，实现归属与逐行装载由 verify-subpackage-boot（按 packages/* 目录与 patch 行双向对账）与 verify-subpackage-toggle-roundtrip（逐行装载 · 关→开→再关 · 零残留）覆盖，本工具只认字面量路径 ⇒ 按口径算零覆盖',
+  [M('packages', 'parallax', 'lib', 'index.js')]: '同上（3D 子包宿主入口，P-A 拆包）：覆盖来源与 fx 逐条相同 —— verify-subpackage-boot 的双射对账 + verify-subpackage-toggle-roundtrip 的逐行装载与拆卸',
+  [M('packages', 'fx', 'src', 'client.js')]: '子包浏览器半边入口（P-A 拆包）：注入键契约由 verify-subpackage-client-half 隔产物断言，宿主键集与包间纯度由 verify-subpackage-purity 动态扫 packages/*/src 覆盖，产物侧由 verify-scene-live / verify-client 在同一 vm 里真求值，本工具只认字面量路径 ⇒ 按口径算零覆盖',
+  [M('packages', 'parallax', 'src', 'client.js')]: '同上（3D 子包浏览器半边入口，P-A 拆包）：覆盖来源与 fx 逐条相同 —— verify-subpackage-client-half 的隔产物断言 + verify-subpackage-purity 的动态扫面 + verify-scene-live / verify-client 的真求值',
 };
 
 /**
@@ -100,7 +105,6 @@ const NO_MODULE_TARGET_WHY = {
   'verify-retired-lines.mjs': '管的是**退役线的零残留**（`walk` lib/src/scripts/test 全树搜退役词），目标是"整棵树里不许出现这些词"，不是某个模块',
   'verify-guard-chain.mjs': '管的是**守卫链的形状**（`test/run-guards.mjs` 的 `MANIFEST` 与冻结 fixture 对账：成员/顺序/档位/参数/地板），读的是链自己的清单，不读任何模块',
   'verify-static.mjs': '管的是**静态门禁的棘轮**（ESLint / tsc 的**按规则计数**基线），读的是 `test/fixtures/static-baseline.json` 与 package.json 里的两个脚本名，不读源模块',
-  'verify-inject-contracts.mjs': '管的是**注入契约**（每个路由族 DEPS ↔ 消费面 ↔ 门面调用点三方对账；族集合与调用点均动态派生），不针对单个模块',
   'verify-route-ownership.mjs': '管的是**实现归属唯一性**（行→入口按各包 exports/files 派生，跨全部族与组件行），不针对单个模块',
   'verify-bridge-ci.mjs': '管的是 **CI 桥接面**（工作流/脚本接线，不读源模块）',
   'verify-undefined-refs.mjs': '管的是**未定义引用**（"用了但没 import/声明"的非全局内置名），扫 lib/src/scripts 全树按 AST 判，目标不是某个模块',

@@ -46,7 +46,7 @@ import { fileURLToPath } from 'node:url';
 // 共享实现（`new Function` 装入源码文本前必须先剥掉 `export { … }`）——别在这里再抄一份正则。
 import { stripExportBlocks } from './tools/js-text.mjs';
 // 刀3：样式族取文（8 个域模板 + 组装点）——源码侧用 styleText()，产物侧用 cssBodyOf()。
-import { styleText, cssBodyOf, cssPartsOf, panelText, liveText } from './tools/src-scope.mjs';
+import { styleText, cssBodyOf, cssPartsOf, panelText, liveText, parseInlineModules } from './tools/src-scope.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CLIENT = process.argv[2] || join(ROOT, 'lib', 'client.js');
@@ -2008,8 +2008,14 @@ console.log('\n⑬ CSS 契约（按面变量零兜底 / 门控许可证 / 双向
 // 的唯一真源，省得这里再抄一份文件列表（抄了必然漂）。
 console.log('\n⑭ 三方对账：写出的变量必须有人读（R4 死码清理的判据）');
 {
-  const BUILD_SRC = readFileSync(join(ROOT, 'scripts', 'build-client.mjs'), 'utf8');
-  const CLIENT_MODULES = [...BUILD_SRC.matchAll(/file:\s*'(src\/[^']+)'/g)].map((m) => m[1]);
+  // ⚠️ A3（每包一产物）之后，scripts/build-client.mjs 里**不止** INLINE_MODULES 一张表：
+  // SUBPACKAGE_BUILDS 的 `file:` 是**相对各包目录**的（src/fx-layer.js 等）。
+  // 早先这里用全文正则 `/file:\s*'(src\/…)'/` 抓模块，于是把子包文件当主包路径读 ⇒ ENOENT 硬崩。
+  // 现在只取 **INLINE_MODULES** 块（读法 = test/tools/src-scope.mjs 的 parseInlineModules，
+  // 单一真源；与 test/verify-module-layout.mjs 的 parseInlineModules 同款口径）。
+  // 覆盖面无损：迁走的四个浏览器半边文件里没有**字面量** setProperty("--we-…") 写入，
+  // 也没有 var(--we-…) 消费（只有一处注释提及）⇒ 本组两个集合与迁移前逐字相同。
+  const CLIENT_MODULES = parseInlineModules().map((e) => e.file);
   const texts = CLIENT_MODULES.map((f) => readFileSync(join(ROOT, f), 'utf8'));
   const written = new Set();
   for (const t of texts) {

@@ -1,0 +1,14 @@
+# cordis.patch.yml — 「3D 效果」子包自己的行（docs/wip/BUNDLE-SPLIT.md §7.1 / §8.2 / §8.3）。
+#
+# ⚠️ 采用 D-3 **A**（一次安装 = 主包 patch 用 name 引用子包，§2.3）时，这一行由**主包**的
+# cordis.patch.yml 插入（§8.3 的示例形态）；只有把这个子包自己当成独立 bundle 时
+# （B 形态：各自 dsh.bundle.patch + 各自进 dsh.profile.bundles，**不采纳**）本文件才生效。
+# 两处同时插同一个 id 会撞车 ⇒ 接线时以主包那份为准，本文件保持与它逐字一致。
+#
+# 行名 = 真实包名（裸真名）：本版 DSH 不传 bareModuleBaseUrl ⇒ 行名一律从 <profile>/cordis.yml
+# 旁起算，裸名 → <profile>/node_modules/<name>；开发期靠 scripts/dev-link-subpackages.mjs 建的
+# junction 让这个名字出现在 profile/node_modules 里（§8.1 spike 结论），发布期靠传递依赖 hoist。
+# id 一旦定下不再改（§3）。
+- insert:
+    - id: wallpaper-engine-parallax
+      name: 'dsh-plugin-wallpaper-engine-parallax'

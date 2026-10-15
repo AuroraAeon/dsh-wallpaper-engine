@@ -38,6 +38,7 @@ import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   buildIndex, routeModuleCandidates, routeModuleFiles, COMPONENT_MODULES, rowRegistrationCounts, patchRowNames,
+  subpackageModuleViolations, subpackageManifests,
 } from './tools/host-route-index.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -301,6 +302,52 @@ console.log('\n③ 每个路由族文件（`lib/routes/` 与组件目录里的�
     orphanRouteFiles([fakeComponentFamily], new Set([fakeComponentFamily])).join() === fakeComponentFamily
     && orphanRouteFiles([fakeComponentFamily], new Set()).length === 0,
     orphanRouteFiles([fakeComponentFamily], new Set([fakeComponentFamily])).join() || '（没判出来）');
+}
+
+// ═══ ④ 每个子包行都必须解析到磁盘上存在的宿主入口（P-A：包发现层双向对账）══════════
+console.log('\n④ 子包行 ⇄ `packages/<dir>/package.json` 双向对账（行静默少一行 = 浏览器半边静默失效）');
+{
+  const rows = patchRowNames();
+  const manifests = subpackageManifests();
+  const exists = (rel) => existsSync(join(ROOT, rel));
+  const violations = subpackageModuleViolations(rows, manifests, exists);
+  check('每条子包行都有包认领、每个包都有行、且 `main` 指向磁盘上存在的入口',
+    manifests.length > 0 && violations.length === 0,
+    '子包 ' + manifests.map((p) => p.dir + ' → ' + p.main).join(' / ')
+      + (violations.length ? ' · ' + violations.join('；') : ''));
+
+  // 负对照（同一条判据）：把真实清单里的一个 `main` 改成不存在的路径 ⇒ 必须点名（"缺入口 ⇒
+  // `MAIN_MODULES` 静默少一行 ⇒ 运行面与声明面一起少"的牙）。
+  const broken = manifests.map((p, i) => (i === 0 ? { ...p, main: './lib/does-not-exist.js' } : p));
+  const brokenViolations = subpackageModuleViolations(rows, broken, exists);
+  check('negative control：某个包的 `main` 指向不存在的路径 ⇒ 同一条判据点名（缺入口不许静默）',
+    manifests.length > 0 && brokenViolations.length === 1 && brokenViolations[0].includes('入口不存在'),
+    brokenViolations.join('；') || '（没判出来）');
+  // 负对照（同一条判据）：包在磁盘上、patch 里却**没有它的行** ⇒ "未登记行"（§2.2：只写 npm 依赖 /
+  // 只建目录都不会让行出现，而且没有别的判据会告诉你 —— 这正是启动自检那条判据的机械形态）。
+  const orphanManifest = manifests[0];
+  const withoutRow = orphanManifest ? subpackageModuleViolations(rows.filter((n) => n !== orphanManifest.name), manifests, exists) : [];
+  check('negative control：包在磁盘上但 patch 里没有它的行 ⇒ 同一条判据点名 "未登记行"',
+    Boolean(orphanManifest) && withoutRow.some((v) => v.includes('未登记行')), withoutRow.join('；') || '（没判出来）');
+  // 负对照（同一条判据）：patch 里多一条没有包认领的子包行 ⇒ "死行"。
+  const deadRow = subpackageModuleViolations([...rows, 'dsh-plugin-wallpaper-engine-ghost'], manifests, exists);
+  check('negative control：patch 里多一条没有包认领的子包行 ⇒ 同一条判据点名 "死行"',
+    deadRow.some((v) => v.includes('死行')), deadRow.join('；') || '（没判出来）');
+
+  // 子包路由族必须在孤儿扫描面内（面塌回 `lib/routes/`-only ⇒ 搬走的族"文件在、没人调用"判不出来）。
+  const pkgRouteCandidates = routeModuleCandidates().filter((rel) => rel.startsWith('packages/') && rel.includes('/lib/routes/'));
+  const routeFiles = routeModuleFiles();
+  const built = buildIndex();
+  const builtPkgRoutes = new Set(built.routes.filter((r) => r.src && r.src.startsWith('packages/')).map((r) => r.src));
+  const notInOrphanSurface = pkgRouteCandidates.filter((rel) => !routeFiles.includes(rel));
+  check('覆盖面：子包路由族候选面非空且全在孤儿扫描面内（面塌陷 ⇒ 红）',
+    pkgRouteCandidates.length > 0 && notInOrphanSurface.length === 0,
+    '包内候选 ' + pkgRouteCandidates.length + ' 个 · 索引计入 ' + builtPkgRoutes.size + ' 个'
+      + (notInOrphanSurface.length ? ' · 不在面内 ' + notInOrphanSurface.join(' ') : ''));
+  check('negative control：孤儿面塌回 `lib/routes/`-only ⇒ 子包路由族被同一条 uncoveredMembers 判出不在面内',
+    pkgRouteCandidates.length > 0
+      && uncoveredMembers(routeFiles.filter((rel) => rel.startsWith('lib/routes/')), pkgRouteCandidates).length === pkgRouteCandidates.length
+      && uncoveredMembers(routeFiles, pkgRouteCandidates).length === 0);
 }
 
 console.log('');

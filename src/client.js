@@ -2544,13 +2544,13 @@ function onFxOpacity(v, live) { commitLiveSetting("fxOpacity", v, live); }
 // 与上面同形：控件只报事件，写设置 + 重渲染都在这里。视差层没有网络往返与画布，
 // 它每帧现读设置 ⇒ 开关走 emit 的完整路径，滑块走 commitLiveSetting 的 live 档
 // （拖动时即时可见，抬手才落盘 + emit）。方向不是设置项（口径是"壁纸/吉祥物关于屏幕中心对称"、
-// 界面整块与壁纸同向），要换向改 src/parallax-layer.js 的 PARALLAX_DIRECTION / PARALLAX_UI_SIGN。
+// 界面整块与壁纸同向），要换向改 packages/parallax/src/parallax-layer.js 的 PARALLAX_DIRECTION / PARALLAX_UI_SIGN。
 function onParallaxEnabled(e) { setSetting("parallaxEnabled", e.target.checked); emit(); }
 function onParallaxMascot(e) { setSetting("parallaxMascot", e.target.checked); emit(); }
 function onParallaxUi(e) { setSetting("parallaxUi", e.target.checked); emit(); }
 // 插件前端那一整块自己的开关（用户诉求 m03549）：**独立于「界面元素跟随」**（两件事互不牵连）、
 // 默认关（它挪的是别的插件画出来的真实界面）。关掉时层一个插件组都不认 —— 不是"系数算成 0"，
-// 而是连扫都不扫（见 src/parallax-layer.js 的 parallaxTargetsRefresh），表里的距离原样留着。
+// 而是连扫都不扫（见 packages/parallax/src/parallax-layer.js 的 parallaxTargetsRefresh），表里的距离原样留着。
 function onParallaxPlugin(e) { setSetting("parallaxPlugin", e.target.checked); emit(); }
 function onParallaxBg(v, live) { commitLiveSetting("parallaxBg", v, live); }
 // 四个区域距离（用户口径 m02697-①③）：每行都是**那一组自己的最大位移百分比**，0 = 该组不缓动。
@@ -4352,10 +4352,12 @@ function WallpaperPicker() {
     onParallaxUiChatDepth, onParallaxUiComposerDepth, onParallaxUiSidebarDepth, onParallaxUiBubbleDepth,
     onParallaxPluginDepth,
     // 认到的插件槽位（用户口径 m02697-②）：只给**槽键字符串**（画一行一个）。发现逻辑在
-    // src/parallax-layer.js（与层自己每帧扫的是同一份名单），这里只是转交；**插件前端那一块
-    // 自己的开关**（用户诉求 m03549）关着时层也不认它们，面板就跟着空 —— 名单与"真的会动"
-    // 必须同源，否则会出现点了没反应的滑杆。它与「界面元素跟随」互不依赖（不是 `ui &&`）。
-    parallaxPluginSlots: sel.parallaxPlugin === true ? parallaxDiscoveredGroups().sort() : [],
+    // packages/parallax/src/parallax-layer.js（与层自己每帧扫的是同一份名单），这里只是转交；
+    // P-A 起问的是**注册表**（`weDiscoveredGroupsOf`）—— 那一层住在自己的包里，本 bundle 的
+    // 作用域里既没有它的函数名也不该有（没有这层 / 没声明就是空数组，不是 undefined）。
+    // **插件前端那一块自己的开关**（用户诉求 m03549）关着时层也不认它们，面板就跟着空 ——
+    // 名单与"真的会动"必须同源，否则会出现点了没反应的滑杆。它与「界面元素跟随」互不依赖。
+    parallaxPluginSlots: sel.parallaxPlugin === true ? weDiscoveredGroupsOf('parallax').sort() : [],
     onAvatarEnabled, onAvatarSize, onAvatarRadius, onAvatarPick, onAvatarClear,
     // 上传裁切（issue #191 问题 1）：几何在这里现算（唯一实现），渲染器只读结果。
     onAvatarCropZoom, onAvatarCropDrag, onAvatarCropConfirm, onAvatarCropCancel: closeAvatarCrop,
@@ -5346,6 +5348,18 @@ function detectSoftwareRender() {
   return softRenderFallback;
 }
 
+// ── 跨包扩展注册（P-A）：三项「扩展」里有两项（点击拖尾 packages/fx、3D packages/parallax）
+//    从 P-A 起各自住在自己的包里 —— 它们的描述符与行为层**不再出现在本 bundle 的作用域里**，
+//    唯一通道是 src/extension-registry.js 这张共享注册表。本文件是**组装根**：
+//      · 留在主包的那一项（自定义会话头像）在这里自登记（模块作用域，不用等挂载）；
+//      · 挂载期按注册表把每一层的 sync 接上 store 订阅（见下面 ctx.effect）；
+//      · 拆卸期逐层 dispose（收尾所有权与"关掉=逐字节回原生"这条不变量同源）。
+//    屏上顺序 = (order, 注册序)：头像固定 order 1，子包各自声明 2 / 3（跨包求值顺序不是契约）。
+//    子包产物可能**在本组件挂载之后**才求值（loader 按需）⇒ 挂载期还要装一个 attacher
+//    让迟到的层立刻补接（见 ctx.effect 里的 weSetLayerAttacher）。
+weRegisterExtensionModule("avatar", AVATAR_EXTENSION_MODULE);
+weRegisterLayerHooks("avatar", { sync: syncAvatarLayer, dispose: disposeAvatarLayer });
+
 function apply(ctx) {
   // 0. i18n：把插件文案接上宿主的 locale 服务（`ctx.get("locale")`，可选服务 + 短轮询 ——
   //    缺服务时静默停在默认语言，见 src/i18n.js）。放在最前面：界面首次渲染就要按当前
@@ -5358,20 +5372,25 @@ function apply(ctx) {
     ctx.effect(() => {
       const unsub = subscribe(syncLayers);
       const unsubEffects = subscribe(applyEffects);
-      // 「扩展」页签二号模块（点击效果与拖尾效果）的画布层：接法与壁纸层同形 —— 每次
-      // emit 重判一次"该不该活"。它只在"总开关开着且点击或拖尾至少一个没关"时才活，
-      // 并且**内容驱动**——没有轨迹点、没有存活的特效时它自己停下 rAF 并清空画布，
-      // 光标不动就不耗帧。参数不在这里传：那一层每帧现读 `selection`。
-      const unsubFx = subscribe(syncFxLayer);
-      // 「扩展」页签三号模块（3D 效果）的视差层：接法同上，但它是**唯一不建 DOM 的一层** ——
-      // 每帧把算完的位移直接写进要动的那几个元素自己的 CSS 独立属性 translate（零自定义属性
-      // 写入 ⇒ 整棵子树不重算样式；总开关属性 data-we-parallax 仍挂在 body 上），
-      // 另加一张"谁跟着动"的规则段在 src/styles.js。它只在"总开关开着"时才活，并且
-      // **收敛驱动**——屏上剩下的位移看不出来就停 rAF，光标不动不耗帧（跟随真实刷新率）。
-      const unsubParallax = subscribe(syncParallaxLayer);
-      // 「扩展」页签一号模块（自定义会话头像）的装饰层：接法同上。它是**唯一改宿主会话 DOM**
-      // 的一层 —— 给消息行补头像节点（观察者 + 就地更新），关掉时逐字节恢复原样。
-      const unsubAvatar = subscribe(syncAvatarLayer);
+      // 「扩展」页签的那几层（P-A 起统一走注册表）：接法与壁纸层同形 —— 每次 emit 重判一次
+      // "该不该活"。三层各自的性质不同（画布层内容驱动、视差层收敛驱动、头像层改宿主 DOM），
+      // 但**接法只有一个**：注册表说有哪些层，这里就 subscribe 谁的 sync；参数不在这里传，
+      // 每一层自己每帧现读 `selection`。三项里两项住在自己的包里，本 bundle 的作用域里
+      // 根本没有它们的函数名 —— 这正是这张注册表存在的理由。
+      const layerUnsubs = new Map();
+      const attachLayer = (layerId, hooks) => {
+        if (layerUnsubs.has(layerId)) return;
+        layerUnsubs.set(layerId, subscribe(hooks.sync));
+      };
+      // 迟到注册（子包产物在挂载之后才求值）：补订阅 + 立刻对时 + emit 一次让面板把新模块画上。
+      weSetLayerAttacher((layerId, hooks) => {
+        attachLayer(layerId, hooks);
+        try { hooks.sync(); } catch { /* 单层启动失败不许带崩挂载 */ }
+        emit();
+      });
+      // 注册表本身变了也要重画（迟到登记的扩展模块描述符 —— 与层钩子同一次 bundle 求值）。
+      weSetRegistryListener(() => emit());
+      for (const [layerId, hooks] of weLayerHooks()) attachLayer(layerId, hooks);
       // 启动对时：挂载后的第一次 emit 由 applySelection 触发，但「轮播开关 / 场景实时
       // 渲染 / 帧率档 / 播放倍速」这族键不在 emit 订阅链里（syncRotationTimer /
       // syncSceneAudio 需显式调用）—— preset-store 的 reapplyAll() 只在应用预设时跑。
@@ -5489,16 +5508,18 @@ function apply(ctx) {
       }
       syncLayers();
       applyEffects();
-      syncFxLayer();
-      syncParallaxLayer();
-      syncAvatarLayer();
+      // 每一层挂载后的第一次对时（幂等）：注册表里有哪层就对哪层，没有的不调用。
+      for (const [, hooks] of weLayerHooks()) {
+        try { hooks.sync(); } catch { /* 单层对时失败不许带崩挂载 */ }
+      }
       return () => {
         disposed = true;
         unsub();
         unsubEffects();
-        unsubFx();
-        unsubParallax();
-        unsubAvatar();
+        weSetLayerAttacher(null);
+        weSetRegistryListener(null);
+        for (const [, unsubLayer] of layerUnsubs) unsubLayer();
+        layerUnsubs.clear();
         if (ocWatch) { try { clearInterval(ocWatch); } catch { /* ignore */ } ocWatch = 0; }
         if (typeof window !== "undefined" && typeof window.removeEventListener === "function") {
           for (const t of ocListeners) window.removeEventListener(t, onOcclusionChange);
@@ -5531,15 +5552,15 @@ function apply(ctx) {
         disposePreparedMedia();
         // 预热槽位同一条纪律：留着就是一个没有句柄的解复用器（页面关闭前不会自己走）。
         disposeWarmVideo();
-        // 点击与拖尾效果的画布层：DOM 节点、指针监听与 rAF 循环同样在那一层自己手里
-        // （它的 rAF 只在自己还有内容时续帧，所以这里主要是摘节点 + 解绑监听）。
-        disposeFxLayer();
-        // 3D 效果的视差层：它没有 DOM 节点与画布，收尾就是把监听、rAF 与 body 上的
-        // 那几个 CSS 变量 / 开关属性一起摘掉（否则换过一次重挂还会残留着上一份位移）。
-        disposeParallaxLayer();
-        // 会话头像层：收尾 = 摘掉注入的头像节点与行标记、断开观察者、撤掉开关属性与两个
-        // 变量（"关掉 = 逐字节回到原生"这条不变量在卸载路径上的同一个动作）。
-        disposeAvatarLayer();
+        // 每一层的收尾都归它自己：画布层摘节点 + 解绑监听与 rAF；视差层摘监听、rAF 与 body
+        // 上的 CSS 变量/开关属性（否则重挂会残留上一份位移）；头像层摘注入节点与行标记、
+        // 断开观察者、撤开关属性（"关掉 = 逐字节回原生"在卸载路径上的同一个动作）。
+        // 逐层包 try/catch：某一层收尾抛错不许把后面的层留在屏上。
+        for (const [layerId, hooks] of weLayerHooks()) {
+          try { hooks.dispose(); } catch (err) {
+            try { reportClientDiag("layer-dispose-failed:" + layerId, String((err && err.message) || err)); } catch { /* 诊断本身不许再抛 */ }
+          }
+        }
         // 关掉音频闸并退役渐变中的旧层：禁用/重挂时旧层不能被留在屏上等退役定时器
         // （≤1.3s 的可见残留），闸也不该跨过一次重挂活着（准备链的 BGM 起播会被它
         // 推迟到那个定时器触发为止）。这两条收尾本身是正确性要求：跨过一次重挂活着的闸
@@ -5746,4 +5767,35 @@ function apply(ctx) {
 
 exports.apply = apply;
 exports.inject = inject;
+// ── 跨包浏览器半边通道（BUNDLE-SPLIT §6.2「宿主注入显式键集」）──────────────────────────
+// 子包产物由 loader 用 `require("dsh-plugin-wallpaper-engine")` 取本 bundle 的导出面。
+// 这里挂的是**显式键集**，不是整个 module.exports：子包要什么就登记什么，多给一个键就是多
+// 一条没人维护的隐式契约。键集与 packages/{fx,parallax}/src/client.js 的
+// *_HOST_REQUIRED 逐字对齐（缺键那两包自己会大声抛），判据见 test/verify-subpackage-client-half.mjs。
+// 一律用 **getter**：这些是活的模块级绑定（React / selection / 文案表在求值期才落地），
+// 值拷贝既会在求值期撞 TDZ，也会让子包拿到过期的引用。
+const HOST_BRIDGE_BINDINGS = {
+  selection: () => selection,
+  weNow: () => weNow,
+  weClampTo: () => weClampTo,
+  weBody: () => weBody,
+  weT: () => weT,
+  React: () => React,
+  switchRow: () => switchRow,
+  SliderRow: () => SliderRow,
+  ctlText: () => ctlText,
+  swatchRow: () => swatchRow,
+  FX_BLEND_VALUES: () => FX_BLEND_VALUES,
+  // 两个注册入口（子包在上面的契约里要的就是这两个名字，不是 we* 前缀的内名）。
+  registerExtensionModule: () => weRegisterExtensionModule,
+  registerLayerHooks: () => weRegisterLayerHooks,
+};
+const HOST_BRIDGE_KEYS = Object.keys(HOST_BRIDGE_BINDINGS);
+for (const bridgeKey of HOST_BRIDGE_KEYS) {
+  Object.defineProperty(exports, bridgeKey, {
+    enumerable: true, configurable: true, get: HOST_BRIDGE_BINDINGS[bridgeKey],
+  });
+}
+// 键集本身也给出来（判据对账用；不是子包的消费面）。
+exports.hostBridgeKeys = Object.freeze(HOST_BRIDGE_KEYS.slice());
 return module.exports;

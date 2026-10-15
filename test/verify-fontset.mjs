@@ -292,6 +292,19 @@ const host = hostMod.default || hostMod;
 const apply = host.apply || (host.inject && host.apply);
 const dispose = apply(mockCtx);
 
+// P-A「一次翻」的两个方向：① 门面（`lib/index.js`）**零**字体族注册（实现已随子包行出户）；
+// ② 字体族由 `packages/fonts/lib/index.js` 那一行注册进**同一个** mockCtx 的路由表 ——
+// 于是下面"字体集路由族已注册"的断言打的是**子包行**的注册面，而不是主包门面（两条都要钉住）。
+const facadeFontRoutes = routes
+  .map((r) => String(r.path))
+  .filter((p) => p.startsWith('/wallpaper-engine/fontsets') || p === '/wallpaper-engine/system-fonts');
+check('门面（lib/index.js）零字体族注册：两族都已出户到子包行',
+  facadeFontRoutes.length === 0, facadeFontRoutes.join(' ') || '零残留');
+// junction（node_modules/dsh-plugin-wallpaper-engine-*）已通 ⇒ 子包入口的裸子路径 import 可解析。
+const fontsRowMod = await import(pathToFileURL(join(root, 'packages', 'fonts', 'lib', 'index.js')).href);
+const fontsRow = fontsRowMod.default || fontsRowMod;
+const fontsDispose = fontsRow.apply(mockCtx);
+
 function fakeRes() {
   const state = { status: 200, headers: {}, body: Buffer.alloc(0), ended: false };
   const res = new Writable({
@@ -449,7 +462,8 @@ section('② 迁移前外观 golden（绝对锚点逐条比对）');
 // ── ③ 迁移前护栏 + 一次性迁移（惰性）─────────────────────────────────────────
 section('③ 迁移前护栏 + 一次性迁移（老 config.json → fontsets/default.json，判据 = ② 的 golden）');
 check('settings 路由已注册（否则本节的护栏无从谈起）', Boolean(settingsRoute), settingsRoute ? settingsRoute.kind : 'missing');
-check('字体集路由族已注册（一个 prefix 覆盖七个端点）', Boolean(fontsetsRoute), fontsetsRoute ? fontsetsRoute.kind : 'missing');
+check('字体集路由族已注册（一个 prefix 覆盖七个端点；注册者是子包行 packages/fonts/lib/index.js）',
+  Boolean(fontsetsRoute), fontsetsRoute ? fontsetsRoute.kind : 'missing（子包行没注册 / 没起）');
 check('apply() 本身一个字节都不写字体集（启动期零写盘 ⇒ 未隔离 DSH_WE_DATA_DIR 的守卫不会被污染）',
   !existsSync(FONTSETS_DIR), existsSync(FONTSETS_DIR) ? 'fontsets/ 已存在' : '');
 
@@ -1607,7 +1621,7 @@ section('⑨ 字体集编辑器（面板可驱动：意图映射 / confirm 门�
 }
 
 // ── teardown ────────────────────────────────────────────────────────────────
-try { if (dispose) dispose(); } catch { /* ignore */ }
+try { if (dispose) dispose(); if (fontsDispose) fontsDispose(); } catch { /* ignore */ }
 delete process.env.DSH_WE_STEAM_ROOT;
 delete process.env.DSH_WE_UPLOAD_DIR;
 rmSync(ISO, { recursive: true, force: true });

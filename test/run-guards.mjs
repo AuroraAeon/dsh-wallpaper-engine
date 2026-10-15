@@ -168,6 +168,17 @@ const VERIFY_STEPS = [
   step('test/verify-video-preview.mjs'),
   step('test/verify-asset-paths.mjs'),
   step('test/verify-settings-schema-exports.mjs'),
+  // BUNDLE-SPLIT 7.6 的四条新判据（P2-5b）。全部 hard：
+  //   ① 启动自检：主包 apply 必须先 resolve 每个子包与其行，失败大声报错（I5 是行级静默失败）；
+  //   ② 浏览器半边在场：声明 dsh.client 的子包，其行必须被主 patch 插入、产物按 id 注册且只注册一份；
+  //   ③ 跨包纯度：子包只许 import 主包叶子 subpackage-boot.js + node: 内置，子包之间零 import；
+  //   ④ 开关往返：对 patch 里的每一行做 关 -> 开 -> 再关（整族在场/缺席、互不相交、只动自己那一行、零残留），
+  //      附真源码变异负对照（handOffTeardown -> 恒等 = 只 return dispose 必须变红）。
+  // ②③④ 目前对 P-A 范围数据驱动；缺构建产物时的报错文案会提示"先跑 npm run build"。
+  step('test/verify-subpackage-boot.mjs'),
+  step('test/verify-subpackage-client-half.mjs'),
+  step('test/verify-subpackage-purity.mjs'),
+  step('test/verify-subpackage-toggle-roundtrip.mjs'),
   // ← 还原（旧链最末一步）：`js-text` 的**自检**（字符串感知的剥注释/作用域/函数体提取，
   // 是上面一批"文本判据"的共同底座 ⇒ 它自己坏了会连带整批判据失真）。
   step('test/tools/js-text.mjs', ['selftest']),

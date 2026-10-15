@@ -246,19 +246,25 @@ function weComponentVisibleOf(components, name) {
   //     prelude 求值期撞 TDZ。既有写法是**getter**：
   //       get title() { return weT("点击效果与拖尾效果"); }
   //     这样 `weT(...)` 就落在字面量的最内层调用帧上，且取译文发生在渲染时（照抄
-  //     src/ext-fx.js 的 FX_EXTENSION_MODULE 即可）—— 因此**本文件不再套一层
+  //     packages/fx/src/ext-fx.js 的 FX_EXTENSION_MODULE 即可）—— 因此**本文件不再套一层
   //     weT**（套了就成了拿译文再查一次词表）。
   //   · `render(ctx)` 可选：给了就在这个模块的位置画它自己的控件；没给就只显示
   //     title + desc —— "功能还没做完"的模块可以先上架占位。
   //   · 模块**不得**自己写设置 / 发通知 / 持有状态：本文件是渲染器（契约见文件头），
   //     要动状态就把动作做成 src/client.js 的具名处理器、经 ctx 传进来。
-  // 现有三项：一号 = 自定义会话头像（src/ext-avatar.js + src/avatar-layer.js，会话界面上的
-  // DOM 补丁）、二号 = 点击效果与拖尾效果（src/ext-fx.js + src/fx-layer.js）、
-  // 三号 = 3D 效果（src/ext-parallax.js + src/parallax-layer.js，只有变量与事件、不建 DOM）。
-  // ⚠️ **顺序即屏上顺序**（数组第 0 项在最上面）：头像那一项排在**第一**（用户口径）。
-  // 加第四项照抄这三份。
+  // 现有三项 —— **本文件不再枚举它们**（P-A 起）：
+  //   一号 = 自定义会话头像（src/ext-avatar.js + src/avatar-layer.js，会话界面上的 DOM 补丁），
+  //          **留在主包**，由 src/client.js 在模块作用域自登记；
+  //   二号 = 点击效果与拖尾效果（packages/fx）、三号 = 3D 效果（packages/parallax）**各自
+  //          是一个独立包** —— 三份 bundle 的求值顺序不保证，同一个工厂作用域里再也放不下
+  //          一份"按数组顺序排好的清单"，于是"谁登记了什么"落在一张共享注册表上
+  //          （src/extension-registry.js；跨包通道见 BUNDLE-SPLIT §6.2）。
+  // ⚠️ **顺序即屏上顺序**：跨包顺序**不能**靠数组序（bundle 求值顺序不是契约），改由描述符的
+  //    `order` 声明（avatar=1 / fx=2 / parallax=3），排序 = (order, 注册序)。
+  //    加第四项 = 在它自己的包里调 `weRegisterExtensionModule(id, descriptor)`，本文件零改动。
+  // 注册表为空时页签照旧在、只画下面那个空态（形状见 :230-252 的注释）。
   function extensionModules() {
-    return [AVATAR_EXTENSION_MODULE, FX_EXTENSION_MODULE, PARALLAX_EXTENSION_MODULE];
+    return weExtensionModules();
   }
 
   // 这一页自己不读 ctx 的任何字段：整包（sel + 具名 on* 处理器）转交给各模块的 render。

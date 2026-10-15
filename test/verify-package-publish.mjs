@@ -137,6 +137,24 @@ function usedByClosure(dep, list = bare) {
   // （当时 `dependencies` 为空，这条路径从不执行 ⇒ 恒绿而看不出来）。
   return [...list].some((s) => s === dep || s.startsWith(dep + '/'));
 }
+/** `cordis.patch.yml` 里每个模块行的 `name:` = **宿主加载该模块用的 specifier**。
+ *  与 `test/verify-package-files.mjs:86` 的 `patchRowNames` 同一口径（逐字对齐其取词正则；
+ *  那条正则与 `lib/subpackage-boot.js` 的 `subpackageSpecifiers` 同源）。逐行剥 `#` 注释。
+ *
+ *  为什么 ④ 要消费它（**别把这条当假阳性删掉**）：子包（`packages/**`）不是被主包 `import`
+ *  加载的 —— **宿主按 `cordis.patch.yml` 的行名加载**它们，主包活代码里因此永远不出现这些
+ *  裸说明符（启动自检走的是变量 `resolve(name)`）。所以"一条声明依赖是否被加载"的证据集
+ *  必须 = 可达闭包抓到的裸说明符 ∪ **patch 行名**；少了后半，三个子包依赖会被误判成
+ *  "声明了但活代码从不加载"。 */
+function patchRowNames(text) {
+  const out = [];
+  for (const raw of String(text).split(/\r?\n/)) {
+    const m = /^\s*(?:-\s*)?name:\s*['"]?([^'"\s#]+)['"]?\s*$/.exec(raw.replace(/\s+#.*$/, ''));
+    if (m) out.push(m[1]);
+  }
+  return out;
+}
+
 const uncovered = closure.filter((r) => !publishSet(r));
 check('可达闭包里的每个文件都被 `files` 覆盖', uncovered.length === 0,
   uncovered.length ? '未覆盖：' + uncovered.join(', ') : closure.length + ' 个文件');
@@ -223,7 +241,10 @@ section('④ 每个 dependencies 都被**可达闭包**用到');
 // 而不是登记在这里（白名单一旦有人加条目，这条断言就要求它确实仍未被使用）。
 const DEP_UNUSED_ALLOW = {};
 const deps = Object.keys(pkg.dependencies || {});
-const unused = deps.filter((d) => !usedByClosure(d));
+// 证据集 = 可达闭包抓到的裸说明符 ∪ **宿主行名**（子包由行加载，见 `patchRowNames` 的注释）。
+const PATCH_TEXT = readFileSync(join(ROOT, 'cordis.patch.yml'), 'utf8');
+const loadEvidence = [...bare, ...patchRowNames(PATCH_TEXT)];
+const unused = deps.filter((d) => !usedByClosure(d, loadEvidence));
 const unexpected = unused.filter((d) => !(d in DEP_UNUSED_ALLOW));
 check('没有"声明了但活代码从不加载"的依赖', unexpected.length === 0,
   unexpected.join(', ') || deps.join(', ') || '（无声明）');
@@ -239,6 +260,28 @@ check('负对照：依赖使用判据对合成输入有牙',
   usedByClosure('left-pad', ['left-pad/sub'])     // 子路径算用到
   && !usedByClosure('left-pad', ['left-padx'])    // 近失：前缀必须落在路径边界上
   && !usedByClosure('left-pad', ['node:fs']));    // 不相关的内置不是它
+// 覆盖面：patch 抽取器真的读到了三条子包行（抽取器退化 ⇒ 这里当场红，不静默恒真）。
+check('覆盖面：patch 行名抽到了三个子包行（本判据的"加载证据"不是空集）',
+  ['dsh-plugin-wallpaper-engine-fx', 'dsh-plugin-wallpaper-engine-parallax', 'dsh-plugin-wallpaper-engine-fonts']
+    .every((n) => loadEvidence.includes(n)),
+  patchRowNames(PATCH_TEXT).join(', '));
+// 负对照：行名确实是证据 —— 但要**同一条路径边界**（正/负两个方向都喂同一个 `usedByClosure`）。
+const synthPatch = [
+  'plugins:',
+  '  - id: demo',
+  "    name: 'demo-pkg'",
+  '  - id: other',
+  '    name: demo-pkg-extra',
+  '  # name: commented-out',
+].join('\n');
+check('负对照：宿主行名能证明一条声明依赖被加载（合成 patch + 合成 dep）',
+  patchRowNames(synthPatch).join(',') === 'demo-pkg,demo-pkg-extra'
+  && usedByClosure('demo-pkg', [...bare, ...patchRowNames(synthPatch)]) === true
+  && usedByClosure('commented-out', [...bare, ...patchRowNames(synthPatch)]) === false);
+check('负对照：行名不是万能前缀（`foo-bar` 不证明 `foo`，也不证明 `foo-barbaz`）',
+  usedByClosure('foo', [...patchRowNames('name: foo-bar')]) === false
+  && usedByClosure('foo-barbaz', [...patchRowNames('name: foo-bar')]) === false
+  && usedByClosure('foo-bar', [...patchRowNames('name: foo-bar')]) === true);
 
 // ── ⑤ 入口 / 导出目标都在包里 ───────────────────────────────────────────────
 section('⑤ 入口与导出目标都被发布');

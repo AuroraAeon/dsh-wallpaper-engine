@@ -1,0 +1,6 @@
+# cordis.patch.yml — 字体系统子包自己的行（P-A §7.1 / §8.2 / §8.3）。
+# 行名 = 真实包名（裸真名，开发期靠 <profile>/node_modules 里的 junction 解析，见
+# scripts/dev-link-subpackages.mjs 与 docs/wip/BUNDLE-SPLIT.md §8.1）；id 一旦定下不再改。
+- insert:
+    - id: wallpaper-engine-fonts
+      name: 'dsh-plugin-wallpaper-engine-fonts'

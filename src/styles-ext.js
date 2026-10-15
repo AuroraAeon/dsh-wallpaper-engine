@@ -387,11 +387,11 @@ const CSS_EXT = `  /* ── 软件渲染回退（upstream #95，运行时探测
     font-size: 1.2em; line-height: 1; color: var(--dsw-alias-label-tertiary, rgba(128, 128, 128, 0.8));
   }
 
-  /* ── 「扩展」二号模块：点击效果与拖尾效果（画布层见 src/fx-layer.js）──
+  /* ── 「扩展」二号模块：点击效果与拖尾效果（画布层见 packages/fx/src/fx-layer.js）──
      与 .we-layer / .we-scrim 同族：body 级的整屏浮层 ⇒ 同样必须
      pointer-events: none; -webkit-app-region: initial !important（同族的硬要求，
      见 test/verify-host-paint-scope.mjs H3）。
-     z-index -1、靠文档序压在暗化层之上（见 src/fx-layer.js 的 fxPlace），
+     z-index -1、靠文档序压在暗化层之上（见 packages/fx/src/fx-layer.js 的 fxPlace），
      所以这一层是"壁纸之上、暗化层之上、全部界面之下"。
      宽高恒为整屏：点击/拖尾的坐标直接取指针的视口坐标，不用做偏移换算。
      opacity（不透明度）与 mix-blend-mode（混合模式）由画布层按设置内联写在宿主上 ——
@@ -441,7 +441,7 @@ const CSS_EXT = `  /* ── 软件渲染回退（upstream #95，运行时探测
     background-image: none !important;
   }
 
-  /* ── 「扩展」三号模块：3D 效果（视差；行为层见 src/parallax-layer.js）──
+  /* ── 「扩展」三号模块：3D 效果（视差；行为层见 packages/parallax/src/parallax-layer.js）──
      这一层与前面几层刚好相反：**它一个 DOM 节点都不建**。位移由行为层每帧**直接写进
      .we-layer / .we-rope 自己的** translate（CSS 独立属性）—— 每帧一个自定义属性都不写，
      因为自定义属性是继承的，写一次就会让整棵子树重算样式。所以样式表这边只剩两件事：
@@ -468,7 +468,7 @@ const CSS_EXT = `  /* ── 软件渲染回退（upstream #95，运行时探测
      摘掉 —— 本仓刻意不留**常驻**合成层（见 .we-layer--repaint 的两帧微推）。
      只提示 translate：scale 是静态的，不提它就不会被冻结栅格化倍率。 */
   body[data-we-parallax="on"] .we-parallax--moving { will-change: translate; }
-  /* 界面跟随那一组挪的是会话滚动容器**里面**的真实元素（见 src/parallax-layer.js 的
+  /* 界面跟随那一组挪的是会话滚动容器**里面**的真实元素（见 packages/parallax/src/parallax-layer.js 的
      PARALLAX_GROUP_SELECTOR），于是多出一个副作用：横向位移一旦越出 scroller 的 inline-end，
      宿主写在它身上的 overflow-y: auto 会把这一轴的 overflow-x: visible 当 auto 用（规范：一轴
      不是 visible 时另一轴的 visible 计算成 auto）⇒ 长出一条**横向滚动条**。它占掉约一条滚动条高的

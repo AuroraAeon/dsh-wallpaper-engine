@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url';
 import { join, relative, sep, dirname, resolve } from 'node:path';
 import { builtinModules } from 'node:module';
 // 剥注释：共享的字符串感知实现（test/tools/js-text.mjs）。
-import { stripComments } from './tools/js-text.mjs';
+import { stripComments, blankStringLiterals } from './tools/js-text.mjs';
 // 拿子进程输出的唯一方式（沙箱禁管道 ⇒ 走文件）：见该文件头。
 import { runNodeCaptured } from './tools/child-out.mjs';
 
@@ -48,17 +48,46 @@ const specRoot = (spec) => (spec.startsWith('@')
 /** 判据只针对**代码**：剥注释走共享实现（test/tools/js-text.mjs）。否则散文里一句 `from '…'`
  *  （说明"夹具长什么样"的注释）会被当成真的裸包依赖，把守卫自己判红。 */
 
+/** 一条字符串字面量的内容里若写着**模块语法**（守卫自己的负对照夹具，形如
+ *  `"import x from 'pkg'"`），那是**数据**不是依赖 —— 扫描前把它的内容抹成空白（换行保留，
+ *  行号不变）。真说明符字面量（`'node:fs'` / `'./a.mjs'` / `'pkg'` / `'pkg/sub'`）不含这些
+ *  关键字，原样保留；注释仍由 stripComments 处理。 */
+const FIXTURE_KEYWORD_RE = /\b(?:import|export|require)\b/;
+const blankFixtureStrings = (src) => blankStringLiterals(src, (content) => FIXTURE_KEYWORD_RE.test(content));
+
+/** 说明符像不像一个**包名**：`pkg` / `@scope/pkg` / `pkg/sub`。
+ *  判据只认这种形状 —— 拼接片段（` + spec + `）与 URL（`data:` / `file:` / `http:`）不是包，
+ *  它们出现在链上不构成"CI 需要装依赖"这件事。 */
+function looksLikePackageSpec(spec) {
+  return /^(@[A-Za-z0-9._~-]+\/)?[A-Za-z0-9._~-]+(?:\/[A-Za-z0-9._~/-]+)?$/.test(spec);
+}
+
 /** 源码里的**裸包** import 说明符：跳过相对路径 / 绝对路径 / 内置模块。
  *  形态覆盖 `from '…'` / 动态 `import('…')` / `require('…')` / **副作用导入 `import '…'`**
  *  —— 最后一种原先漏判（链上插一句 `import 'pkg';` 仍是绿的），现在与其余三种同一条判据。
  *  P5 的主扫描与负对照共用这一条判据。 */
 function bareImportSpecs(src) {
   const out = [];
-  for (const m of stripComments(src).matchAll(/(?:from\s+|import\s*\(\s*|import\s+|require\s*\(\s*)[\'"]([^\'"]+)[\'"]/g)) {
+  const code = blankFixtureStrings(stripComments(src));
+  for (const m of code.matchAll(/(?:from\s+|import\s*\(\s*|import\s+|require\s*\(\s*)['"]([^'"]+)['"]/g)) {
     const spec = m[1];
     if (spec.startsWith('.') || spec.startsWith('node:') || spec.startsWith('/')) continue;
     if (BUILTIN_ROOTS.has(specRoot(spec))) continue;
+    if (!looksLikePackageSpec(spec)) continue;
     out.push(spec);
+  }
+  return out;
+}
+
+/** `cordis.patch.yml` 里每个模块行的 `name:` = 宿主加载该模块用的 specifier。
+ *  逐行剥 `#` 注释后取 `name:` 值（`#` 开头的整行是注释，不参与）—— 与
+ *  `lib/subpackage-boot.js` 的 `subpackageSpecifiers` 同一口径；那边只用子包行做双射，
+ *  这里要**全部**行名当"这条依赖真被消费"的证据。 */
+function patchRowNames(text) {
+  const out = [];
+  for (const raw of String(text).split(/\r?\n/)) {
+    const m = /^\s*(?:-\s*)?name:\s*['"]?([^'"\s#]+)['"]?\s*$/.exec(raw.replace(/\s+#.*$/, ''));
+    if (m) out.push(m[1]);
   }
   return out;
 }
@@ -231,14 +260,18 @@ async function main() {
     const consumerRe = (dep) => new RegExp(
       '(?:from\\s+|import\\s*\\(\\s*|require\\s*\\(\\s*|\\.resolve\\s*\\(\\s*)[\'"]'
       + dep.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?:/[\'"]|[\'"])');
-    const consumes = (dep, src) => !dep.startsWith('.') && !dep.startsWith('/')
+    // 消费者证据有两类：① lib/ 源码里的字面量；② `cordis.patch.yml` 的**行名** —— 宿主按行名
+    // 加载模块，子包正是这样被消费的（主包 lib/ 里只出现变量名 `resolve(name)`，字面量在 patch 里）。
+    const patchNames = new Set(patchRowNames(readFileSync(join(ROOT, 'cordis.patch.yml'), 'utf8')));
+    const consumes = (dep, src, rows = new Set()) => !dep.startsWith('.') && !dep.startsWith('/')
       && !(dep.startsWith('node:') || BUILTIN_ROOTS.has(specRoot(dep)))
-      && consumerRe(dep).test(src);
-    const consumers = deps.filter((d) => consumes(d, libSrc));
+      && (consumerRe(dep).test(src) || rows.has(dep));
+    const consumers = deps.filter((d) => consumes(d, libSrc, patchNames));
     const orphans = deps.filter((d) => !consumers.includes(d));
     check('P4 every declared dependency is imported by lib/ (no dead declaration)',
       orphans.length === 0,
-      'deps=' + deps.length + ' consumers=[' + consumers.join(', ') + '] orphans=[' + orphans.join(', ') + ']');
+      'deps=' + deps.length + ' consumers=[' + consumers.join(', ') + '] orphans=[' + orphans.join(', ') + ']'
+        + ' patchRows=' + patchNames.size);
     // 负对照必须跑**同一条** consumes 判据（不是另写一条正则、也不比常量字符串），否则它
     // 证明不了这条判据会 FAIL。合成源码里：假依赖名必须被判为"有消费者"；内置模块 /
     // `node:` 前缀 / 相对路径 / 前缀相近的名字必须不判为消费者。
@@ -254,7 +287,19 @@ async function main() {
       [!consumes('./local.mjs', "import x from './local.mjs'"), 'negative: relative declaration'],
       [!consumes('node:path', 'import p from "node:path"'), 'negative: node: builtin'],
       [!consumes('fs', 'import f from "fs"'), 'negative: bare builtin'],
+      // 第二类证据（patch 行名）必须与源码证据**同一条判据**：行名命中即消费者，
+      // 前缀相近的行名不算，内置模块名当行名也不算。
+      [consumes(fake, '', new Set([fake])), 'positive: patch row name'],
+      [!consumes(fake, '', new Set([fake + '-extra'])), 'negative: near-miss patch row name'],
+      [!consumes('node:path', '', new Set(['node:path'])), 'negative: builtin patch row name'],
     ];
+    // patch 行名解析本身也要有牙：整行 `#` 的注释、`id:` 行必须跳过，`- name:` 与缩进 `name:`
+    // 两种写法都要取到，引号有无、单双引号都要认。
+    const synthPatch = '# 说明：\n# - name: \'' + fake + '-commented\'\n- id: some-id\n  name: \'' + fake + '\'\n  name: "' + fake + '-extra"\n- name: ' + fake + '-bare\n';
+    const parsedRows = patchRowNames(synthPatch);
+    check('P4 negative control: patch 行名解析跳过注释/id 行、认 - name: 与裸 name:、三种引号写法',
+      parsedRows.length === 3 && parsedRows[0] === fake && parsedRows[1] === fake + '-extra' && parsedRows[2] === fake + '-bare',
+      'parsed=[' + parsedRows.join(', ') + ']');
     const bad = controls.filter(([ok]) => !ok).map(([, label]) => label);
     check('P4 negative control: the consumer predicate reports a synthetic dependency and rejects builtins/relative/near-miss names',
       bad.length === 0,
@@ -288,8 +333,10 @@ async function main() {
     //  收紧：verify 58→63（重新挂回 inject-contracts / component-face /
     // route-ownership / settings-namespaces / js-text selftest 这 5 条，见 run-guards.mjs 的清单注释）、
     // docs 1→7（再 7→8：新增 `verify-subpackage-manifests` —— 子包包面不得漂回极简形态）、
-    // smoke 5→6、all 29→77（再 77→78，随 docs 那条）。收紧后"删一步即红"由下面的负对照钉住。
-    const CHAIN_FLOOR = { verify: 63, docs: 8, smoke: 6, all: 78 };
+    // smoke 5→6、all 29→77（再 77→78，随 docs 那条）。
+    //  再：verify 63→67 / all 78→82 —— 新增四条子包判据（subpackage-boot / -purity / -client-half /
+    // -toggle-roundtrip，见 run-guards.mjs 的 VERIFY_STEPS 清单）。收紧后"删一步即红"由下面的负对照钉住。
+    const CHAIN_FLOOR = { verify: 67, docs: 8, smoke: 6, all: 82 };
     /** 地板表与 GROUPS 的对齐体检：键名必须与**组名**逐一对齐（纯函数 ⇒ 负对照可直接喂）。 */
     const floorGaps = (groups, floors) => groups.map(([, g]) => g).filter((g) => !Number.isInteger(floors[g]));
     const problems = floorGaps(GROUPS, CHAIN_FLOOR).map((g) => '地板表缺组 ' + g

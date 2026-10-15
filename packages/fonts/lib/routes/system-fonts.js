@@ -57,10 +57,15 @@ import { spawn } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-// 名字的值域与前端**同一份**（共享内核）：这里过滤掉的名字，前端也一定拼不出族键。
-import { systemFontKeyOf } from '../settings-schema.js';
-// JSON 应答的**唯一实现**（状态码 + 两个头 + end）—— 见 lib/json-response.js。
-import { sendJson } from '../json-response.js';
+import { schemaView, httpView } from 'dsh-plugin-wallpaper-engine/subpackage-boot.js';
+// 跨包通道（BUNDLE-SPLIT §5.1 出路②）：本族只 import **唯一受控叶子**
+// `dsh-plugin-wallpaper-engine/subpackage-boot.js`，不 import 主包的其他任何模块。
+// 共享内核的**纯函数**在模块求值期就该可用（本文件的纯函数 `normalizeFamilies` 与守卫的直读都依赖这一点）
+// ⇒ 走叶子的具名视图**静态取用**；运行期才存在的实例（disposers / cachePath / log）仍逐键从 `c` 消费：
+//   · systemFontKeyOf —— 名字的值域与前端**同一份**（这里过滤掉的名字，前端也一定拼不出族键）。
+//   · sendJson —— JSON 应答的**唯一实现**（状态码 + 两个头 + end，见主包 lib/json-response.js）。
+const { systemFontKeyOf } = schemaView;
+const { sendJson } = httpView;
 
 /** 权威扫描的成功结果新鲜期：字体装/删不频繁，一次扫描（macOS ~10s）摊到一周可接受。 */
 const SYSTEM_FONTS_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -274,14 +279,18 @@ function collectFontFiles(dirs, depth, files) {
 /**
  * 名字数组 → 清单。三件事：去空白、丢**不可用**的名字（`.` 开头的私有族 / 过不了共享内核
  * 校验的）、去重排序（`localeCompare`：中文名与拉丁名混排时按本地口径，比码点序可读）。
+ *
+ * `systemFontKeyOf` 是**纯函数**，按 P-A 裁决走叶子 `subpackage-boot.js` 的 `schemaView` 静态取用
+ * （模块求值期即已可用）⇒ 本函数**单参调用就成立**（test/verify-system-fonts.mjs:95/100/101/105/108
+ * 正是单参调用）；第二参只是显式覆写口，不传时用模块级那份。
  */
-function normalizeFamilies(names) {
+function normalizeFamilies(names, keyOf = systemFontKeyOf) {
   const seen = new Set();
   const out = [];
   for (const raw of Array.isArray(names) ? names : []) {
     const name = typeof raw === 'string' ? raw.trim() : '';
     if (!name || name.startsWith('.')) continue;      // `.Apple Color Emoji UI` 这类私有族
-    if (!systemFontKeyOf(name)) continue;             // 进不了 `sys:` 键的名字一律不要
+    if (!keyOf(name)) continue;                       // 进不了 `sys:` 键的名字一律不要
     const dedupe = name.toLowerCase();
     if (seen.has(dedupe)) continue;
     seen.add(dedupe);
@@ -408,6 +417,9 @@ async function collectSystemFonts(deps) {
 }
 
 /** 注入契约（P2-7A / ADR-0013 D12）：本族从 `c` 消费的**必需**键 —— 门面/组件行调用点必须逐键给到（判据 test/verify-inject-contracts.mjs 双向对账）。 */
+// 四键都是**运行期实例**（清理句柄 / 路径前缀 / 缓存路径 / 日志），调用点 = `packages/fonts/lib/index.js`，
+// 由 `subpackageKeys('fonts')` 一次给全。共享内核的两个**纯函数**不在这里：它们走叶子
+// `subpackage-boot.js` 的 `schemaView` / `httpView` 静态取用（见文件头）。
 export const DEPS = ['disposers', 'base', 'cachePath', 'log'];
 /** 允许缺席的键：真实调用点一个都不传，代码各有默认实现（守卫/测试用它们换掉平台、目录与子进程）。 */
 export const OPTIONAL_DEPS = ['platform', 'home', 'fontDirs', 'runFontCommand'];
