@@ -29,21 +29,7 @@ const CSS_EXT = `  /* ── 软件渲染回退（upstream #95，运行时探测
      (data-we-sidebar-glass / data-we-glass-window)，所以关掉开关仍然是原生外观。
      输入框卡片按上游 #94 的 ::before 载体单独覆盖（见下方规则）。
      手动覆盖：?we-glassfallback=on|off（见 detectSoftwareRender）。 ── */
-  body[data-we-glass-fallback][data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_boundaryError"],
-  body[data-we-glass-fallback][data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_panel"],
-  body[data-we-glass-fallback][data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_pane"],
-  body[data-we-glass-fallback][data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_tabBar"],
-  body[data-we-glass-fallback][data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_paneCard"],
-  body[data-we-glass-fallback][data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_editorHeader"],
-  body[data-we-glass-fallback][data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_explorerHeader"],
-  body[data-we-glass-fallback][data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_gitHeader"],
-  body[data-we-glass-fallback][data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_browserBar"],
-  body[data-we-glass-fallback][data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_terminalWrap"] {
-    background-color: color-mix(in srgb, var(--we-sidebar-color) 92%, transparent) !important;
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-  }
-  body[data-we-glass-fallback][data-we-sidebar-glass] [data-sidebar-right-panel][data-sidebar-right-open] {
+  body[data-we-glass-fallback][data-we-sidebar-glass] [data-sidebar-right-panel][data-sidebar-right-open]:where([data-we-surface-runtime="right-sidebar"]) {
     background-color: color-mix(in srgb, var(--we-sidebar-color) 92%, transparent) !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
@@ -51,7 +37,7 @@ const CSS_EXT = `  /* ── 软件渲染回退（upstream #95，运行时探测
   /* 左侧栏液态玻璃（leftSidebarGlass）：软件光栅器下模糊被静默忽略 ⇒ 与上面各条同一配方，
      钉成 92% 近不透明玻璃并把不会生效的 backdrop-filter 显式关掉。深色那条多一层
      [data-ds-dark-theme]，与浅色声明同特异度时后写者赢（顺序即优先级）。 */
-  body[data-we-glass-fallback][data-we-glass-page][data-we-left-sidebar] div:has(> [data-slot="sidebar"]) {
+  body[data-we-glass-fallback][data-we-glass-page][data-we-left-sidebar] div:has(> [data-slot="sidebar"]):where([data-we-surface-runtime="left-sidebar"]) {
     background-color: color-mix(in srgb, var(--we-surface-tint-light, #ffffff) 92%, transparent) !important;
     background-image: none !important;
     backdrop-filter: none !important;
@@ -59,11 +45,11 @@ const CSS_EXT = `  /* ── 软件渲染回退（upstream #95，运行时探测
   }
   /* issue #131：模糊已搬到列自身的 ::before 上；软件光栅器下同样要显式关掉
      （同一政策：不会生效的 backdrop-filter 不留着）。一条覆盖深浅两色。 */
-  body[data-we-glass-fallback][data-we-glass-page][data-we-left-sidebar] div:has(> [data-slot="sidebar"])::before {
+  body[data-we-glass-fallback][data-we-glass-page][data-we-left-sidebar] [data-we-surface-plate="left-sidebar"] {
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
   }
-  body[data-ds-dark-theme][data-we-glass-fallback][data-we-glass-page][data-we-left-sidebar] div:has(> [data-slot="sidebar"]) {
+  body[data-ds-dark-theme][data-we-glass-fallback][data-we-glass-page][data-we-left-sidebar] div:has(> [data-slot="sidebar"]):where([data-we-surface-runtime="left-sidebar"]) {
     background-color: color-mix(in srgb, var(--we-surface-tint-dark, #0d1524) 92%, transparent) !important;
   }
   /* 标题栏液态玻璃（titlebarGlass）：与上面左栏那两条**同一政策** —— 软件光栅器下模糊被
@@ -83,24 +69,25 @@ const CSS_EXT = `  /* ── 软件渲染回退（upstream #95，运行时探测
   html[data-windows-titlebar] body[data-ds-dark-theme][data-we-glass-fallback][data-we-glass-page][data-we-titlebar-glass][data-we-adapter^="desktop-"] div[class*="pI_x6G_frame"]::before {
     background: color-mix(in srgb, var(--we-surface-tint-dark, #0d1524) 92%, transparent) !important;
   }
+  body[data-we-glass-fallback][data-we-glass-page] [data-we-surface-plate] {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
   /* 内容面（编辑器/终端）本来就是近不透明底板（--we-content-surface-alpha，兜底
      88%），这里把同一条声明再挂一遍，让软件渲染下三块侧栏区域落在同一个规则块里。 */
-  body[data-we-glass-fallback][data-we-sidebar-glass] [data-dsh-better-sidebar] .cm-editor,
-  body[data-we-glass-fallback][data-we-sidebar-glass] [data-dsh-better-sidebar] .xterm,
-  body[data-we-glass-fallback][data-we-sidebar-glass] [data-sidebar-right-panel][data-sidebar-right-open] .cm-editor,
-  body[data-we-glass-fallback][data-we-sidebar-glass] [data-sidebar-right-panel][data-sidebar-right-open] .xterm {
+  body[data-we-glass-fallback][data-we-sidebar-glass] :where([data-we-surface-runtime="content"]) {
     background-color: color-mix(in srgb, var(--we-content-surface-color, var(--we-panel-color, #1e1f26)) max(calc(var(--we-readability-floor) * 100%), var(--we-content-surface-alpha, 88%)), transparent) !important;
   }
   /* 设置窗口：把三层面板 token 钉回实色（@supports 回退里的同一条 token 覆写），
      并显式关掉不会生效的 backdrop-filter。 */
-  body[data-we-glass-fallback][data-we-glass-window] [role="dialog"]:has([data-slot="settings.section"]) {
+  body[data-we-glass-fallback][data-we-glass-window] [role="dialog"]:has([data-slot="settings.section"]):where([data-we-surface-runtime="settings-window"])::before {
     --dsw-alias-bg-layer-1: var(--we-surface-tint-light, #ffffff);
     --dsw-alias-bg-layer-2: var(--we-surface-tint-light, #ffffff);
     --dsw-alias-bg-layer-3: var(--we-surface-tint-light, #ffffff);
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
   }
-  body[data-ds-dark-theme][data-we-glass-fallback][data-we-glass-window] [role="dialog"]:has([data-slot="settings.section"]) {
+  body[data-ds-dark-theme][data-we-glass-fallback][data-we-glass-window] [role="dialog"]:has([data-slot="settings.section"]):where([data-we-surface-runtime="settings-window"])::before {
     --dsw-alias-bg-layer-1: var(--we-surface-tint-dark, #0d1524);
     --dsw-alias-bg-layer-2: var(--we-surface-tint-dark, #0d1524);
     --dsw-alias-bg-layer-3: var(--we-surface-tint-dark, #0d1524);
@@ -110,8 +97,8 @@ const CSS_EXT = `  /* ── 软件渲染回退（upstream #95，运行时探测
      宿主的面板/对话框/按钮面必须回到不透明面板色，否则文字压在壁纸上。
      深色那条选择器多一层 (0,3,1)，才能顶掉 body[data-ds-dark-theme][data-we-glass-page]
      上的玻璃映射。 */
-  body[data-we-glass-fallback][data-we-glass-page],
-  body[data-ds-dark-theme][data-we-glass-fallback][data-we-glass-page] {
+  body[data-we-glass-fallback][data-we-glass-page] :where([data-chat-flow]),
+  body[data-ds-dark-theme][data-we-glass-fallback][data-we-glass-page] :where([data-chat-flow]) {
     --dsw-alias-bg-layer-1: var(--we-panel-color, #ffffff);
     --dsw-alias-bg-layer-2: var(--we-panel-color, #ffffff);
     --dsw-alias-bg-layer-3: var(--we-panel-color, #ffffff);
@@ -422,7 +409,7 @@ const CSS_EXT = `  /* ── 软件渲染回退（upstream #95，运行时探测
      清晰就把模糊调 0）；内容面（编辑器 / 终端底板）不归本开关管，仍有自己的透明度
      旋钮。只在壁纸下生效：无壁纸时侧栏压着的是聊天界面，全透不可读。 */
   body[data-we-wallpaper][data-we-sidebar-fullclear] [data-dsh-better-sidebar],
-  body[data-we-wallpaper][data-we-sidebar-fullclear] [data-sidebar-right-panel][data-sidebar-right-open] {
+  body[data-we-wallpaper][data-we-sidebar-fullclear] [data-sidebar-right-panel][data-sidebar-right-open]:where([data-we-surface-runtime="right-sidebar"]) {
     --we-readability-floor: 0;
     --we-sidebar-tint: 0%;
     --we-sidebar-color: transparent;
@@ -431,11 +418,11 @@ const CSS_EXT = `  /* ── 软件渲染回退（upstream #95，运行时探测
     --we-sidebar-sheen-b: 0;
     --we-sidebar-sheen-c: 0;
   }
-  body[data-we-wallpaper][data-we-sidebar-fullclear] [data-sidebar-right-panel][data-sidebar-right-open] {
+  body[data-we-wallpaper][data-we-sidebar-fullclear] [data-sidebar-right-panel][data-sidebar-right-open]:where([data-we-surface-runtime="right-sidebar"]) {
     background-color: transparent !important;
     background-image: none !important;
   }
-  body[data-we-wallpaper][data-we-sidebar-fullclear][data-we-left-sidebar] div:has(> [data-slot="sidebar"]),
+  body[data-we-wallpaper][data-we-sidebar-fullclear][data-we-left-sidebar] div:has(> [data-slot="sidebar"]):where([data-we-surface-runtime="left-sidebar"]),
   body[data-ds-dark-theme][data-we-wallpaper][data-we-sidebar-fullclear][data-we-left-sidebar] div:has(> [data-slot="sidebar"]) {
     background-color: transparent !important;
     background-image: none !important;

@@ -96,7 +96,10 @@ const GOOD = '.dsh-mobile-control__panel, .dim-jh-badgePop';
   const n = (css.match(/::before \{/g) || []).length;
   check('两条选择器 ⇒ 两条 ::before 载体', n === 2, 'n=' + n);
   check('载体挂在 ::before 上（**不是**直接给目标元素加 backdrop-filter —— #89 的包含块坑）',
-    /\.dsh-mobile-control__panel::before \{/.test(css) && !/\.dsh-mobile-control__panel \{[^}]*backdrop-filter/.test(css));
+    /\.dsh-mobile-control__panel:where\(\[data-we-surface-runtime="extra"\]\)::before \{/.test(css) && !/\.dsh-mobile-control__panel \{[^}]*backdrop-filter/.test(css));
+  check('只有安全所有权标记激活载体，不给未验证目标补背景或定位',
+    (css.match(/:where\(\[data-we-surface-runtime="extra"\]\)::before/g) || []).length === 2
+      && !/position:\s*relative|z-index:\s*0\b/.test(css));
   for (const decl of ['content: ""', 'position: absolute', 'inset: 0', 'border-radius: inherit',
     'z-index: -1', 'pointer-events: none']) {
     check('载体声明齐：' + decl, css.includes(decl));
@@ -125,7 +128,7 @@ const GOOD = '.dsh-mobile-control__panel, .dim-jh-badgePop';
   check('坏条只丢自己，好条照旧',
     (css2.match(/::before \{/g) || []).length === 2 && !css2.includes('.x'));
   const css3 = mod.weExtraGlassCss({ extraGlassSelectors: '[data-dsh-mobile-details]' });
-  check('合法属性选择器保留（那是真实面板的锚点形状）', css3.includes('[data-dsh-mobile-details]::before'));
+  check('合法属性选择器保留（那是真实面板的锚点形状）', css3.includes('[data-dsh-mobile-details]:where([data-we-surface-runtime="extra"])::before'));
   check('生成结果里不出现任何 `}` 由选择器引入的痕迹（选择器只在 { 之前）',
     css2.split('::before {').every((part, i) => i === 0 || !/\}/.test(part.split('backdrop-filter:')[0])));
 }
@@ -148,7 +151,7 @@ const GOOD = '.dsh-mobile-control__panel, .dim-jh-badgePop';
   const START_OK = /^[A-Za-z0-9.#_:*>()[\]=+~|\-]/;     // 与 schema 白名单首字符一致
   const selOf = (css) => css.split('\n').filter((l) => l.includes('::before'))
     .map((l) => l.replace(/^body\[data-we-glass-page\]:not\(\[data-we-glass-fallback\]\) /, '')
-      .replace(/::before \{.*$/, ''));
+      .replace(/:where\(\[data-we-surface-runtime="extra"\]\)::before \{.*$/, ''));
   // 一条判据，正反两用：每段必须逐字属于输入、长度在 [1,120]、起始符合法。
   const intact = (sels) => sels.length === COUNT_MAX && sels.every((s) =>
     FULL.includes(s) && s.length >= 1 && s.length <= PER_MAX && START_OK.test(s));
@@ -235,7 +238,7 @@ const GOOD = '.dsh-mobile-control__panel, .dim-jh-badgePop';
   check('同值重复同步 ⇒ 不重写（内容比对，逐字符相等即不碰 DOM）', tag.textContent === css1);
 
   mod.syncExtraGlassCss({ extraGlassSelectors: '.other' });
-  check('值变化 ⇒ 重写', tag.textContent !== css1 && tag.textContent.includes('.other::before'));
+  check('值变化 ⇒ 重写', tag.textContent !== css1 && tag.textContent.includes('.other:where([data-we-surface-runtime="extra"])::before'));
 
   mod.syncExtraGlassCss({ extraGlassSelectors: '' });
   check('值变空 ⇒ 撤掉标签（不留空 <style>）', doc.head.children.length === 0);

@@ -43,6 +43,7 @@ try {
   CSS = new Function('READABILITY_FLOOR', 'READABILITY_FLOOR_DARK', 'return `' + CSS_BODY + '`;')(
     num(/const READABILITY_FLOOR = ([\d.]+);/), num(/const READABILITY_FLOOR_DARK = ([\d.]+);/));
 } catch { CSS = CSS_BODY; }
+CSS = CSS.replace(/\/\*[\s\S]*?\*\//g, ' ');
 
 const TARGET = '[data-sidebar-right-panel]';
 const GATE = '[data-sidebar-right-open]';
@@ -215,20 +216,18 @@ console.log('INFO | H2 其它被上色的宿主容器（需各自核对"关闭�
       if (/backdrop-filter\s*:\s*blur/.test(body)) blurRules.push({ sel, body });
     }
   }
-  const lifted = (r) => /z-index\s*:\s*var\(--dsh-dockkit-dock-layer/.test(r.body);
-  // 负对照 ①：把真规则的 z-index 声明删掉，同一条判据必须报出；
-  // 负对照 ②：合成一条「有 blur 没抬层」的规则，也必须报出。
-  const stripped = blurRules[0]
-    ? { sel: blurRules[0].sel, body: blurRules[0].body.replace(/\s*z-index\s*:\s*var\(--dsh-dockkit-dock-layer[^;]*;/, '') }
-    : null;
-  const negStripped = stripped ? lifted(stripped) === false : false;
-  const synthetic = { sel: TARGET, body: 'backdrop-filter: blur(9px);' };
-  const negSynthetic = lifted(synthetic) === false;
-
-  check('H4 右栏面板玻璃规则带 backdrop-filter 就必须抬回 dockkit dock 层（z-index: var(--dsh-dockkit-dock-layer)）',
-    blurRules.length >= 1 && blurRules.every(lifted) && negStripped && negSynthetic,
-    `blur 规则 ${blurRules.length} 条（未抬层 ${blurRules.filter((r) => !lifted(r)).length}）` +
-    ` · 负对照 删真规则抬层被抓到 ${negStripped ? 1 : 0}/1 · 合成无抬层规则被抓到 ${negSynthetic ? 1 : 0}/1`);
+  const safeHostBody = body => !/(?:backdrop-filter\s*:\s*blur|z-index\s*:\s*(?!auto\b)|isolation\s*:\s*isolate)/.test(body);
+  const hostBodies = rawSels.map(sel => {
+    const at = CSS.indexOf(sel), open = CSS.indexOf('{', at);
+    return CSS.slice(open + 1, CSS.indexOf('}', open));
+  });
+  const leaf = CSS.match(/\[data-we-surface-plate="right-sidebar"\][^{]*\{([^}]*)\}/);
+  check('H4 宿主右栏不新增滤镜或层级围栏，模糊只落在无内容装饰叶',
+    blurRules.length === 0 && hostBodies.length >= 6 && hostBodies.every(safeHostBody)
+      && leaf && /backdrop-filter:\s*blur/.test(leaf[1])
+      && !safeHostBody(hostBodies[0] + 'backdrop-filter: blur(9px);')
+      && !safeHostBody(hostBodies[0] + 'z-index: 0;'),
+    `宿主规则 ${hostBodies.length} 条 · 种回滤镜及z围栏均被拒绝`);
 }
 
 console.log(failed === 0 ? '\nverify-host-paint-scope: OK' : `\n${failed} CHECK(S) FAILED`);

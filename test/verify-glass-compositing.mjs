@@ -467,7 +467,7 @@ function main() {
       && declValue(x.body, 'background-color'));
     return r ? declValue(r.body, 'background-color') : '';
   };
-  const panelBg = bgOf('[class*="_panel"]', 'data-dsh-better-sidebar');
+  const panelBg = bgOf('[data-sidebar-right-panel]', 'data-we-surface-runtime="right-sidebar"');
   const leftBg = bgOf('div:has(> [data-slot="sidebar"])');
   // ⚠️ 合并 #132 对本判据的口径修正：WIP 原版要求两侧**色染权重**也逐字相等 ——
   //    那是 WIP 时代左栏读 `--we-glass-alpha` 的实现。#132 把左栏改成按面独立的
@@ -530,36 +530,26 @@ function main() {
     Boolean(leftColRule) && /--dsw-alias-border-l3:\s*rgba\(180, 180, 180, var\(--we-border-alpha/.test(leftColRule.body),
     leftColRule ? '映射在场' : '取不到左栏规则');
 
-  // ── S2c: 左栏的模糊必须在 ::before 上（issue #131：fixed 包含块）────────────
-  // CSS 规范：非 none 的 backdrop-filter 会让元素成为**其后代 position:fixed 元素的
-  // 包含块**。宿主在 Windows 标题栏模式下把「收起 / 展开侧边栏」按钮设成 fixed ——
-  // 模糊画在列自身上时，按钮改成相对列定位（列被标题栏 padding 推下去 + 收起时
-  // overflow:hidden 裁切）⇒ 按钮下移 / 不可见。修法：模糊只留在 ::before（无后代，
-  // 永远不会成为任何 fixed 元素的包含块），列自己拿 position:relative + z-index:0。
-  // 判据 = 三条声明形态 + 负对照（把模糊种回列自身必须判红）。谓词与主判据同源
-  // （先剥注释再找声明）—— 否则「注释里提到 backdrop-filter」会被误判，负对照失去意义。
-  // ⚠️ 本块**自足**：左栏规则的取用在本块内自己算一遍（不依赖别处同名 const ——
-  //    本块要能独立成立，便于按 issue 拆分提交与单独回归）。
+  // 根级装饰叶节点承担模糊，宿主列不增加定位和层叠上下文。
   const s2cLeftColRule = rules.find((r) => r.header.includes('div:has(> [data-slot="sidebar"])')
     && declValue(r.body, 'background-color'));
   const blurDeclaredOn = (body) => /(^|[;\s])backdrop-filter\s*:/.test(String(body).replace(/\/\*[\s\S]*?\*\//g, ''));
   const leftColBlurOnSelf = s2cLeftColRule ? blurDeclaredOn(s2cLeftColRule.body) : null;
-  const leftBeforeRule = rules.find((r) => r.header.includes('div:has(> [data-slot="sidebar"])::before'));
-  const leftBeforeBlur = leftBeforeRule ? declValue(leftBeforeRule.body, 'backdrop-filter') : null;
+  const plateRule = rules.find((r) => r.header.includes('[data-we-surface-plate="left-sidebar"]') && !r.header.includes('fallback'));
+  const plateBlur = plateRule ? declValue(plateRule.body, 'backdrop-filter') : null;
   const leftColPosition = s2cLeftColRule ? declValue(s2cLeftColRule.body, 'position') : null;
   const leftColZ = s2cLeftColRule ? declValue(s2cLeftColRule.body, 'z-index') : null;
-  check('S2c 左栏的 backdrop-filter 只画在 ::before（fixed 包含块修复，issue #131）',
-    leftColBlurOnSelf === false
-      && Boolean(leftBeforeRule) && /blur\(/.test(String(leftBeforeBlur))
-      && String(leftColPosition).trim() === 'relative' && String(leftColZ).trim() === '0',
-    'self-blur=' + leftColBlurOnSelf + ' ::before=' + (leftBeforeRule ? 'present' : 'MISSING')
+  check('S2c 左栏模糊只由装饰叶节点承担，不改变宿主定位或新增围栏',
+    leftColBlurOnSelf === false && Boolean(plateRule) && /blur\(/.test(String(plateBlur))
+      && leftColPosition === null && leftColZ === null,
+    'self-blur=' + leftColBlurOnSelf + ' plate=' + Boolean(plateRule)
       + ' position=' + String(leftColPosition) + ' z-index=' + String(leftColZ));
   check('S2c 负对照：把 backdrop-filter 种回列自身，同一条判据必须判红（注释里的提及不算）',
     blurDeclaredOn('background-color: red; backdrop-filter: blur(4px);') === true
       && blurDeclaredOn('background-color: red; /* backdrop-filter: blur(4px); */') === false);
-  check('S2c2 软件光栅器回退把 ::before 的模糊也显式关掉（不留不会生效的声明）',
-    rules.some((r) => r.header.includes('[data-we-glass-fallback][data-we-glass-page][data-we-left-sidebar]')
-      && r.header.includes('::before')
+  check('S2c2 软件光栅器回退将根级叶节点模糊显式关掉',
+    rules.some((r) => r.header.includes('[data-we-glass-fallback]')
+      && r.header.includes('[data-we-surface-plate]')
       && /backdrop-filter:\s*none\s*!important/.test(r.body)));
 
   // ── TB: 标题栏玻璃的锚点与两层结构（回归）──────────────────────────
@@ -834,7 +824,7 @@ function main() {
       // 它们的浅深不对称是**有意**的（只覆盖需要改的那些，其余继承浅色块）—— 混进来
       // 会把"映射表必须是浅深双份"这条判据变成假红。
       const parts = header.split(',').map((p) => p.trim()).filter(Boolean);
-      const bodyLevel = parts.length > 0 && parts.every((p) => /^body(\[[^\]]*\])+$/.test(p));
+      const bodyLevel = parts.length > 0 && parts.every((p) => /^body(\[[^\]]*\])+(?: :where\(\[data-chat-flow\]\))?$/.test(p));
       if (!bodyLevel) continue;
       const hasDark = parts.some((p) => p.includes('data-ds-dark-theme'));
       const hasLight = parts.some((p) => !p.includes('data-ds-dark-theme'));

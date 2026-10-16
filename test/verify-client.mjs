@@ -245,7 +245,7 @@ const fetch = (url, opts) => {
 
 // 变异测试钩子：默认读构建产物，DSH_MUT_LIB 指向变异副本时读它。
 const code = readFileSync(process.env.DSH_MUT_LIB || new URL('../lib/client.js', import.meta.url), 'utf8');
-const independentSidebarSelector = 'body[data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_panel"]';
+const independentSidebarSelector = 'body[data-we-glass-page][data-we-sidebar-glass] [data-we-surface-plate="right-sidebar"]';
 const wallpaperGatedSidebarSelector = 'body[data-we-sidebar-glass][data-we-wallpaper] [data-dsh-better-sidebar]';
 assert.ok(code.includes(independentSidebarSelector), 'sidebar glass must not require an active wallpaper');
 assert.ok(!code.includes(wallpaperGatedSidebarSelector), 'legacy wallpaper-gated sidebar selector must be removed');
@@ -257,7 +257,7 @@ assert.ok(!code.includes(wallpaperGatedSidebarSelector), 'legacy wallpaper-gated
 // 把让开那两条挪进页面玻璃块 ⇒ 第二条红。
 // 朴素块体切片：实现在 `test/tools/assert-harness.mjs`（契约 = 两个 `indexOf`，不跳字符串/注释）。
 const blockBodyOf = (needle) => naiveBlockBody(code, needle);
-const pageGlassBlock = blockBodyOf('body[data-we-glass-page] {');
+const pageGlassBlock = blockBodyOf('body[data-we-glass-page] :where([data-chat-flow]) {');
 const wallpaperBlock = blockBodyOf('body[data-we-wallpaper] {');
 assert.ok(pageGlassBlock && pageGlassBlock.includes('--dsw-alias-bg-layer-1')
   && pageGlassBlock.includes('--dsw-alias-markdown-code-block'),
@@ -268,25 +268,23 @@ assert.ok(wallpaperBlock && wallpaperBlock.includes('--dsw-alias-bg-base: transp
 assert.ok(/setAttribute\("data-we-glass-page", "on"\)/.test(code)
   && /removeAttribute\("data-we-glass-page"\)/.test(code),
   'the page-glass anchor must be mounted by glass.js and removed by clearEffects (paired)');
-assert.ok(code.includes('body[data-we-sidebar-glass] [data-dsh-better-sidebar] .cm-editor'),
-  'sidebar content surfaces must follow the sidebar master switch',
+assert.ok(code.includes('body[data-we-sidebar-glass] :where([data-we-surface-runtime="content"])'),
+  'sidebar content surfaces must follow both the sidebar switch and runtime ownership',
 );
 assert.ok(code.includes('body[data-we-wallpaper] {') && code.includes('body[data-we-wallpaper]:not([data-ds-dark-theme])'),
   'wallpaper-only effects (base let-through, light-scheme text boost) must remain wallpaper-gated');
-// ── 主容器兜底清底（原生浏览器形态）：token 清底盖不住不再消费 token 的宿主 ──────────
-// 口径：清 --dsw-alias-bg-base 只对「读该 token 的宿主构建」有效；宿主新构建的主容器
-// （[*_frame] / [*_root] / body）自带实心底 ⇒ 壁纸层被整片盖死。兜底规则必须
-// ① 三条选择器齐（body / _frame / _root）；② 双门齐（壁纸在台 + 原生浏览器 ——
-// 无壁纸时页面基色不许被清、桌面壳形态由壳层材质自理）；③ 声明 background:
-// transparent !important（要压过宿主自己的实心底）。负对照：删任一门的变异体命中不到
-// 下面的选择器字面量 ⇒ 判红。
+// 宿主清底保留双门控，但只匹配挂载点外壳；未知插件的同名类不得被命中。
 const clearGated = (suffix) => 'body[data-we-wallpaper][data-we-adapter="browser"]' + suffix;
+const hostFrame = ' > #root > [class*="_frame"]:not([data-we-surface-preserve])';
+const hostRoot = hostFrame + ' > [class*="_root"]:not([data-we-surface-preserve])';
 assert.ok(code.includes(clearGated(',')),
-  'the container fallback must clear the host page canvas (body) itself, wallpaper+browser gated');
-assert.ok(code.includes(clearGated(' [class*="_frame"]')) && code.includes(clearGated(' [class*="_root"]')),
-  'the container fallback must clear the host _frame and _root containers too (both gates included)');
-assert.ok((blockBodyOf(clearGated(' [class*="_root"] {')) || '').includes('background: transparent !important'),
-  'the container fallback needs background: transparent !important (host canvas paints an opaque base)');
+  'the page canvas fallback must remain wallpaper+browser gated');
+assert.ok(code.includes(clearGated(hostFrame)) && code.includes(clearGated(hostRoot)),
+  'the container fallback must be limited to the outer host frame/root');
+assert.ok(!code.includes(clearGated(' [class*="_frame"]')) && !code.includes(clearGated(' [class*="_root"]')),
+  'the container fallback must not clear arbitrary third-party roots');
+assert.ok((blockBodyOf(clearGated(hostRoot + ' {')) || '').includes('background: transparent !important'),
+  'the known host canvas still needs an effective transparent fallback');
 console.log('sidebar glass selectors are wallpaper-independent: true · page glass is anchored on data-we-glass-page: true');
 // A3 之后客户端产物不再只有主 bundle 一份：packages/{fx,parallax}/lib/client.*.js 各自在
 // 同一个 loader 上注册一份 bundle（id = 子包真实包名）。所以这里收**数组**，主 bundle = 第一份。

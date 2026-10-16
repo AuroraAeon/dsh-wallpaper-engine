@@ -586,7 +586,9 @@ const syntheticModule = 'const SYNTH_EXPORT = 1;\nexport { SYNTH_EXPORT };\n';
 {
   const probeNested = join(ROOT, 'zz-dirty-face-nested');
   const probeIgnored = join(ROOT, '.integration-notes', 'scratch', 'dirty-face-nc');
-  const probeFiles = [join(probeNested, 'lib', 'dup.js'), join(probeIgnored, 'lib', 'dup.js')];
+  const probeArtifacts = join(ROOT, '.artifacts', 'schema-face-nc');
+  if (existsSync(probeArtifacts)) throw new Error('扫描面夹具目录已存在，保留并停止：' + probeArtifacts);
+  const probeFiles = [join(probeNested, 'lib', 'dup.js'), join(probeIgnored, 'lib', 'dup.js'), join(probeArtifacts, 'lib', 'dup.js')];
   try {
     for (const p of probeFiles) {
       mkdirSync(dirname(p), { recursive: true });
@@ -602,6 +604,8 @@ const syntheticModule = 'const SYNTH_EXPORT = 1;\nexport { SYNTH_EXPORT };\n';
     check('负对照 ⑫：**被 gitignore 的本地目录**（`.integration-notes/**`）同样不进扫描面',
       !face.includes(probes[1]) && naive.includes(probes[1]),
       `修好的面=${face.includes(probes[1]) ? '含' : '不含'} · 未修口径=${naive.includes(probes[1]) ? '含' : '不含'} · ${probes[1]}`);
+    check('负对照 ⑬：被忽略的浏览器/上游原件目录 .artifacts 不进消费者面，未修口径确实读到副本',
+      !face.includes(probes[2]) && naive.includes(probes[2]), probes[2]);
     // 假绿的**具体形态**：那份副本里的一行 `console.log(SYNTH_EXPORT)` 会把一个死导出"续命"
     const fakeGreen = judge({
       modules: new Map([['lib/synth.js', syntheticModule]]),
@@ -619,6 +623,7 @@ const syntheticModule = 'const SYNTH_EXPORT = 1;\nexport { SYNTH_EXPORT };\n';
   } finally {
     rmSync(probeNested, { recursive: true, force: true });
     rmSync(probeIgnored, { recursive: true, force: true });
+    rmSync(probeArtifacts, { recursive: true, force: true });
   }
 }
 

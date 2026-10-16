@@ -3347,6 +3347,12 @@ const onGlassFidelity = (pct, live) =>
 // 与本模块生成侧（glass-extra.js）**共用同一份**判据，所以用户敲到一半的非法串既不会进
 // 规则、也不会被"修剪"成另一个选择器。**不做防抖**：只有清单真的变了才会重写 <style>
 // （glass-extra 里那句内容比对），且一次只写一条文本节点，代价与拖滑杆同量级。
+const onGlassSurfacePolicy = (id, policy) => {
+  if (!["left-sidebar", "right-sidebar", "settings-window", "content", "declared", "extra"].includes(id)
+    || !["auto", "native"].includes(policy)) return;
+  setSetting("glassSurfacePolicy", { ...selection.glassSurfacePolicy, [id]: policy });
+  applyEffects(); emit();
+};
 const onExtraGlassSelectors = (text) => {
   setSetting("extraGlassSelectors", text == null ? "" : String(text));
   applyEffects();
@@ -4388,6 +4394,7 @@ function WallpaperPicker() {
       // 处理器是模块级的（onAccent / onCaretColor / onToggleUiColorCustom / onUiColorElement）。
       uiColorOpen: pickerUiColorOpen, onToggleUiColorSection: togglePickerUiColorSection,
       onToggleUiColorCustom, onUiColorElement,
+      onGlassSurfacePolicy, surfaceStatus: weGlassSurfaceStatus(),
       officialColorOf, onAccent, onCapsuleBlur, onCapsuleColor, onBlur, onBorder, onCaretColor, onChatGlassFidelity, onComponentFamily, onComponentFont, onExtraGlassSelectors, onFontAdvanced, onFontResetAll, onGlassAlpha, onGlassColor, onGlassDarkSeparate, onGlassFidelity, onGlobalFamily, onLeftSidebarGlass, onTitlebarGlass, onRefreshSystemFonts, onSidebarAllCorners, onSidebarAlpha, onSidebarBlur, onSidebarColor, onSidebarContentAlpha, onSidebarContentColor, onSidebarCornerRadius, onSidebarCornerSquare, onSidebarFollowGlobal, onSidebarGlass, onSidebarFullClear, onThemeColor, onThemeColorClear, onThemeDarkSeparate, onThemeFamily, onThemeSize, onThemeTypeOnly, onThemeWeight, onThinkingMode, onToggleFontCustom, onToggleThemeFollow, sel,
       // 玻璃 UI 子项开关 + 独立配置 + 独立参数（见 onToggleChildIndependent 那段注释）
       onToggleChildIndependent, onGlassChildParam, childIndependentOn,

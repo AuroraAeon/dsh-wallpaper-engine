@@ -49,7 +49,7 @@ function weExtraGlassCss(selection) {
   // 选择器 + ', ' 分隔"（逗号不在单条白名单里，所以 ", " 只可能是分隔符）⇒ 这里按 ", " 拆出来
   // 的每一段都是**完整**选择器，不存在半截（总量上限与"超限整体作废"见 lib/settings-schema.js
   // 的 EXTRA_GLASS_SELECTORS_MAX 注释：旧版 400 字上限的 slice 会在这里切出半截选择器）。
-  const rules = list.split(", ").map((sel) => gate + sel + "::before {" + body);
+  const rules = list.split(", ").map((sel) => gate + sel + ":where([data-we-surface-runtime=\"extra\"])::before {" + body);
   // ⚠️ 这条注释**只许用 ASCII**：它落在 JS 字符串字面量里（不是 styles.js 的模板），
   //    i18n 判据要求"字符串里的中文必须包 weT(...)"—— 生成出来的 CSS 注释不是 UI 文案，
   //    塞中文只会让守卫判红（实测踩过：`每条中文都进了 weT` 报 src/glass-extra.js 那一行）。
@@ -58,6 +58,7 @@ function weExtraGlassCss(selection) {
 
 /** 把生成结果同步进本通道自己的 <style>（清单为空 ⇒ 撤掉那个标签）。 */
 function syncExtraGlassCss(selection) {
+  if (typeof syncGlassSurfaces === "function") syncGlassSurfaces(selection);
   if (typeof document === "undefined") return;
   const css = weExtraGlassCss(selection);
   let tag = document.querySelector("style[data-plugin-css=" + JSON.stringify(EXTRA_GLASS_TAG_ID) + "]");
@@ -77,6 +78,7 @@ function syncExtraGlassCss(selection) {
 
 /** 卸载：移除本通道的 <style>（fiber cleanup 与 clearEffects 成对调用）。 */
 function disposeExtraGlassCss() {
+  if (typeof disposeGlassSurfaces === "function") disposeGlassSurfaces();
   if (typeof document === "undefined") return;
   const tag = document.querySelector("style[data-plugin-css=" + JSON.stringify(EXTRA_GLASS_TAG_ID) + "]");
   if (tag) tag.remove();

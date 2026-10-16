@@ -67,3 +67,4 @@ ADR 里**不写会随代码漂移的具体数值**（条数、行数、体积、
 | [0012](./0012-artifact-untracking.md) | 构建产物出库（`lib/client.js` 不入库，改由 build / prepack 现场构建）＋ README 展示图迁至 Release 资产外链；修订 ADR-0003 的 D6 | Accepted |
 | [0013](./0013-bundle-multi-component-rows.md) | **插件拆分**：终态 = **多包**（主包 + 子包，版本一致；2026-10-14 **就地改写 D6/D8**，原为「单包多行 / 不做多包」）＋ 单包多行是**起点与已落地形态**；三件核心目标并列（降复杂度 / 锚定模块边界 / 解耦合）；行级开关 = 宿主路由 + 该组件的浏览器可见面；组件化前先库化 + 内核化。**原编号 0012**（与上游 `0012-artifact-untracking` 撞号 ⇒ 让位顺延） | Accepted |
 | [0014](./0014-subpackage-contract.md) | **子包规范（`packages/<pkg>` 的成文契约，条款号 `S*`）** —— 术语把「独立子包行」与「组件行」分开；依赖方向定成**两张平面**（宿主平面 = 主包 `provide` 服务 → 子包 `inject` 只读；浏览器平面 = 主包冻结面 → 子包产物 `require` 真名且唯一）＋禁止边；判据**只加在代码与磁盘**、**不再新增任何 markdown 判据**；树形依赖图 = 人工维护的 Mermaid（[`docs/SUBPACKAGE-GRAPH.md`](../SUBPACKAGE-GRAPH.md)），放弃机器对账 | Accepted |
+| [0015](./0015-glass-surface-ownership.md) | 统一背景所有权、安全装饰叶节点、未知面原生回退与外部模态让路；修订全局背景令牌泛化接管 | Accepted |

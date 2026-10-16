@@ -395,6 +395,26 @@ function panelGlassPair(sel) {
   return { light, dark };
 }
 
+function renderGlassSurfaceControls(ctx) {
+  const surfaces = [
+    ["left-sidebar", weT("左侧栏")], ["right-sidebar", weT("右侧栏")],
+    ["settings-window", weT("设置窗口")], ["content", weT("编辑与终端")],
+    ["declared", weT("声明式表面")], ["extra", weT("额外选择器")],
+  ];
+  return React.createElement("details", { className: "we-picker__surface-policy" },
+    React.createElement("summary", null, weT("玻璃兼容")),
+    ...surfaces.map(([id, label]) => React.createElement("label", { className: "we-picker__ctl", key: id },
+      React.createElement("span", null, label),
+      React.createElement("select", { className: "we-picker__select", "data-we-policy": id,
+        value: ctx.sel.glassSurfacePolicy?.[id] || "auto",
+        onChange: event => ctx.onGlassSurfacePolicy(id, event.target.value) },
+      React.createElement("option", { value: "auto" }, weT("自动适配")),
+      React.createElement("option", { value: "native" }, weT("保留原生"))))),
+    React.createElement("ul", null, ...(ctx.surfaceStatus || []).map(({ id, mode, reason }, index) =>
+      React.createElement("li", { key: id + index }, id + ": " + mode + " · " + reason))),
+  );
+}
+
 function renderAppearanceGlassSection(ctx) {
   const {
     onBlur, onGlassAlpha, onGlassChildParam, onGlassColor, onGlassDarkSeparate, onExtraGlassSelectors, onGlassFidelity,
@@ -687,6 +707,7 @@ function renderAppearanceGlassSection(ctx) {
     //    ⚠️ 包一层 Fragment 是刻意的：本节约有 80 个并列 children，逐个挂门既啰嗦又容易漏；
     //    而 React 的 Fragment 不产生 DOM 节点 ⇒ 观感与无障碍树都没有多出来的层级。
     open && React.createElement(React.Fragment, null,
+      !sidebarSurface && typeof ctx.onGlassSurfacePolicy === "function" && renderGlassSurfaceControls(ctx),
       // ── 全局四件套 ──
       // 玻璃颜色: the settings-window glass BASE tint. Defaults keep the stock
       // look (white light / deep navy dark); picking any preset or a custom
@@ -727,7 +748,7 @@ function renderAppearanceGlassSection(ctx) {
       React.createElement("div", { className: "we-picker__ctl we-picker__ctl--wrap", key: "extra-glass-selectors" },
         ctlText(weT("额外补雾化的选择器"),
           weT("给第三方插件自己的面板补上毛玻璃（它们自身没有模糊，全局「雾化」对它们无效）"),
-          weT("写这些面板的 CSS 选择器，逗号或换行分隔，最多 8 条、每条最多 120 字；超长的单条或超出 8 条的整条丢弃（不是截断，存活下来的前 8 条全量生效）。目标元素要自己已定位（fixed / absolute）；载体挂在它的 ::before 上，所以不会影响它内部的定位弹层。留空 = 关。")),
+          weT("写这些面板的 CSS 选择器，逗号或换行分隔，最多 8 条、每条最多 120 字；超长的单条或超出 8 条的整条丢弃（不是截断，存活下来的前 8 条全量生效）。目标需已有定位和非 auto 层级，且 ::before 空闲；无法安全接管时保留原生。留空 = 关。")),
         React.createElement("input", {
           className: "we-picker__text", type: "text",
           value: sel.extraGlassSelectors || "",
@@ -824,4 +845,4 @@ function renderAppearanceGlassSection(ctx) {
   );
 }
 
-export { renderAppearanceGlassSection };
+export { renderAppearanceGlassSection, renderGlassSurfaceControls };

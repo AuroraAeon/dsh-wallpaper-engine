@@ -193,6 +193,30 @@
         {
           "kind": "guard",
           "npm": null,
+          "file": "test/verify-glass-compat.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-glass-runtime.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-glass-runtime-browser.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
           "file": "test/verify-extra-glass.mjs",
           "args": [],
           "tier": "hard",
@@ -991,6 +1015,30 @@
           "kind": "guard",
           "npm": null,
           "file": "test/verify-glass-surfaces.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-glass-compat.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-glass-runtime.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-glass-runtime-browser.mjs",
           "args": [],
           "tier": "hard",
           "probe": false

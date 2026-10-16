@@ -43,6 +43,25 @@ const CSS_CHROME = `    /* ── 统一控件 token：一套高度/圆角/墨�
      sectionList): the ul/li carry no default list styling. */
   .we-picker__section-list { margin: 0; padding: 0; list-style: none; }
 
+  /* 统一运行器发放绘制资格，不通过共享令牌或任意后代清底。 */
+  body[data-we-glass-page] :where([data-we-surface-runtime="settings-window"],[data-we-surface-runtime="declared"],[data-we-layout-runtime]) {
+    background: transparent !important;
+  }
+  body[data-we-glass-page] [data-we-surface-runtime="declared"]::before {
+    content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; border-radius: inherit;
+    background-color: color-mix(in srgb,
+      var(--we-readability-base) calc(var(--we-readability-floor) * 100%),
+      color-mix(in srgb, var(--we-panel-color, #fff) calc(var(--we-glass-alpha, .15) * 100%), transparent) calc((1 - var(--we-readability-floor)) * 100%));
+    -webkit-backdrop-filter: blur(var(--we-blur, 14px));
+    backdrop-filter: blur(var(--we-blur, 14px));
+  }
+  body[data-we-glass-fallback] [data-we-surface-runtime="declared"]::before {
+    background: var(--we-panel-color, #fff); -webkit-backdrop-filter: none; backdrop-filter: none;
+  }
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    body[data-we-glass-page] [data-we-surface-runtime="declared"]::before { background: var(--we-panel-color, #fff); }
+  }
+
   /* ── WHOLE native settings window → liquid glass.
      Keyed on body[data-we-glass-window] —— 该属性由 applyGlass **恒挂**，**不**对应任何开关
      （「设置窗口液态玻璃」总开关与 glassWindow 键均已删除）；属性本身保留，
@@ -58,7 +77,11 @@ const CSS_CHROME = `    /* ── 统一控件 token：一套高度/圆角/墨�
      translucent glass base + backdrop blur + specular sheen + inner highlight,
      with the accent color remapped to --we-accent (配色) and all surface alphas
      driven by --we-glass-alpha (玻璃透明度). Off = stock shell look. ── */
-  body[data-we-glass-window] [role="dialog"]:has([data-slot="settings.section"]) {
+  body[data-we-glass-window] [role="dialog"]:has([data-slot="settings.section"]):where([data-we-surface-runtime="settings-window"])::before {
+    /* 滤镜和令牌只属于装饰叶，不能传播到窗口内容。 */
+    content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+    border-radius: inherit;
+    background-color: var(--dsw-alias-bg-layer-2);
     /* Glass surface alphas (light scheme): the base tint is --we-surface-tint-light/dark
        (玻璃颜色) mixed with transparent at the 玻璃透明度-driven alpha, so the
        whole window glass can be tinted to any color. Default (no custom color)
@@ -123,7 +146,7 @@ const CSS_CHROME = `    /* ── 统一控件 token：一套高度/圆角/墨�
   }
   /* Dark scheme: deep translucent base instead of white. The default glass
      color is deep navy; a user-picked 玻璃颜色 overrides it in both themes. */
-  body[data-ds-dark-theme][data-we-glass-window] [role="dialog"]:has([data-slot="settings.section"]) {
+  body[data-ds-dark-theme][data-we-glass-window] [role="dialog"]:has([data-slot="settings.section"]):where([data-we-surface-runtime="settings-window"])::before {
     /* 设置窗口的整块面板（导航 + 每个原生分区）都承载文字 → 同样过下限。 */
     --dsw-alias-bg-layer-1: color-mix(in srgb,
       var(--we-readability-base) calc(var(--we-readability-floor) * 100%),
@@ -146,12 +169,12 @@ const CSS_CHROME = `    /* ── 统一控件 token：一套高度/圆角/墨�
   /* No backdrop-filter support: fall back to near-opaque glass so text stays
      readable (same policy as the skin's patches.css). */
   @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-    body[data-we-glass-window] [role="dialog"]:has([data-slot="settings.section"]) {
+    body[data-we-glass-window] [role="dialog"]:has([data-slot="settings.section"]):where([data-we-surface-runtime="settings-window"])::before {
       --dsw-alias-bg-layer-1: var(--we-surface-tint-light, #ffffff);
       --dsw-alias-bg-layer-2: var(--we-surface-tint-light, #ffffff);
       --dsw-alias-bg-layer-3: var(--we-surface-tint-light, #ffffff);
     }
-    body[data-ds-dark-theme][data-we-glass-window] [role="dialog"]:has([data-slot="settings.section"]) {
+    body[data-ds-dark-theme][data-we-glass-window] [role="dialog"]:has([data-slot="settings.section"]):where([data-we-surface-runtime="settings-window"])::before {
       --dsw-alias-bg-layer-1: var(--we-surface-tint-dark, #0d1524);
       --dsw-alias-bg-layer-2: var(--we-surface-tint-dark, #0d1524);
       --dsw-alias-bg-layer-3: var(--we-surface-tint-dark, #0d1524);
@@ -159,8 +182,8 @@ const CSS_CHROME = `    /* ── 统一控件 token：一套高度/圆角/墨�
     /* 同一个「无 backdrop-filter ⇒ 近不透明」政策也要覆盖**整窗**那层表面令牌：
        玻璃配方在没有模糊的内核上等于「半透明 + 无霜」，文字会直接落在壁纸上。
        浅色选择器写成与映射规则同特异度（0,1,1），深色那条 (0,2,1) 顶掉深色映射。 */
-    body[data-we-glass-page],
-    body[data-ds-dark-theme][data-we-glass-page] {
+    body[data-we-glass-page] :where([data-chat-flow]),
+    body[data-ds-dark-theme][data-we-glass-page] :where([data-chat-flow]) {
       --dsw-alias-bg-layer-1: var(--we-panel-color, #ffffff);
       --dsw-alias-bg-layer-2: var(--we-panel-color, #ffffff);
       --dsw-alias-bg-layer-3: var(--we-panel-color, #ffffff);

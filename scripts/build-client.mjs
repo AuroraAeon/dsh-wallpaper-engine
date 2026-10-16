@@ -470,8 +470,12 @@ const INLINE_MODULES = [
       'const glassValue = (surface, param, profileValue, globalValue) =>'],
   },
   {
-    // 排在 `glass.js` 之后、`effects.js` 之前：它只被 effects 的应用层调用（函数声明会提升，
-    // 但依赖方向应读得出来 —— 与 we-base / section-head 那两条同一条理由）。
+    file: 'src/glass-surfaces.js',
+    why: '统一表面策略、安全载体、动态几何与可撤销生命周期',
+    markers: ['function weResolveSurface(', 'function syncGlassSurfaces(', 'function disposeGlassSurfaces('],
+  },
+  {
+    // 运行时表面管理先决定哪些额外目标可安全使用本地载体。
     file: 'src/glass-extra.js',
     why: '「额外补雾化的选择器」（#200）：把用户点名的选择器编译成 ::before 载体规则，写进本通道自己的 <style>',
     markers: ['const EXTRA_GLASS_TAG_ID = ', 'function weExtraGlassCss(',

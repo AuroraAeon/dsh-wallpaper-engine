@@ -399,7 +399,7 @@ function main() {
     // 壁纸激活时已被映射成玻璃配方（#80），近不透明底板再读它就会自我稀释 —— 编辑器 /
     // 终端的固定语法配色要求这块面保持不透明，故改读 --we-panel-color。
     const contentColor = 'var(--we-content-surface-color, var(--we-panel-color, #1e1f26))';
-    const fbContentRules = fbRules.filter((r) => r.header.includes('.cm-editor') || r.header.includes('.xterm'));
+    const fbContentRules = fbRules.filter((r) => r.header.includes('[data-we-surface-runtime="content"]'));
     const contentReuse = fbContentRules.length > 0
       && fbContentRules.every((r) => r.body.includes(contentToken) && r.body.includes(contentColor));
     const noneRules = fbRules.filter((r) => /(^|[^-])backdrop-filter:\s*none/.test(r.body)
@@ -420,7 +420,7 @@ function main() {
       const all = fbRules.filter((r) => r.header.includes(needle));
       return { needle, total: all.length, ungated: all.filter((r) => !r.header.includes(gate)) };
     };
-    const sidebarFamily = gatedFamily('_panel', '[data-we-sidebar-glass]');
+    const sidebarFamily = gatedFamily('[data-we-surface-runtime="right-sidebar"]', '[data-we-sidebar-glass]');
     const settingsFamily = gatedFamily('settings.section', '[data-we-glass-window]');
     const dialogFamily = gatedFamily('[role="dialog"]', '[data-we-glass-window]');
     const familyLine = (f) => f.needle + '=' + f.total
