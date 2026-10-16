@@ -12,6 +12,14 @@ A DSH bundle that turns your **Wallpaper Engine** wallpapers into the **backgrou
 
 > Wallpaper + scrim + iOS liquid glass rendered behind the DSH GUI.
 
+## Optional dsh-pet Integration
+
+This branch adds an optional integration with [dsh-pet](https://github.com/PC2005-cloud/dsh-pet): sidebar pulling, jumping to grab the mascot, native-physics knockback, and a hiss effect synchronized with the actual video. The complete [pet-link subpackage](packages/pet-link/README.md) contains its runtime, explicit installer, required assets, and regression tests.
+
+**No hard dependency on dsh-pet and no automatic installation.** Without an eligible pet, the wallpaper mascot keeps its original behavior. **`Ctrl+Shift+D`** opens the draggable maintenance panel with four independent parameter pages, fixed bubble tracks, resets, and JSON export. Inspection remains available without a pet; test playback is disabled.
+
+The first-time installer explicitly patches a strictly matched `dsh-pet@0.3.6` build after backup and validation. Review the [installation and hot-plug boundaries](packages/pet-link/README.md) before trying it. The default drawer remains unchanged; pet interaction uses the official-sidebar mode. This is a cross-project review implementation, not an official dsh-pet control API.
+
 ## Contents
 
 - [What it does](#what-it-does) · [Prerequisites for updating](#prerequisites-for-updating) · [Which wallpaper types are supported?](#which-wallpaper-types-are-supported) · [How it works](#how-it-works)

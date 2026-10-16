@@ -355,7 +355,11 @@ async function main() {
     // `* text=auto eol=lf` 契约此前**零判据**，实害已发生过一次整轮改动被 CRLF 污染；硬档依据 =
     // 后果是"`test/**` 里按行锚定的字面替换负对照假红、整条 verify 链在 Windows 上短路"，同 ⑧ 的
     // 发布面口径 —— 它坏的时候没有任何一条别的判据会红）。
-    const CHAIN_FLOOR = { verify: 73, docs: 6, smoke: 6, all: 86 };
+    //  再：verify 73→85 / all 86→98 —— 新增十二组可选桌宠联动离线回归（PR #5；`verify-pet-package` /
+    // `-hotplug-host` / `-hotplug-client` / `-rope-entry` / `-tuner` / `-bubble-timing` / `-mascot-motion` /
+    // `-egg1-motion` / `-egg1-rebound` / `-sidebar-rebound` / `-egg2-motion` / `-follow`，见 run-guards.mjs
+    // 的 VERIFY_STEPS 清单）。合并时按实测重取：原 PR 基于 P-F 批 1c 之前的树，写的是 84/97。
+    const CHAIN_FLOOR = { verify: 85, docs: 6, smoke: 6, all: 98 };
     /** 地板表与 GROUPS 的对齐体检：键名必须与**组名**逐一对齐（纯函数 ⇒ 负对照可直接喂）。 */
     const floorGaps = (groups, floors) => groups.map(([, g]) => g).filter((g) => !Number.isInteger(floors[g]));
     const problems = floorGaps(GROUPS, CHAIN_FLOOR).map((g) => '地板表缺组 ' + g

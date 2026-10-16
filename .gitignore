@@ -63,3 +63,7 @@ packages/*/lib/client.*.js
 
 # IDE 本地配置（.vscode/settings.json 等本机个性化设置，不入库；也未被 package.json files 收录）
 /.vscode/
+/.artifacts/
+/.migrate-pet-link.mjs
+/.pet-link-integration.patch
+*.rej

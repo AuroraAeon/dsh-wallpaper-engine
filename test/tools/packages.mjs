@@ -46,13 +46,12 @@ import { fileURLToPath } from 'node:url';
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 /**
- * 地板（实测值，`floor/*` 违规低于它就红）：主包 + **6 个**独立子包（P-F 组件行统一后三格组件也出户了）
- * ⇒ `packages` 数组 6 项；浏览器半边产物 = 主包 `lib/client.js` + `packages/fx` + `packages/parallax`
- * + `packages/fonts`（P-C 第一刀起）= **4**；主 patch `insert` 行 = 7（4 主包行 + 3 子包行）。
+ * 地板取当前实测值：主包 + 7 个独立子包，主 patch 共 8 行。
+ * 浏览器半边仍为主包、fx、parallax 和 fonts，共 4 个；pet-link 源码由主包构建内联。
  * ⚠️ `clientArtifacts` 与 `test/verify-client-sync.mjs` 的产物面地板**共用这一个常量**（那边 import 它）
  * ⇒ 抬地板是**一处改动**，两边的正/负对照自动同批跟着走（原先两处各写一个数字、必须手动同批抬的隐患已消）。
  */
-export const FLOORS = { packages: 6, clientArtifacts: 4, rows: 7 };
+export const FLOORS = { packages: 7, clientArtifacts: 4, rows: 8 };
 
 // ── 路径小工具（模型一律根相对 POSIX）─────────────────────────────────────────
 
