@@ -3,6 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { registerPetLinkRoutes } from '../packages/pet-link/lib/routes/pet-link.js';
 
+mkdirSync(resolve('.artifacts'), { recursive: true });
 const home = mkdtempSync(resolve('.artifacts/hotplug-host-'));
 process.env.DSH_HOME = home;
 process.env.DSH_PROFILE_DIR = join(home, 'profiles/desktop');

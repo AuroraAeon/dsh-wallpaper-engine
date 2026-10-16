@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, mkdirSync, mkdtempSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 const root = new URL('../', import.meta.url);
 const pkg = JSON.parse(readFileSync(new URL('packages/pet-link/package.json', root), 'utf8'));
 assert.equal(pkg.name, 'dsh-plugin-wallpaper-engine-pet-link');
@@ -27,3 +30,14 @@ const native = new Function('drawer', side.slice(0, sideEnd) + ';ropeDrawerContr
 assert.deepEqual(native, [true, true, true], '无桌宠时必须保留上游抽屉回退');
 assert.deepEqual(drawerCalls, ['open', 'close', 'toggle']);
 console.log('PASS 完整子包可独立加载、无dsh-pet硬依赖、禁用回退及幂等卸载');
+
+const cache = new URL('.test-cache/', root);
+mkdirSync(cache, { recursive: true });
+const cleanCwd = mkdtempSync(fileURLToPath(new URL('pet-clean-', cache)));
+assert.equal(existsSync(join(cleanCwd, '.artifacts')), false, '新目录不得预建产物目录');
+const hostTest = spawnSync(process.execPath, [fileURLToPath(new URL('test/verify-pet-hotplug-host.mjs', root))], {
+  cwd: cleanCwd, stdio: 'inherit',
+});
+assert.ifError(hostTest.error);
+assert.equal(hostTest.status, 0, '热插拔宿主测试必须在无产物目录的干净环境独立通过');
+console.log('PASS 干净工作目录无需预存.artifacts即可运行宿主测试');
