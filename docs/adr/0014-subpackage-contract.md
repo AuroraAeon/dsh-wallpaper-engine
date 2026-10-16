@@ -255,6 +255,7 @@
 | S3.9 / S9.1 | `packages/**` **已收口**（2026-10-15：改引本 ADR 的 `S*` 或 `ADR-0013 D*`；没有对应条款的**删引用保原意**）。**剩余引用面**（复算：`git grep -nE 'docs/wip\|BUNDLE-SPLIT' -- lib src scripts test cordis.patch.yml`；活 md 用同一模式加 `-- docs` —— 只数条数、不抄行号，行号必漂）。全仓惯例形的 `mNNNNN` 消息引用与阶段号（`P2-7A` 等）**不计入**本条款；2026-10-15 用户裁决 = 阶段号**暂保持现状**，不逐个改 | 剩余面按同一规则改引 `S*`（或删引用保原意）；`docs/wip/` 归档前必须完成 | 不阻塞，但 wip 归档前必须改 |
 | S3.4 | ✅ **已收口（2026-10-16，P-C 第一刀）**：字体包不再是 host-only —— 它现在有浏览器半边（`src/client.js` + 外观页签字体节 + 字体集编辑器，产物 `lib/client.fonts.js`）⇒ 声明 `dsh.client` 且 `exports['./client']` 两向齐。host-only **形态本身仍然合法**（本条只描述现状；"不许用空 `./client` 假装统一"的口径不变） | —— | —— |
 | S8.2 | 发布形态**尚未执行过**（三包都在开发期形态）；执行者 = 发布者的人工步骤（本仓不设发布脚本） | 人工执行 + 离线门只钉**形态自洽**（`verify-package-publish.mjs` ⑨：全有或全无，混态判红） | 已定（人工门） |
+| S3.4 / S10.2 | ⚠️ **第三种形态已入库**（2026-10-16，PR #5 合并）：第七个子包 `packages/pet-link` 的浏览器半边源码住包内 `packages/pet-link/src/**`，但**没有**包内配方 `client.build.json`、没有包内产物、没有 `exports['./client']` + `dsh.client` —— 三个文件由**主包** `scripts/build-client.mjs` 的 `INLINE_MODULES` 内联进 `lib/client.js`（≈195 KB）。它与 `test/verify-module-layout.mjs` 规则③ 的既有口径（`INLINE_MODULES` 里非 `src/` 的项只许 `lib/settings-schema.js`，见 `SHARED_KERNEL_WHITELIST`）**相冲突**，该守卫在**软档**出声；另有一条"每条相对路径都指向存在的文件"的软档红（浏览器回归脚本引用运行时才创建的 `../.artifacts/**`）。偏差已写进 [`docs/SUBPACKAGE-GRAPH.md`](../SUBPACKAGE-GRAPH.md) §三 与 §六 | 二选一：① 收口成一般形态（包内 `client.build.json` + 产物 + 声明面，走 S10.2）；② 正式把规则③ 的判据面扩到 `packages/<pkg>/src/**`，并同步 S10.2 与 SUBPACKAGE-GRAPH §三/§五/§六 | 不阻塞（硬档全绿；`verify:docs` 是 `continue-on-error`），但口径必须收口 |
 
 ## Consequences
 
@@ -274,6 +275,10 @@
 
 ## 复核触发线
 
-出现下面任一情况时回来改本文（而不是另开 ADR）：① 新增第三种包形态（既非 host-only 也非 host+client）；
+出现下面任一情况时回来改本文（而不是另开 ADR）：① 新增第三种包形态（既非 host-only 也非 host+client）
+—— ⚠️ **已触发（2026-10-16，PR #5 合并）**：`packages/pet-link` 的浏览器半边源码在包内、构建归主包
+（`INLINE_MODULES` 内联进 `lib/client.js`），既非 host-only 也非 host+client；本条的处置二选一见 §现状偏差
+的 `S3.4 / S10.2` 行（收口成一般形态 **或** 正式扩规则③ 的判据面）；口径定案前该形态只此一例，且已在
+`docs/SUBPACKAGE-GRAPH.md` §三/§六 标注为**已知偏差**（不是回归）；
 ② 跨包通道不再是 Cordis Service；③ `packages/<pkg>` 不再是同仓目录（例如改多仓）；
 ④ 有判据开始断言 markdown（D3 的边界被打破）。

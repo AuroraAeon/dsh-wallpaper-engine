@@ -88,6 +88,8 @@ const ZERO_COVERAGE_WHY = {
   [M('packages', 'parallax', 'lib', 'index.js')]: '同上（3D 子包宿主入口，P-A 拆包）：覆盖来源与 fx 逐条相同 —— verify-subpackage-boot 的双射对账 + verify-subpackage-toggle-roundtrip 的逐行装载与拆卸',
   [M('packages', 'fx', 'src', 'client.js')]: '子包浏览器半边入口（P-A 拆包）：注入键契约由 verify-subpackage-client-half 隔产物断言，宿主键集与包间纯度由 verify-subpackage-purity 动态扫 packages/*/src 覆盖，产物侧由 verify-scene-live / verify-client 在同一 vm 里真求值，本工具只认字面量路径 ⇒ 按口径算零覆盖',
   [M('packages', 'parallax', 'src', 'client.js')]: '同上（3D 子包浏览器半边入口，P-A 拆包）：覆盖来源与 fx 逐条相同 —— verify-subpackage-client-half 的隔产物断言 + verify-subpackage-purity 的动态扫面 + verify-scene-live / verify-client 的真求值',
+  // ── PR #5（可选桌宠联动）：源码登记在 scripts/build-client.mjs 的 INLINE_MODULES，由主包构建内联 ──
+  [M('packages', 'pet-link', 'src', 'i18n-copy-pet-link.js')]: '可选桌宠联动的词条表（PR #5）：由主包构建内联进 lib/client.js，词条面由 verify-i18n 隔产物对账整族词表（每个 `weT()` 原文都要有词条）、由 verify-subpackage-purity 动态扫 packages/*/src，本工具只认字面量路径 ⇒ 按口径算零覆盖',
 };
 
 /**
@@ -115,6 +117,8 @@ const NO_MODULE_TARGET_WHY = {
   'verify-undefined-refs.mjs': '管的是**未定义引用**（"用了但没 import/声明"的非全局内置名），扫 lib/src/scripts 全树按 AST 判，目标不是某个模块',
   // D-G1 收口（2026-10-16）：行尾契约是**字节级**的，判的是"整棵入库树"，不指向某个模块。
   'verify-eol.mjs': '管的是**行尾契约**（`.gitattributes` 的 `* text=auto eol=lf`）：扫 `git ls-files` 的全部入库文件，判"文本文件字节里零 `0x0D`"，目标是"整棵入库树必须是 LF"，不针对某个模块',
+  // PR #5：可选桌宠联动离线回归的**聚合入口**（逐个 spawn 上面那批 `verify-pet-*.mjs`，自身不读源文件）。
+  'verify-pet-link.mjs': '管的是**可选桌宠联动离线回归的整组**（聚合入口：按清单 spawn `test/verify-pet-*.mjs`，自身不直读任何源模块）；组内每条各自在链上，入口只是手动/包内便利入口',
 };
 
 const map = buildMap(ROOT);
