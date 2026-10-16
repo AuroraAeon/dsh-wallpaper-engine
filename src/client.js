@@ -4709,14 +4709,14 @@ function RopeDock() {
     const dx = e.clientX - d.startX;
     const dy = e.clientY - d.startY;
     if (!d.moved && dx * dx + dy * dy < 9) return; // dead zone: treat jitter as a click
-    d.moved = true;
+    if (!d.moved) { d.moved = true; if (sidebarRightMode() === "official") { try { petLink.performer.onGrab(); } catch { /* 不影响原生手势。 */ } } }
     d.lastX = clampX(d.baseX + dx);
     d.lastY = clampY(d.baseY + dy);
     const el = ropeRef.current;
     if (el) { el.style.left = d.lastX + "px"; el.style.top = d.lastY + "px"; }
     // Follow-hand preview: pull down opens (when closed), push up closes (when open).
     // 官方态没有抽屉可预览（面板在右侧栏里）—— 只跟手移动吉祥物，不出抽屉影子。
-    if (sidebarRightMode() === "official") { clearPreview(); return; }
+    if (sidebarRightMode() === "official") { clearPreview(); try { petLink.performer.onPull(Math.abs(dy) / ROPE_OPEN_THRESHOLD); } catch { /* 不影响拖动。 */ } return; }
     if (!open && dy > ROPE_PREVIEW_START) {
       applyPreview((dy - ROPE_PREVIEW_START) / (ROPE_OPEN_THRESHOLD - ROPE_PREVIEW_START));
     } else if (open && dy < -ROPE_PREVIEW_START) {
@@ -4733,14 +4733,19 @@ function RopeDock() {
     const el = ropeRef.current;
     dragRef.current = null;
     if (!el) return;
+    if (d) { try { el.releasePointerCapture(d.id); } catch { /* 捕获可能已归还。 */ } }
     el.classList.remove("we-rope--dragging");
     el.classList.add("we-rope--settle");
     if (d) {
       const dy = clientY - d.startY;
       // 点击 = 开/关切换；下拉 ≥ 阈值 = 开；上推 ≥ 阈值 = 关（官方态收起同样由此统一）。
-      if (!canceled && !d.moved) wallSidebarToggle();
-      else if (!canceled && dy >= ROPE_OPEN_THRESHOLD) wallSidebarOpen();
-      else if (!canceled && dy <= -ROPE_OPEN_THRESHOLD) wallSidebarClose();
+      if (sidebarRightMode() !== "official") {
+        if (!canceled && !d.moved) wallSidebarToggle();
+      } else if (!canceled && !d.moved) {
+        try { petLink.mascot.tap(); } catch { wallSidebarToggle(); }
+      }
+      if (!canceled && d.moved && dy >= ROPE_OPEN_THRESHOLD) wallSidebarOpen();
+      else if (!canceled && d.moved && dy <= -ROPE_OPEN_THRESHOLD) wallSidebarClose();
     }
     clearPreview(); // committed class transitions continue smoothly from the inline value
     // Snap to the TOP edge; Y resets to the top inset while X stays wherever
@@ -4756,7 +4761,7 @@ function RopeDock() {
     try { localStorage.setItem(ROPE_POS_KEY, JSON.stringify(next)); } catch { /* ignore */ }
   };
   const onRopeKeyDown = (e) => {
-    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); wallSidebarToggle(); }
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (sidebarRightMode() !== "official") wallSidebarToggle(); else { try { petLink.mascot.tap(); } catch { wallSidebarToggle(); } } }
   };
 
   // ESC anywhere closes the panel — unless the picker modal is open. The
@@ -4773,6 +4778,8 @@ function RopeDock() {
     document.addEventListener("keydown", onKey, true);
     return () => document.removeEventListener("keydown", onKey, true);
   }, []);
+
+  React.useEffect(() => petLink.mascot.registerGesture(() => { const d = dragRef.current; if (d) finishDrag(d.startX, d.startY, true); }), []);
 
   // Keep the rope inside the viewport when the window shrinks/grows.
   React.useEffect(() => {
@@ -4816,6 +4823,132 @@ function RopeDock() {
     };
     return () => { ropeDrawerControl = null; };
   }, [hidden]);
+
+  const petOfficialMode = sidebarRightMode() === "official";
+  // 桌宠联动编排用的侧栏控制面（pet-link 子包）。旧版抽屉已删除，所以只有官方态。
+  // 官方侧栏是**宿主自己的** CSS Grid 第三列，列宽由 React 内联样式写，且宿主自带
+  // `transition: grid-template-columns var(--ds-transition-duration-slow)`。
+  // 我们**绝不改写它的 grid-template-columns**（实测那样会覆盖宿主三列定义、
+  // 把左列冻结成错误宽度，面板会跑到屏幕左侧）；只把它的过渡时长临时调长，
+  // 让宿主**自己的**展开动画变慢 —— 这就是"缓慢拉出"，且不碰它的布局。
+  const officialPull = {
+    saved: null,
+    savedOverflow: null,
+    /** 调长宿主过渡并触发展开。 */
+    begin(ms, expanded = true) {
+      const frame = typeof document !== "undefined" && document.querySelector
+        ? document.querySelector(".dshDesktopFrame") : null;
+      if (!frame) { if (expanded) wallSidebarOpen(); else wallSidebarClose(); return 0; }
+      if (officialPull.saved === null) {
+        officialPull.saved = frame.style.getPropertyValue("--ds-transition-duration-slow") || "";
+      }
+      // 面板内容**固定渲染在最终位置**（x=面板最终左边缘），只把列宽变慢会出现
+      // "容器慢慢开、内容早就到位"的错位（用户："侧边栏其他部分会先动"）。
+      // 拉出期间把表面裁剪到列边界，内容就随边缘一起露出 —— 这才是"贴着边缘拉出来"。
+      // 只动 overflow（用完还原），不碰宿主的任何尺寸/网格定义。
+      const surf = typeof document !== "undefined" && document.querySelector
+        ? document.querySelector(".dshDesktopRightbarSurface") : null;
+      if (surf && officialPull.savedOverflow === null) {
+        officialPull.savedOverflow = surf.style.getPropertyValue("overflow") || "";
+        try { surf.style.setProperty("overflow", "hidden"); } catch { /* ignore */ }
+      }
+      frame.style.setProperty("--ds-transition-duration-slow", ms + "ms");
+      if (expanded) wallSidebarOpen(); else wallSidebarClose();
+      return ms;
+    },
+    /** 动画结束后把时长与裁剪还回去（宿主后续的开合恢复原样）。 */
+    restore() {
+      const frame = typeof document !== "undefined" && document.querySelector
+        ? document.querySelector(".dshDesktopFrame") : null;
+      if (frame && officialPull.saved !== null) {
+        if (officialPull.saved) frame.style.setProperty("--ds-transition-duration-slow", officialPull.saved);
+        else frame.style.removeProperty("--ds-transition-duration-slow");
+      }
+      officialPull.saved = null;
+      const surf = typeof document !== "undefined" && document.querySelector
+        ? document.querySelector(".dshDesktopRightbarSurface") : null;
+      if (surf && officialPull.savedOverflow !== null) {
+        try {
+          if (officialPull.savedOverflow) surf.style.setProperty("overflow", officialPull.savedOverflow);
+          else surf.style.removeProperty("overflow");
+        } catch { /* ignore */ }
+      }
+      officialPull.savedOverflow = null;
+    },
+    /** 只接管本次新建的原生过渡；视频进度推进它，真实 ended 才 finish。 */
+    syncOpen() {
+      if (officialPull.syncOwner) officialPull.syncOwner.cancel();
+      const frame = typeof document !== "undefined" && document.querySelector
+        ? document.querySelector(".dshDesktopFrame") : null;
+      const before = new Set(frame && typeof frame.getAnimations === 'function' ? frame.getAnimations() : []);
+      let animation = null;
+      const current = () => officialPull.syncOwner === session;
+      const capture = () => {
+        if (!animation && frame && typeof frame.getAnimations === 'function') {
+          animation = frame.getAnimations().find(item => !before.has(item)
+            && item.transitionProperty === 'grid-template-columns') || null;
+          if (animation) {
+            animation.pause();
+            animation.effect.updateTiming({ easing: 'linear' });
+          }
+        }
+        return animation;
+      };
+      const release = (complete) => {
+        if (!current()) return;
+        officialPull.syncOwner = null;
+        const owned = capture();
+        if (owned) { if (complete) owned.finish(); else owned.cancel(); }
+        officialPull.restore();
+      };
+      const session = {
+        seek(progress) {
+          if (!current() || !Number.isFinite(progress)) return;
+          const owned = capture();
+          if (!owned) return;
+          const duration = Number(owned.effect.getComputedTiming().duration);
+          if (Number.isFinite(duration)) owned.currentTime = duration * Math.max(0, Math.min(.999, progress));
+        },
+        finish() { release(true); },
+        cancel() { release(false); },
+      };
+      officialPull.syncOwner = session;
+      officialPull.begin(1000);
+      return session;
+    },
+    /** 侧边栏**左边缘**的实时 x（宠物拉着它一起往左走）。 */
+    edgeX() {
+      const surf = typeof document !== "undefined" && document.querySelector
+        ? document.querySelector(".dshDesktopRightbarSurface") : null;
+      if (!surf) return null;
+      const r = surf.getBoundingClientRect();
+      return Number.isFinite(r.left) ? r.left : null;
+    },
+  };
+  React.useEffect(() => {
+    try {
+      petLink.mascot.registerSidebar({
+        mode: "official",
+        open: () => wallSidebarOpen(),
+        close: () => wallSidebarClose(),
+        isOpen: () => sidebarRightOursActive(),
+        // 默认展开时长按用户导出的参数；提前量由 pet-link 单独计入。
+        pullMs: 8125,
+        // ⚠️ `ms` 是**透传**的（不在这里写死）：调参面板可以把 `slowOpenMs` 改掉，
+        //    那时侧栏的 CSS 过渡必须跟着变，否则「宠物拉完了、面板还在动」。
+        //    面板没改过时，pet-link.js 传下来的就是 `pullMs` 本身。
+        beginPull: (ms) => { officialPull.begin(Number.isFinite(ms) ? ms : 8125); },
+        rebound: (expanded, ms) => { officialPull.begin(Number.isFinite(ms) ? ms : 240, expanded); },
+        syncOpen: () => officialPull.syncOpen(),
+        edgeX: () => officialPull.edgeX(),
+        commit: () => { officialPull.restore(); },
+      });
+    } catch { /* 注册失败不影响面板本身 */ }
+    return () => {
+      try { petLink.mascot.registerSidebar(null); } catch { /* ignore */ }
+      try { if (officialPull.syncOwner) officialPull.syncOwner.cancel(); officialPull.restore(); } catch { /* 还原失败不影响布局 */ }
+    };
+  }, [hidden, petOfficialMode]);
 
   // Hidden: render nothing (rope + drawer), but keep the one-time update
   // notice — it is independent of the mascot and must still surface. The
@@ -5489,6 +5622,7 @@ function apply(ctx) {
       }
       // 样式标签也按 fiber 生命周期注入 (dispose 会移除, 见下方 cleanup)
       ensurePluginCss();
+      petLink.warmup();
       // Battery optimization (省电暂停): navigator.getBattery is deprecated but
       // still functional in Chromium; feature-detected so other engines just
       // no-op. 'chargingchange' covers plug/unplug; onOcclusionChange re-applies
@@ -5514,6 +5648,7 @@ function apply(ctx) {
       }
       return () => {
         disposed = true;
+        petLink.dispose();
         unsub();
         unsubEffects();
         weSetLayerAttacher(null);

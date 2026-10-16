@@ -104,6 +104,11 @@ const INLINE_MODULES = [
     markers: ['const WE_I18N_EN_GLASS = {', '"思考块液态玻璃": "Thinking-block liquid glass",'],
   },
   {
+    file: 'packages/pet-link/src/i18n-copy-pet-link.js',
+    why: '桌宠联动子包英文词表',
+    markers: ['const WE_I18N_EN_PET_LINK = {'],
+  },
+  {
     file: 'src/i18n-copy.js',
     why: '英文词表的**组装点** + 宿主显示表（域模块在前，这里只展开组装；两张表的键集各由 verify-i18n 双向对账）',
     markers: ['const WE_I18N_EN = {', 'const WE_I18N_HOST_EN = {'],
@@ -477,6 +482,16 @@ const INLINE_MODULES = [
     why: '效果应用层（设置 → DOM；契约见文件头，见 P1-7 后半）—— 玻璃那一段已抽到 src/glass.js',
     markers: ['let lastScrimCss = "";', 'function applyEffects(', 'applyGlass(selection, s);',
       'function clearEffects()', 'function resolveWallpaperFadeBg()'],
+  },
+  {
+    file: 'packages/pet-link/src/pet-link-tuner.js',
+    why: '可选桌宠联动维护面板，由pet-link子包持有源码',
+    markers: ['const PET_TUNER_FIELDS = [', 'function petTunerBuild(', 'const petLinkTuner = {'],
+  },
+  {
+    file: 'packages/pet-link/src/pet-link.js',
+    why: '可选桌宠联动排播；无资格时不接管吉祥物',
+    markers: ['const PET_BASE = ', 'const PET_ANIM = {', 'function petLinkProbe(', 'const petLink = {'],
   },
   {
     file: 'src/client-media-frame.js',

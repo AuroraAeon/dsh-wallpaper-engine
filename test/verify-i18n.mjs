@@ -33,7 +33,7 @@ import { scanCjkStrings, needsTranslation } from './tools/i18n-scan.mjs';
 import { stripExportBlocks } from './tools/js-text.mjs';
 // 词表族（组装点 + 7 个域模块）的**按构建顺序**读法：单一真源是 scripts/build-client.mjs 的
 // INLINE_MODULES（见 test/tools/src-scope.mjs）。词表已按域拆到同族模块，键序由内联顺序决定。
-import { scopeFiles } from './tools/src-scope.mjs';
+import { parseInlineModules } from './tools/src-scope.mjs';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 
@@ -64,6 +64,10 @@ const DATA_BLOCKS = [
 
 /** 逐条精确值豁免（形如"是数据不是文案"的个别串）。每条都必须写明理由，且必须还在源码里。 */
 const VALUE_ALLOW = [
+  ...[
+    ...JSON.parse(readFileSync(join(ROOT, 'packages/pet-link/src/pet-link-actions.json'), 'utf8')).animations.events.DSHWE,
+    ...readdirSync(join(ROOT, 'packages/pet-link/assets/memes')).filter(name => name.endsWith('.png')).map(name => name.slice(0, -4)),
+  ].map(value => ({ value, why: '桌宠资源池的实际动画名或配图键；必须与文件名一致，不能翻译。' })),
   {
     value: '设置',
     why: '**宿主的**标签候选（src/sidebar-right.js 的 settingsLabelCandidates）：' +
@@ -208,7 +212,8 @@ function componentsWithoutLocaleHook(sources) {
 const DICT_MODULE = 'src/i18n-copy.js';
 // 词表落在**一个族**里：组装点 `DICT_MODULE` + 各域模块 `src/i18n-copy-*.js`。族顺序 = 构建期内联
 // 顺序（INLINE_MODULES 单一真源）⇒ 扫描面、切片面、vm 装载面三处用同一份清单，不会各自漂移。
-const DICT_FAMILY = scopeFiles('src/i18n-copy');
+const DICT_FAMILY = parseInlineModules().map(({ file }) => file)
+  .filter((file) => /(?:^|\/)i18n-copy(?:-[^/]+)?\.js$/.test(file));
 const DICT_MODULES = new Set(DICT_FAMILY);
 // A3（多包，BUNDLE-SPLIT §7.1）之后产品源码分居两处：主包 src/** 与 lib/**，子包 packages/<pkg>/{src,lib}/**。
 // 扫描面必须同源扩到 packages/**：否则迁出去的 weT(…) 调用点（如 packages/fx/src/ext-fx.js）
@@ -330,7 +335,7 @@ console.log('② 词表双向对账（WE_I18N_EN ⇄ 代码里的 weT 字面量�
   const composerEnBlock = enBlockAt < 0 || enBlockEnd < 0 ? '' : copySrc.slice(enBlockAt, enBlockEnd + 3);
   const spreadOrder = [...composerEnBlock.matchAll(/\.\.\.(WE_I18N_EN_\w+)/g)].map((m) => m[1]);
   const wantOrder = DICT_FAMILY.filter((rel) => rel !== DICT_MODULE)
-    .map((rel) => 'WE_I18N_EN_' + rel.replace(/^src\/i18n-copy-/, '').replace(/\.js$/, '').toUpperCase());
+    .map((rel) => readFileSync(join(ROOT, rel), 'utf8').match(/^const (WE_I18N_EN_\w+) = \{$/m)?.[1]);
   check('组装点只按族顺序展开、自身不含字面量键（键只住在域模块里）',
     spreadOrder.length > 0 && spreadOrder.length === wantOrder.length
     && spreadOrder.every((name, i) => name === wantOrder[i])
