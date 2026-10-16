@@ -3,7 +3,9 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, cpSync, existsSync
 import { fileURLToPath } from 'node:url';
 import { join, resolve, relative } from 'node:path';
 import { createHash } from 'node:crypto';
+import { runInNewContext } from 'node:vm';
 import { NAMES, MEMES } from '../tools/inject-assets.mjs';
+import { checkPetPrepared } from '../lib/prepared.js';
 
 const module = await import('../tools/install-bridge.mjs').catch(error => {
   if (error.code === 'ERR_MODULE_NOT_FOUND' && error.message.includes('install-bridge.mjs')) return {};
@@ -45,7 +47,7 @@ console.log('PASS 全部资源缺失时预检拒绝，无部分注入');
 f = fixture();
 writeFileSync(join(f.packageRoot, 'lib/client.js'), '用户改过的未知构建');
 const unknown = snapshot(f.root);
-assert.throws(() => installBridge(f), /指纹/);
+assert.throws(() => installBridge(f), /指纹|锚点|结构/);
 assert.deepEqual(snapshot(f.root), unknown);
 console.log('PASS 未知指纹保持所有文件不动');
 f = fixture();
@@ -115,7 +117,8 @@ assert.equal(installed.status, 'installed');
 assert.ok(existsSync(join(installed.backup, 'manifest.json')));
 const prepared = JSON.parse(readFileSync(join(f.dshHome, 'dsh-pet/pet-link-install.json')));
 assert.equal(prepared.protocol, 1);
-assert.equal(prepared.version, '0.3.6');
+const upstreamVersion = JSON.parse(readFileSync(join(original, 'package.json'), 'utf8')).version;
+assert.equal(prepared.version, upstreamVersion);
 assert.equal(Object.keys(prepared.files).length, NAMES.length + Object.keys(MEMES).length + 1);
 for (const [path, sha] of Object.entries(prepared.files)) assert.equal(hash(readFileSync(join(f.dshHome, 'dsh-pet', path))), sha);
 const cfg = JSON.parse(readFileSync(join(f.dshHome, 'dsh-pet/main-config.jsonc')));
@@ -125,4 +128,94 @@ const once = snapshot(f.root);
 assert.equal(installBridge(f).status, 'already-installed');
 assert.deepEqual(snapshot(f.root), once, '重复安装逐字节幂等且不累积备份');
 console.log('PASS 原版完整安装、配置字段保留、写后指纹与重复安装');
+
+const hostSource = readFileSync(join(f.packageRoot, 'lib/index.js'), 'utf8');
+const helperStart = hostSource.indexOf('/** 扫描 animation-ext/');
+const helperEnd = hostSource.indexOf('/** animationWeights 段校验', helperStart);
+assert.ok(helperStart >= 0 && helperEnd > helperStart, '实际宿主包含扩展与动画校验函数');
+const warnings = [];
+const applyExtensions = runInNewContext(hostSource.slice(helperStart, helperEnd) + '\napplyAnimExtensions', {
+  readdirSync, join, readJsonc: path => JSON.parse(readFileSync(path, 'utf8')),
+  warnOnce: (...args) => { warnings.push(args); },
+});
+const nativeAnimations = { idle: ['native'], turn: [], drag: [], clicks: [],
+  moves: { default: {}, actions: [] }, categories: [], events: { balance: ['native'] } };
+const mergedPets = { main: { animations: nativeAnimations }, other: { animations: nativeAnimations } };
+applyExtensions(mergedPets, join(f.dshHome, 'dsh-pet/animation-ext'));
+assert.ok(NAMES.every(name => mergedPets.main.animations.events.DSHWE.includes(name)), '九段动画进入目标池');
+assert.deepEqual(Array.from(mergedPets.main.animations.idle), ['native'], '保留原生动画');
+assert.equal(mergedPets.other.animations, nativeAnimations, '不得串改其他目标');
+assert.equal(nativeAnimations.events.DSHWE, undefined, '不得污染合并前配置');
+const mergedNames = Array.from(mergedPets.main.animations.events.DSHWE);
+applyExtensions(mergedPets, join(f.dshHome, 'dsh-pet/animation-ext'));
+assert.deepEqual(Array.from(mergedPets.main.animations.events.DSHWE), mergedNames, '重复加载不累积动作');
+assert.deepEqual(warnings, []);
+console.log('PASS 实际宿主扩展执行：九段动画追加、原动作保留、目标隔离和重复加载幂等');
 console.log(JSON.stringify({ preparedPackage: f.packageRoot, preparedHome: f.dshHome }));
+
+for (const version of ['0.3.6', '0.3.7', '0.3.10', '0.4.0', '1.0.0', '2.1.0+build.7']) {
+  f = fixture();
+  const packageFile = join(f.packageRoot, 'package.json');
+  const pkg = JSON.parse(readFileSync(packageFile, 'utf8'));
+  writeFileSync(packageFile, JSON.stringify({ ...pkg, version }));
+  const suffix = '\n// 上游非联动代码必须保留：' + version + '\n';
+  for (const file of ['lib/client.js', 'lib/index.js']) {
+    const path = join(f.packageRoot, file);
+    writeFileSync(path, readFileSync(path, 'utf8') + suffix);
+  }
+  const untouched = snapshot(f.root);
+  const preview = installBridge({ ...f, check: true });
+  assert.equal(preview.status, 'ready');
+  assert.deepEqual(snapshot(f.root), untouched, '兼容预检不得写入');
+  const installed = installBridge(f);
+  assert.equal(installed.manifest.version, version, '记录实际版本，而不是0.3.6');
+  const receipt = join(f.dshHome, 'dsh-pet/pet-link-install.json');
+  const profile = resolve(f.packageRoot, '../..');
+  for (const [file, key] of [['lib/client.js', 'clientHash'], ['lib/index.js', 'hostHash']]) {
+    const path = join(f.packageRoot, file);
+    const bytes = readFileSync(path);
+    assert.ok(bytes.toString().includes(suffix), '保留非联动代码：' + file);
+    assert.equal(hash(bytes), installed.manifest[key], '凭据记录本次真实摘要');
+    assert.equal(checkPetPrepared(f.dshHome, profile).available, true, '新版补丁取得资格');
+    writeFileSync(path, Buffer.concat([bytes, Buffer.from('\n// 安装后变化\n')]));
+    assert.equal(checkPetPrepared(f.dshHome, profile).available, false, '变化后立即撤销资格');
+    const changed = snapshot(f.root);
+    assert.throws(() => installBridge(f), /摘要|指纹|锚点|结构/);
+    assert.deepEqual(snapshot(f.root), changed, '损坏补丁不能静默重新签发凭据');
+    writeFileSync(path, bytes);
+  }
+  const once = snapshot(f.root);
+  assert.equal(installBridge(f).status, 'already-installed');
+  assert.deepEqual(snapshot(f.root), once, '动态构建重复安装不累积补丁或备份');
+  const savedReceipt = readFileSync(receipt);
+  const invalidReceipt = JSON.parse(savedReceipt);
+  invalidReceipt.clientHash = '0'.repeat(64);
+  writeFileSync(receipt, JSON.stringify(invalidReceipt));
+  assert.equal(checkPetPrepared(f.dshHome, profile).available, false, '不能只校验版本和资源');
+  writeFileSync(receipt, savedReceipt);
+  writeFileSync(packageFile, JSON.stringify({ ...pkg, version: '9.0.0' }));
+  assert.equal(checkPetPrepared(f.dshHome, profile).available, false, '升级后旧凭据失效');
+  assert.equal(installBridge(f).manifest.version, '9.0.0');
+  assert.equal(checkPetPrepared(f.dshHome, profile).available, true, '相同桥接结构可重新准备升级');
+}
+console.log('PASS >=0.3.6 稳定版本无上限、局部代码保留、实际凭据、动态幂等和升级失效');
+
+for (const version of ['0.3.5', '0.2.99', '0.3.6-rc.1', '1.0.0-beta.1', '0.03.6', '0.3', 'invalid', null]) {
+  f = fixture();
+  const packageFile = join(f.packageRoot, 'package.json');
+  writeFileSync(packageFile, JSON.stringify({ version }));
+  const untouched = snapshot(f.root);
+  assert.throws(() => installBridge(f), /版本/);
+  assert.deepEqual(snapshot(f.root), untouched, '无效版本不能写入');
+}
+for (const [file, from] of [['lib/client.js', 'const [anim, setAnim]'], ['lib/index.js', 'function flattenPetList(merged)']]) {
+  f = fixture();
+  const path = join(f.packageRoot, file);
+  const code = readFileSync(path, 'utf8');
+  assert.ok(code.includes(from));
+  writeFileSync(path, code.replace(from, from + '_incompatible'));
+  const untouched = snapshot(f.root);
+  assert.throws(() => installBridge(f), /锚点|结构|指纹/);
+  assert.deepEqual(snapshot(f.root), untouched, '不兼容结构必须在备份前拒绝');
+}
+console.log('PASS 低版本、预发行、非法版本和缺失锚点均拒绝且零写入');

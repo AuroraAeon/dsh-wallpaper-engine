@@ -1,9 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-
-const CLIENT_HASH = '7073c497cb9d81f28a7e303ef318b0fcb444b91ecb7682e4ccec69a2b3559c5a';
-const HOST_HASH = 'fab68075a40c844d996c168f3b3109e00bc6e1cd1b7a16e2dd6e1ed1e20ab903';
+import { isSupportedPetVersion } from './compatibility.js';
 export const PET_NAMES = Object.freeze([
   '通用-右侧螃蟹步-dshwe', '通用-左侧螃蟹步-dshwe',
   '侧边栏-蓄力准备往后拉-dshwe', '侧边栏-后拉接疲态结束-dshwe',
@@ -31,9 +29,11 @@ export function checkPetPrepared(home, profile) {
   try {
     const manifest = JSON.parse(readFileSync(join(data, 'pet-link-install.json'), 'utf8'));
     const version = JSON.parse(readFileSync(join(pkg, 'package.json'), 'utf8')).version;
-    if (manifest.protocol !== 1 || manifest.version !== '0.3.6' || version !== '0.3.6')
-      return { available: false, reason: '不兼容的桌宠安装协议或版本' };
-    if (fileHash(join(pkg, 'lib/client.js')) !== CLIENT_HASH || fileHash(join(pkg, 'lib/index.js')) !== HOST_HASH)
+    if (manifest.protocol !== 1 || !isSupportedPetVersion(version) || manifest.version !== version)
+      return { available: false, reason: '不兼容的桌宠安装协议或版本，请重新准备桥接' };
+    const validHash = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
+    if (!validHash(manifest.clientHash) || !validHash(manifest.hostHash)
+      || fileHash(join(pkg, 'lib/client.js')) !== manifest.clientHash || fileHash(join(pkg, 'lib/index.js')) !== manifest.hostHash)
       return { available: false, reason: '桌宠补丁指纹不匹配' };
     const required = [
       ...PET_NAMES.map(name => `main-animation/webm/${name}.webm`),

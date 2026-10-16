@@ -3,6 +3,7 @@ import { readFileSync, mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
+import { assertPetVersion, hasSealedPetPatch, sealPetPatch } from '../lib/compatibility.js';
 
 /**
  * dsh-pet 渲染半（`lib/client.js`）补丁：**独占锁**（动画 + 气泡 + 移动）+ 气泡时长可控/可回收。
@@ -40,14 +41,13 @@ import { homedir } from 'node:os';
  *  · **自动过期是安全兜底**：锁的释放依赖调用方（墙纸侧在 `finally` 里解锁），
  *    但"异常退出且没走到 finally"是可能的 —— 没有过期兜底，宠物会被**永久冻住**
  *    （所有随机行为、点击、拖拽全被闸掉），比"被插入"严重得多。
- *  · 指纹校验：只认已复算的官方构建；用户改过 / 版本不符一律拒绝写入。
+ *  · 版本只设 >=0.3.6 稳定版下限；首次准备逐一核对补丁锚点，结构不兼容拒绝写入。
+ *  · 已知旧补丁按精确指纹迁移；新构建保留局部改动外的代码，并记录实际完整性摘要。
  *  · 写前备份、写后校验；**只动这一个文件**，不碰 dsh-pet 的其它任何文件。
  *  · 幂等：已打补丁（指纹相符）直接返回，不重复写。
  */
 
-/** 支持的 dsh-pet 版本（补丁针对其 `lib/client.js` 复算）。 */
-const SUPPORTED_VERSION = '0.3.6';
-/** 官方原版 `lib/client.js` 的 sha256（未打过本补丁）。**导出**供判据用（单一真源）。 */
+/** 官方 0.3.6 原版 `lib/client.js` 的 sha256；保留用于旧补丁的精确迁移。 */
 export const ORIGINAL = '34fd03899054b1f742f241b7d9b3b20d4ca1fb06d2ce1a4a66cbec9a406b96ec';
 
 const sha = (data) => createHash('sha256').update(data).digest('hex');
@@ -656,17 +656,16 @@ export function preparePetClient({ packageRoot } = {}) {
   const manifestPath = join(root, 'package.json');
   if (!existsSync(manifestPath)) throw new Error('找不到 dsh-pet 包：' + root);
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
-  if (manifest.version !== SUPPORTED_VERSION) {
-    throw new Error('不支持该版本：' + manifest.version + '；需要先复算上游补丁（目标 ' + SUPPORTED_VERSION + '）。');
-  }
+  assertPetVersion(manifest.version);
   const target = join(root, 'lib', 'client.js');
   const original = readFileSync(target);
   const hash = sha(original);
-  if (PATCHED !== 'PENDING' && hash === PATCHED) return { status: 'already-patched', target, original, patched: original, hash };
-  if (hash !== ORIGINAL && hash !== PREVIOUS_PATCHED && hash !== PREVIOUS_CONTROL_PATCHED && hash !== PREVIOUS_BUBBLE_PATCHED && hash !== PREVIOUS_CACHE_PATCHED && hash !== PREVIOUS_LIFECYCLE_PATCHED && hash !== PREVIOUS_THROW_PATCHED) {
-    throw new Error('构建指纹不符，保留现有代码：' + target
-      + '（实测 ' + hash + '，期望 ' + ORIGINAL + ' 或 ' + PREVIOUS_PATCHED + ' 或 ' + PREVIOUS_CONTROL_PATCHED + ' 或 ' + PREVIOUS_BUBBLE_PATCHED + ' 或 ' + PREVIOUS_CACHE_PATCHED + ' 或 ' + PREVIOUS_LIFECYCLE_PATCHED + '）');
+  const source = original.toString('utf8');
+  if (hash === PATCHED || hasSealedPetPatch(source, 'client')) {
+    return { status: 'already-patched', target, original, patched: original, hash, version: manifest.version };
   }
+  const known = [ORIGINAL, PREVIOUS_PATCHED, PREVIOUS_CONTROL_PATCHED, PREVIOUS_BUBBLE_PATCHED,
+    PREVIOUS_CACHE_PATCHED, PREVIOUS_LIFECYCLE_PATCHED, PREVIOUS_THROW_PATCHED].includes(hash);
   const upgraded = hash === PREVIOUS_BUBBLE_PATCHED
     ? original.toString('utf8')
     : hash === PREVIOUS_CONTROL_PATCHED
@@ -678,12 +677,12 @@ export function preparePetClient({ packageRoot } = {}) {
     : hash === PREVIOUS_LIFECYCLE_PATCHED ? applyThrowEdits(original.toString('utf8'))
       : hash === PREVIOUS_CACHE_PATCHED ? applyThrowEdits(applyLifecycleEdits(original.toString('utf8')))
         : upgraded === null ? null : applyThrowEdits(applyLifecycleEdits(applyAssetCacheEdits(upgraded)));
-  const patched = Buffer.from(basePatched === null ? applyEdits(original.toString('utf8'))
-    : applyRuntimeOwnerEdits(basePatched), 'utf8');
-  if (PATCHED !== 'PENDING' && sha(patched) !== PATCHED) {
+  const result = basePatched === null ? applyEdits(source) : applyRuntimeOwnerEdits(basePatched);
+  if (known && sha(result) !== PATCHED) {
     throw new Error('补丁产物指纹与预期不符，拒绝写入（预期 ' + PATCHED + '）。');
   }
-  return { status: 'ready', target, original, patched, hash: sha(patched) };
+  const patched = Buffer.from(known ? result : sealPetPatch(result, 'client'), 'utf8');
+  return { status: 'ready', target, original, patched, hash: sha(patched), version: manifest.version };
 }
 
 export function patchPetClient({ packageRoot, dryRun = false } = {}) {

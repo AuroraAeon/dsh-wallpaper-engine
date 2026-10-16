@@ -20,7 +20,8 @@ export function installBridge({ dshHome, packageRoot, assetsRoot, check = false,
   const client = preparePetClient({ packageRoot: pkg });
   const host = preparePetHost({ packageRoot: pkg });
   const assets = planAssets({ dshHome: home, assetsRoot, requireComplete: true });
-  const manifest = { protocol: 1, version: '0.3.6', clientHash: client.hash, hostHash: host.hash, files: {} };
+  if (client.version !== host.version) throw new Error('安装准备期间桌宠版本已变化，拒绝写入。');
+  const manifest = { protocol: 1, version: client.version, clientHash: client.hash, hostHash: host.hash, files: {} };
   for (const file of assets.files) {
     if (file.kind === 'config') continue;
     manifest.files[relative(data, file.path).replaceAll('\\', '/')] = sha(file.data);
