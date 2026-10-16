@@ -43,13 +43,13 @@
  *
  * Usage:  node test/verify-component-face.mjs
  */
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { stripComments } from './tools/js-text.mjs';
 // 真源定位（符号 → 唯一声明文件）+ 内核/组件行的**数据驱动真源**（不写死组件清单）。
 import { locate } from './tools/source-locator.mjs';
-import { COMPONENT_MODULES, routeModuleCandidates } from './tools/host-route-index.mjs';
+import { MAIN_MODULES, routeModuleCandidates } from './tools/host-route-index.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SELF = fileURLToPath(import.meta.url);
@@ -191,28 +191,50 @@ const kernelMod = await importRel(HOST_KERNEL_REL);
 const hostBoot = await importRel(HOST_BOOT_REL);
 const sessionMod = await importRel(SESSION_REL);
 
-const components = readdirSync(join(ROOT, 'lib', 'components'), { withFileTypes: true })
+const COMPONENTS_DIR = 'lib/components';
+/** 组件入口落点：未出户 = `lib/components/<k>/index.js`；已出户（P-F）= `packages/<k>/lib/index.js`。 */
+function componentEntryRel(name) {
+  for (const rel of [COMPONENTS_DIR + '/' + name + '/index.js', 'packages/' + name + '/lib/index.js']) {
+    if (existsSync(join(ROOT, rel))) return rel;
+  }
+  return null;
+}
+/** `lib/components/` 下还剩哪些组件目录（出户是逐格搬的 ⇒ 迁移期内两种落点并存，判据两个方向都查）。 */
+const legacyComponentDirs = readdirSync(join(ROOT, COMPONENTS_DIR), { withFileTypes: true })
   .filter((e) => e.isDirectory())
   .map((e) => e.name)
-  .sort()
-  .map((name) => ({
-    name,
-    rel: 'lib/components/' + name + '/index.js',
-    src: stripComments(readFileSync(join(ROOT, 'lib', 'components', name, 'index.js'), 'utf8')),
-  }));
+  .sort();
+// **组件清单的声明面真源 = 会话导出的 `COMPONENT_VIEW_KEYS`**（③ 要逐键对账的那一份），入口落点按
+// 上面两种形态现解析。为什么不再从 `lib/components/` 反推：P-F 起组件行可以出户到 `packages/<k>/`，
+// "组件"从此不是那个目录的同义词；而普通子包（fx / parallax / fonts）不在这份声明里 ⇒ 不会混进来。
+const components = Object.keys(sessionMod.COMPONENT_VIEW_KEYS || {}).sort().map((name) => {
+  const rel = componentEntryRel(name);
+  return { name, rel, src: rel ? stripComments(readFileSync(join(ROOT, rel), 'utf8')) : '' };
+});
 // ② 的路由族扫描面 = `host-route-index` 的候选文件面**同一份真源**（`lib/routes/*.js` ∪
 // `packages/<pkg>/lib/routes/*.js` ∪ 组件目录直接子文件）。写死 `lib/routes/` 会让随子包行出户的族
 // **静默掉出** M9 面（P-A：fonts 两族已在 `packages/fonts/lib/routes/`）—— 与下方覆盖面判据同源。
 const routeRels = routeModuleCandidates();
-// 组件目录下的**全部** `.js`（不只是 `index.js`）：P2-8 起组件的路由实现随组件住进这里 ——
-// ② 的扫描面若只认 `index.js`，那些实现会**静默脱离** M9 判据（§10 风险 12 的同款）。
-const componentImplRels = readdirSync(join(ROOT, 'lib', 'components'), { withFileTypes: true })
-  .filter((e) => e.isDirectory())
-  .map((e) => e.name)
-  .sort()
-  .flatMap((name) => readdirSync(join(ROOT, 'lib', 'components', name))
-    .filter((f) => f.endsWith('.js')).sort()
-    .map((f) => 'lib/components/' + name + '/' + f));
+// 组件自己的实现文件面：未出户 = 目录下全部 `.js`（不只是 `index.js`；只认 `index.js` 会让那些
+// 路由实现**静默脱离** M9 判据，§10 风险 12 的同款）；已出户 = `packages/<k>/lib/**` 递归。
+function componentImplRelsOf(name) {
+  const legacyDir = join(ROOT, COMPONENTS_DIR, name);
+  if (existsSync(legacyDir)) {
+    return readdirSync(legacyDir).filter((f) => f.endsWith('.js')).sort()
+      .map((f) => COMPONENTS_DIR + '/' + name + '/' + f);
+  }
+  const out = [];
+  const walk = (dir, rel) => {
+    if (!existsSync(dir)) return;
+    for (const e of readdirSync(dir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1))) {
+      if (e.isDirectory()) walk(join(dir, e.name), rel + '/' + e.name);
+      else if (e.name.endsWith('.js')) out.push(rel + '/' + e.name);
+    }
+  };
+  walk(join(ROOT, 'packages', name, 'lib'), 'packages/' + name + '/lib');
+  return out;
+}
+const componentImplRels = components.flatMap((c) => componentImplRelsOf(c.name));
 const sessionSrc = SESSION_REL ? stripComments(readFileSync(join(ROOT, SESSION_REL), 'utf8')) : '';
 /** 本文件自己的头注释 = ① 的合同数字唯一真源（读自己，判据才知道期望值）。 */
 const FACE_CONTRACT = parseFaceContract(readFileSync(SELF, 'utf8'));
@@ -277,23 +299,38 @@ section('② 组件与路由族不得直接消费内核对象（`const { … } =
   // 而不是写死"≥15 个路由族"这种随实现漂的数字 —— 扫描面一窄，这里就点名少了哪个文件。
   const candidates = routeModuleCandidates();
   const missed = candidates.filter((rel) => !scannedSet.has(rel));
-  const extra = [...scannedSet].filter((rel) => !candidates.includes(rel));
-  check('覆盖面：② 的扫描面 == 路由族候选文件面（`routeModuleCandidates()` 真源；少扫/多扫都点名）',
-    candidates.length > 0 && missed.length === 0 && extra.length === 0,
+  // 「多扫」= 扫到了既不是路由族候选、也不属于任何**已声明组件**落点的文件。出户后组件的入口与
+  // 支持模块（`packages/<k>/lib/**`）不落在路由候选面里（候选面只收 `lib/routes/*.js` 与
+  // `packages/<p>/lib/routes/*.js`），但它们仍是组件实现文件 ⇒ 按组件落点前缀放行；组件名一改、
+  // walker 走错目录、或某文件被扫出组件面之外 ⇒ 这里点名。
+  const compPrefixes = components.map((c) => (c.rel ? c.rel.replace(/\/[^/]+$/, '/') : null)).filter(Boolean);
+  for (const d of legacyComponentDirs) compPrefixes.push(COMPONENTS_DIR + '/' + d + '/');
+  const extra = [...scannedSet].filter((rel) => !candidates.includes(rel) && !compPrefixes.some((p) => rel.startsWith(p)));
+  check('覆盖面：② 的扫描面覆盖全部路由族候选 + 每个组件的全部实现文件（入口 + 族；少扫/多扫都点名）',
+    candidates.length > 0 && missed.length === 0 && extra.length === 0
+    && components.every((c) => scannedSet.has(c.rel)),
     '候选 ' + candidates.length + ' 个' + (missed.length ? ' · 漏扫 ' + missed.join(' ') : '')
-      + (extra.length ? ' · 多扫 ' + extra.join(' ') : '') + ' · 组件目录 ' + componentImplRels.length + ' 个 .js');
-  // negative control：把扫描面塌回 `lib/routes/`-only（本判据修复前的形态）⇒ 随子包行出户的族必须
-  // 被**同一条**覆盖面判据点名（否则"覆盖面对账"只是把当前文件数复述一遍，没有牙）。
+      + (extra.length ? ' · 多扫 ' + extra.join(' ') : '') + ' · 组件实现 ' + componentImplRels.length + ' 个 .js');
+  // negative control：把扫描面塌回**出户前**的形态（`lib/routes/*.js` + 仍住在 `lib/components/` 的
+  // 组件目录）⇒ 随子包行出户的族必须被**同一条**覆盖面判据点名（否则"覆盖面对账"只是把当前文件数
+  // 复述一遍，没有牙）。⚠️ P-F 起不能用 `componentImplRels` 当"窄面"的那一半：出户组件的族已经在
+  // `packages/` 下，把它算进窄面会让这个负对照**恒绿**（塌陷实验自己把出户的族也覆盖了）。
   const pkgRouteRels = candidates.filter((rel) => rel.startsWith('packages/'));
-  const narrowedSet = new Set([...routeRels.filter((rel) => rel.startsWith('lib/routes/')), ...componentImplRels]);
+  const legacyImplRels = components.filter((c) => c.rel && c.rel.startsWith(COMPONENTS_DIR + '/'))
+    .flatMap((c) => componentImplRelsOf(c.name));
+  const narrowedSet = new Set([...routeRels.filter((rel) => rel.startsWith('lib/routes/')), ...legacyImplRels]);
   const missedNarrowed = candidates.filter((rel) => !narrowedSet.has(rel));
   check('negative control：扫描面塌回 `lib/routes/`-only ⇒ 子包路由族被同一条判据点名',
     pkgRouteRels.length > 0 && missedNarrowed.join() === pkgRouteRels.join(),
     '塌陷后面外 = ' + (missedNarrowed.join(' ') || '（一个都没点名）') + ' · 子包族 = ' + pkgRouteRels.join(' '));
-  check('覆盖面：组件入口目录 == `COMPONENT_MODULES` 真源（行入口清单数据驱动，双向对账）',
-    components.length > 0 && components.length === COMPONENT_MODULES.length
-    && components.every((c) => COMPONENT_MODULES.includes(c.rel)),
-    '目录 ' + components.map((c) => c.name).join(' ') + ' ⇄ 行入口 ' + COMPONENT_MODULES.join(' '));
+  check('覆盖面：每个组件的入口落点都在 `MAIN_MODULES` 真源里（行入口清单数据驱动，双向对账）',
+    components.length > 0 && components.every((c) => MAIN_MODULES.includes(c.rel)),
+    '组件 ' + components.map((c) => c.name + '→' + c.rel).join(' ') + ' ⇄ 行入口 ' + MAIN_MODULES.join(' '));
+  check('反向：`lib/components/*` 剩下的目录都已声明、每条声明的入口都在盘（迁移期内两种落点各查一次）',
+    legacyComponentDirs.every((d) => components.some((c) => c.name === d))
+    && components.every((c) => Boolean(c.rel)),
+    'lib/components/=[' + (legacyComponentDirs.join(' ') || '（空）') + '] · 解析不到入口的声明=['
+      + (components.filter((c) => !c.rel).map((c) => c.name).join(' ') || '无') + ']');
   check('零处直接解构 / 成员访问 hostKernel（M9 = 0）', offenders.length === 0,
     offenders.length ? '直接消费内核对象：' + offenders.join(' ') : '组件 ' + components.map((c) => c.name).join(' ') + ' 与全部路由族都只消费声明面');
 
@@ -319,17 +356,26 @@ section('③ 组件视图声明面 ↔ 实际消费面逐键相等（双向；�
   check('会话从视图自取的 serve 依赖键 == SESSION_SERVE_KEYS（单一真源不漂移）',
     sameKeys(sessionKeys, sessionMod.SESSION_SERVE_KEYS || []),
     'view 解构 = [' + sessionKeys.join(',') + ']');
-  check('组件目录 ↔ COMPONENT_VIEW_KEYS 声明一一对应（无未登记组件 / 无死声明）',
-    sameKeys(components.map((c) => c.name), Object.keys(declaredKeySet)),
-    components.map((c) => c.name).join(' ') + ' ⇄ ' + Object.keys(declaredKeySet).join(' '));
+  // P-F：组件清单由 `COMPONENT_VIEW_KEYS` 现解析（组件可以出户到 `packages/<k>/`），所以这条不再
+  // "从目录反推声明"，而是钉**两个方向都有牙**的实事：每条声明都解析到在盘入口（缺 = 死声明）、
+  // `lib/components/` 下剩下的目录不能有未声明的（漏声明）。
+  check('组件声明面 ⇄ 落点一一对应（每条声明都有在盘入口；`lib/components/` 下无未登记组件）',
+    components.length > 0 && components.every((c) => Boolean(c.rel))
+    && legacyComponentDirs.every((d) => Object.keys(declaredKeySet).includes(d)),
+    '声明 ' + Object.keys(declaredKeySet).join(' ') + ' · 解析不到入口 ['
+      + (components.filter((c) => !c.rel).map((c) => c.name).join(' ') || '无') + '] · 未登记目录 ['
+      + (legacyComponentDirs.filter((d) => !Object.keys(declaredKeySet).includes(d)).join(' ') || '无') + ']');
 
   const issues = [];
   const rows = [];
   for (const c of components) {
     const declared = declaredKeySet[c.name];
     if (!declared) { issues.push(c.name + ' 没有视图声明'); continue; }
-    const call = /componentViewFrom\(\s*hostKernel\s*,\s*'([^']+)'\s*\)/.exec(c.src);
-    if (!call) { issues.push(c.name + ' 入口没有 componentViewFrom(hostKernel, …)'); continue; }
+    // 两种取视图形态：未出户 = `componentViewFrom(hostKernel, '<name>')`（直取主包符号）；
+    // 已出户（P-F）= 经宿主服务拿到**已绑 hostKernel** 的那个 `componentViewFrom('<name>')`，
+    // 组件半边此时**拿不到 `hostKernel`**（零主包说明符），所以单实参形态必须被认。
+    const call = /componentViewFrom\(\s*(?:hostKernel\s*,\s*)?'([^']+)'\s*\)/.exec(c.src);
+    if (!call) { issues.push(c.name + ' 入口没有 componentViewFrom([hostKernel, ]…)'); continue; }
     if (call[1] !== c.name) issues.push(c.name + ' 取的视图名却是 ' + call[1]);
     const own = destructuredFrom(c.src, 'view');
     const cons = viewConsumption(own, sessionKeys);
@@ -373,12 +419,17 @@ section('③ 组件视图声明面 ↔ 实际消费面逐键相等（双向；�
 // ═══ ④ 入口姿势与 teardown 姿势不变（P2-5C / P2-6）═══════════════════════════════
 section('④ 入口姿势与 teardown 姿势不变（inject + 直读 / handOffTeardown / 不 acquireKernelLease / 同序 teardown）');
 {
+  // 入口姿势两种形态（P-F 迁移窗口内并存）：
+  //   · 未出户 = `inject = ['webServer']` + `handOffTeardown(ctx, runComponent(…))`（直取主包符号）
+  //   · 已出户 = `inject = ['webServer', 'wallpaperEngineHost']` + `keys.handOffTeardown(ctx, keys.runComponent(…))`
+  //     （经宿主服务的冻结键表；姿势不变 —— 仍然是"先注入再直读 + teardown 交 fiber"）
   const postureOffenders = components.filter((c) => !(
-    /export const inject = \['webServer'\]/.test(c.src)
+    /export const inject = \['webServer'(?:,\s*'wallpaperEngineHost')?\]/.test(c.src)
     && /export function apply\s*\(/.test(c.src)
-    && /handOffTeardown\(ctx,\s*runComponent\(/.test(c.src)
+    && (/(?:^|[^.\w])handOffTeardown\(ctx,\s*runComponent\(/.test(c.src)
+      || /[A-Za-z_$][\w$]*\.handOffTeardown\(ctx,\s*[A-Za-z_$][\w$]*\.runComponent\(/.test(c.src))
   )).map((c) => c.rel);
-  check('组件入口仍是 inject = [\'webServer\'] + export function apply + handOffTeardown(ctx, runComponent(…))',
+  check('组件入口仍是 inject = [\'webServer\'(, \'wallpaperEngineHost\')?] + export function apply + handOffTeardown(ctx, runComponent(…))',
     postureOffenders.length === 0, postureOffenders.join(' ') || components.map((c) => c.name).join(' '));
 
   check('组件会话不 acquire / release 内核租约（"只有静态读写、无可释放共享资源"的有意不对称保留）',

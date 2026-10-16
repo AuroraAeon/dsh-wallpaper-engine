@@ -80,6 +80,9 @@ const M = (...p) => p.join('/');
 const ZERO_COVERAGE_WHY = {
   // ── P2 拆包：行为级覆盖（本工具只认"直读 / 隔产物"两列，行为级覆盖按口径算零覆盖）──
   [M('lib', 'components', 'mascot-avatar', 'index.js')]: '组件行入口（P2 拆包）：实现归属由 verify-route-ownership 的"行→入口"对账覆盖（按目录集合派生，非直读本文件）',
+  // ⚠️ P-F 出户后 `packages/about-notice/lib/index.js` **不需要**登记：verify-about 直读它
+  //    （注册点形态判据的读取面），所以它在"直读"那一列是有守卫的 —— 登记了反而会被判"例外表空转"。
+  //    （实测踩过一次：先按旧路径登记，再修 verify-about 的路径 ⇒ stale。）
   // ── P-A 拆包：行为级覆盖（同上口径；这些文件由按包目录/按 patch 行**动态派生**的守卫覆盖）──
   [M('packages', 'fx', 'lib', 'index.js')]: '子包宿主入口（P-A 拆包）：只做 subpackageKeys 校验 + handOffTeardown，实现归属与逐行装载由 verify-subpackage-boot（按 packages/* 目录与 patch 行双向对账）与 verify-subpackage-toggle-roundtrip（逐行装载 · 关→开→再关 · 零残留）覆盖，本工具只认字面量路径 ⇒ 按口径算零覆盖',
   [M('packages', 'parallax', 'lib', 'index.js')]: '同上（3D 子包宿主入口，P-A 拆包）：覆盖来源与 fx 逐条相同 —— verify-subpackage-boot 的双射对账 + verify-subpackage-toggle-roundtrip 的逐行装载与拆卸',

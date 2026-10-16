@@ -30,8 +30,6 @@
  */
 
 import { readFileSync, writeFileSync, renameSync } from 'node:fs';
-// JSON 应答的**唯一实现**（状态码 + 两个头 + end）—— 见 lib/json-response.js。
-import { sendJson } from '../../json-response.js';
 
 /** 成功结果的新鲜期：10 分钟内不再出站（客户端侧同一量级，两处相乘 ≈ 最坏 20 分钟一次）。 */
 const STAR_TTL_MS = 10 * 60 * 1000;
@@ -60,13 +58,14 @@ function starsFromApi(json) {
   return Number.isFinite(n) && n >= 0 ? Math.floor(n) : null;
 }
 
-/** 注入契约（P2-7A / ADR-0013 D12）：本族从 `c` 消费的**必需**键 —— 门面/组件行调用点必须逐键给到（判据 test/verify-inject-contracts.mjs 双向对账）。 */
-export const DEPS = ['disposers', 'base', 'repoSlug', 'cachePath', 'log'];
+/** 注入契约（P2-7A / ADR-0013 D12）：本族从 `c` 消费的**必需**键 —— 门面/组件行调用点必须逐键给到（判据 test/verify-inject-contracts.mjs 双向对账）。
+ *  `http` 是主包 json-response / http-body 的**唯一出口**（P-F：本族不再相对 import 主包文件）。 */
+export const DEPS = ['disposers', 'base', 'repoSlug', 'cachePath', 'log', 'http'];
 /** 允许缺席的键：真实调用点（组件行 about-notice）不传，缺省实现是下面的 `defaultFetchJson`。 */
 export const OPTIONAL_DEPS = ['fetchJson'];
 
 export function registerGithubStarsRoutes(webServer, c) {
-  const { disposers, base: BASE, repoSlug, cachePath, log } = c;
+  const { disposers, base: BASE, repoSlug, cachePath, log, http } = c;
   const fetchJson = typeof c.fetchJson === 'function' ? c.fetchJson : defaultFetchJson;
 
   /** 内存缓存 { count, at } —— 进程内共享，重启后由落盘那份接上。 */
@@ -111,9 +110,10 @@ export function registerGithubStarsRoutes(webServer, c) {
     kind: 'exact',
     path: `${BASE}/star-count`,
     handler: async (req, res) => {
-      // 薄别名：保留调用点写法（只有 200 + body），实现收敛到 lib/json-response.js。
+      // 薄别名：保留调用点写法（只有 200 + body），实现收敛到主包的 lib/json-response.js（经
+      // 宿主服务的 `http` 面注入 —— P-F 起本包不再相对 import 主包文件）。
       // 缓存由**本路由**管（TTL 在上游），别让浏览器/CDN 再叠一层不可控的缓存 ⇒ no-store。
-      const reply = (body) => sendJson(res, 200, body);
+      const reply = (body) => http.sendJson(res, 200, body);
       if ((req.method || 'GET').toUpperCase() !== 'GET') { res.statusCode = 405; res.end(); return; }
       // 没有可解析的仓库地址（package.json 被改坏 / 不是从包安装）：功能关闭，但**不报错** ——
       // 关于页只是不显示数字，其余照常。

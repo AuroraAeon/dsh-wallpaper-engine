@@ -57,6 +57,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { moduleScopeOf, stripComments, functionBodyOf } from './tools/js-text.mjs';
 import { buildIndex, rowRegistrationCounts, MAIN_MODULES, SUBPACKAGE_MODULES } from './tools/host-route-index.mjs';
+import { createSubpackageHost, provideSubpackageHost } from '../lib/subpackage-boot.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BARE = 'dsh-plugin-wallpaper-engine';
@@ -285,15 +286,39 @@ function rowViolations(inserts, bare, allowedSubpackages = new Set()) {
 }
 
 /**
- * 行分类（P-A 起 patch 里是三种行，别再把它们混成一个集合 —— 混了会让组件口径去 apply 子包名）：
- *   · 裸行    `name === bare`                    → 整包门面 `lib/index.js`
- *   · 组件行  `name === '<bare>/<sub>'`           → 宿主当独立 plugin 加载 `lib/components/<sub>/index.js`
- *   · 子包行  `name === '<bare>-<pkg>'`           → P-A 拆出的子包，加载 `packages/<pkg>`（真名 ⇄ 清单名双射）
+ * 行分类（P-A 起 patch 里有三种行；**P-F 起组件行也可以是真名行**，别再把它们混成一个集合）：
+ *   · 裸行    `name === bare`                        → 整包门面 `lib/index.js`
+ *   · 组件行  `name === '<bare>/<sub>'`（出户前）     → 宿主当独立 plugin 加载 `lib/components/<sub>/index.js`
+ *             `name === '<bare>-<sub>'`（出户后，P-F）→ 加载 `packages/<sub>/lib/index.js`
+ *   · 子包行  `name === '<bare>-<pkg>'`（非组件）     → P-A 拆出的子包，加载 `packages/<pkg>`（真名 ⇄ 清单名双射）
+ *
+ * ⚠️ 出户后**组件行与子包行的名字形态完全一样**（都是真名），能分开它们的只有"这个名字是不是组件"——
+ * 那份名单的唯一真源是会话模块的 `COMPONENT_VIEW_KEYS`（③ 段逐键对账用的那一份），不是目录、也不是前缀。
  */
-const componentNamesOf = (rows, bare) => rows
-  .filter((r) => r.name && r.name.startsWith(bare + '/'))
-  .map((r) => r.name.slice(bare.length + 1));
-/** 非裸、非组件的行（= 子包行，P-A）；它们的 name 必须能在磁盘上找到对应清单。 */
+const COMPONENT_NAMES = (() => {
+  const src = readFileSync(join(ROOT, 'lib', 'kernel', 'component-session.js'), 'utf8');
+  const m = /export\s+const\s+COMPONENT_VIEW_KEYS\s*=\s*Object\.freeze\(\{([\s\S]*?)\n\}\);/.exec(src);
+  if (!m) throw new Error('读不到 `lib/kernel/component-session.js` 的 COMPONENT_VIEW_KEYS —— 组件口径的声明面真源');
+  return new Set([...m[1].matchAll(/(?:^|\n)\s*(?:'([^']+)'|"([^"]+)"|([A-Za-z_$][\w$]*))\s*:/g)]
+    .map((x) => x[1] || x[2] || x[3]));
+})();
+/** 组件入口落点：未出户 = `lib/components/<sub>/index.js`；已出户（P-F）= `packages/<sub>/lib/index.js`。 */
+const componentEntryRel = (sub) => {
+  const legacy = 'lib/components/' + sub + '/index.js';
+  return existsSync(join(ROOT, legacy)) ? legacy : 'packages/' + sub + '/lib/index.js';
+};
+/** 组件**归属清单**：未出户 = 根清单（组件目录在主包 tarball 里）；已出户 = 该子包自己的清单。 */
+const componentManifestRel = (sub) => (existsSync(join(ROOT, 'lib', 'components', sub, 'index.js'))
+  ? 'package.json' : 'packages/' + sub + '/package.json');
+const componentNamesOf = (rows, bare) => {
+  const named = new Set(rows.map((r) => r.name).filter(Boolean));
+  return [...COMPONENT_NAMES].filter((sub) => named.has(bare + '/' + sub) || named.has(bare + '-' + sub));
+};
+/**
+ * 非裸、非子路径的行（= 真名行：P-A 子包行 **以及 P-F 出户后的组件行**）；它们的 name 必须能在磁盘上
+ * 找到对应清单。出户后的组件**同时**是"组件行"与"真名行"，两套判据各自都要管它 ⇒ 这里不排除它，
+ * 否则"盘上有包却没有行"会误报（它确实有行，只是那行还兼着组件语义）。
+ */
 const subpackageRowsOf = (rows, bare) => rows
   .filter((r) => r.name && r.name !== bare && !r.name.startsWith(bare + '/'));
 /**
@@ -461,32 +486,40 @@ section('⑥ 组件行（P2-1/P2-2，逐行数据驱动）：patch 子行 ⇄ ex
   // patch 里 `name` 形如 `<裸包名>/<sub>` 的行 = 宿主会当**独立 plugin** 加载的组件行。
   // 组件行 = name 形如 `<裸包名>/<sub>`；P-A 起 patch 里还有**子包行**（name 是子包真名），它们不是组件。
   const subs = componentNamesOf(rows, BARE);
-  check('patch 里有组件行（P2-1 起至少一行）', subs.length >= 1, subs.join(' ') || '**没有**');
-  const exportsOf = (key) => (pkg.exports ? pkg.exports[key] : undefined);
+  check('patch 里有组件行（P2-1 起至少一行；P-F 起真名形态也算）', subs.length >= 1, subs.join(' ') || '**没有**');
+  // 组件行在**归属清单**里的三连：未出户 = 根清单的 `./<sub>` 子路径三连（入口住在主包 tarball 里）；
+  // 已出户（P-F）= 该子包自己清单的 `./lib/index.js` / `./package.json` / `./locale/*.json` 三连。
+  // 出口解析按**清单所在目录**归一成仓库相对路径（子包清单里的 `./lib/index.js` 相对的是包根，不是仓库根）。
+  const manifestOf = (rel) => JSON.parse(read(rel));
   const tripleMissing = [];
-  for (const sub of subs) {
-    for (const key of ['./' + sub, './' + sub + '/package.json', './' + sub + '/locale/*.json']) {
-      if (!exportsOf(key)) tripleMissing.push(key);
-    }
-  }
-  check('每个组件行在 `exports` 有三连（入口 / 清单 / locale）', tripleMissing.length === 0,
-    tripleMissing.join(' ') || subs.map((s) => './' + s).join(' '));
-  // 入口文件必须真的在磁盘上（声明了行、入口丢了 ⇒ 装了但加载不了，而且没有任何运行期报错）。
   const entryOf = new Map();
   const entryMissing = [];
   for (const sub of subs) {
-    const spec = exportsOf('./' + sub);
+    const rel = componentManifestRel(sub);
+    const own = manifestOf(rel);
+    const ownerDir = rel === 'package.json' ? '' : 'packages/' + sub + '/';
+    const keys = rel === 'package.json'
+      ? ['./' + sub, './' + sub + '/package.json', './' + sub + '/locale/*.json']
+      : ['.', './package.json', './locale/*.json'];
+    for (const key of keys) if (!(own.exports ? own.exports[key] : undefined)) tripleMissing.push(rel + '#' + key);
+    const spec = own.exports ? own.exports[keys[0]] : undefined;
     const target = typeof spec === 'string' ? spec : (spec && spec.default);
-    entryOf.set(sub, target || '');
-    if (!target || !existsSync(join(ROOT, target))) entryMissing.push(sub + ' → ' + String(target));
+    const targetRel = target ? ownerDir + String(target).replace(/^\.\//, '') : '';
+    entryOf.set(sub, targetRel);
+    if (!targetRel || !existsSync(join(ROOT, targetRel))) entryMissing.push(sub + ' → ' + String(target));
   }
+  check('每个组件行在**归属清单**里有三连（未出户 = 根清单 `./<sub>` 三连；已出户 = 子包自己的清单三连）',
+    tripleMissing.length === 0, tripleMissing.join(' ') || subs.map((s) => componentManifestRel(s)).join(' '));
   check('每个组件行的 entry 指向的文件都在磁盘上', entryMissing.length === 0, entryMissing.join(' ') || '全部在');
   // locale 文件名规范：同目录的 .json 全会被读，非语言名 / 重复语言会让宿主报 duplicates。
+  // 目录也按归属走（出户后 locale 随包搬到 `packages/<sub>/locale/`）。
   const LOCALE_RE = /^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$/u;
   const localeSeen = [];
   const badLocale = [];
   for (const sub of subs) {
-    const dir = join(ROOT, 'lib', 'components', sub, 'locale');
+    const dir = componentManifestRel(sub) === 'package.json'
+      ? join(ROOT, 'lib', 'components', sub, 'locale')
+      : join(ROOT, 'packages', sub, 'locale');
     if (!existsSync(dir)) continue;
     for (const n of readdirSync(dir)) {
       localeSeen.push(sub + '/' + n);
@@ -496,6 +529,8 @@ section('⑥ 组件行（P2-1/P2-2，逐行数据驱动）：patch 子行 ⇄ ex
   check('locale 目录里只有语言名 .json（en / zh）', badLocale.length === 0,
     badLocale.join(' ') || localeSeen.join(' '));
   // `files` 必须覆盖组件目录的**每一个**文件（数据驱动：目录条目尾 `/` 按前缀、`*` 段内通配）。
+  // 覆盖面也按归属清单算：未出户 = 根清单的 `files` 覆盖 `lib/components/<sub>/**`；
+  // 已出户 = 子包自己清单的 `files` 覆盖 `packages/<sub>/**`（根清单此时不再包含这个目录）。
   const componentFiles = [];
   const walkComponent = (dir, prefix) => {
     if (!existsSync(dir)) return;
@@ -505,8 +540,7 @@ section('⑥ 组件行（P2-1/P2-2，逐行数据驱动）：patch 子行 ⇄ ex
       else componentFiles.push(rel);
     }
   };
-  for (const sub of subs) walkComponent(join(ROOT, 'lib', 'components', sub), 'lib/components/' + sub);
-  const covered = (rel) => (pkg.files || []).some((raw) => {
+  const coveredBy = (files, rel) => (files || []).some((raw) => {
     const s = String(raw);
     const e = s.replace(/\/+$/, '');
     if (!e) return false;
@@ -515,7 +549,20 @@ section('⑥ 组件行（P2-1/P2-2，逐行数据驱动）：patch 子行 ⇄ ex
     const re = new RegExp('^' + e.split('*').map((part) => part.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('[^/]*') + '$');
     return re.test(rel);
   });
-  const uncovered = componentFiles.filter((f) => !covered(f));
+  const uncovered = [];
+  for (const sub of subs) {
+    const ownRel = componentManifestRel(sub);
+    const own = manifestOf(ownRel);
+    const pkgRoot = ownRel === 'package.json' ? 'lib/components/' + sub : 'packages/' + sub;
+    walkComponent(join(ROOT, pkgRoot), pkgRoot);
+    // `files` 条目是**相对清单所在目录**的：未出户时清单在仓库根 ⇒ 与仓库相对路径同形；
+    // 已出户后清单在 `packages/<sub>/` ⇒ 比对前必须把包前缀剥掉，否则整包都判"未覆盖"。
+    const prefix = pkgRoot + '/';
+    for (const f of componentFiles.filter((x) => x.startsWith(prefix))) {
+      const ownPath = ownRel === 'package.json' ? f : f.slice(prefix.length);
+      if (!coveredBy(own.files, ownPath)) uncovered.push(f);
+    }
+  }
   const kinds = [
     ['入口', (f) => /\/index\.js$/.test(f)],
     ['清单', (f) => /\/package\.json$/.test(f)],
@@ -523,7 +570,7 @@ section('⑥ 组件行（P2-1/P2-2，逐行数据驱动）：patch 子行 ⇄ ex
     ['locale', (f) => /\/locale\/[^/]+\.json$/.test(f)],
   ];
   const kindMissing = kinds.filter(([, hit]) => !componentFiles.some(hit)).map(([k]) => k);
-  check('组件目录每个文件都被 `files` 覆盖（四类齐：入口 / 清单 / 图标 / locale）',
+  check('组件目录每个文件都被**归属清单**的 `files` 覆盖（四类齐：入口 / 清单 / 图标 / locale）',
     componentFiles.length > 0 && uncovered.length === 0 && kindMissing.length === 0,
     (componentFiles.join(' ') || '**组件目录里没有文件**')
       + (uncovered.length ? ' · 未覆盖：' + uncovered.join(' ') : '')
@@ -752,6 +799,15 @@ section('⑥ 组件行（P2-1/P2-2，逐行数据驱动）：patch 子行 ⇄ ex
   const componentDisposers = [];
   const countIssues = [];
   const sharedIssues = [];
+  // P-F：出户的组件入口不再直取主包模块，改为 `ctx.wallpaperEngineHost` 取冻结键面 ⇒ 走入口那条
+  // 路径的 mock 必须提供**真宿主服务**（`createSubpackageHost()`，与运行期同一个工厂），否则
+  // `apply()` 在取服务那一步就抛，两条装载路径一致性 / 账本两条判据都会误红。
+  const hostService = createSubpackageHost();
+  // 出户的组件既是**子包行**（真名、有清单）又是**组件行**（声明面里的一员）；下面那段子包循环
+  // 会按 `SUBPACKAGE_MODULES` 跑一遍全部真名包，若不在那里跳过它们，同一个 mock 上会重复注册，
+  // 并集对账（Σ 行声明 vs 并集）会撑出重复项。组件这条路径更严（逐组件计数 + 两条路径一致性），
+  // 所以这里让组件路径独占它。
+  const componentEntryRels = new Set(subs.map((sub) => componentEntryRel(sub)));
   for (const sub of subs) {
     const before = registered.length;
     componentDisposers.push(typeof applyComponentFn === 'function' ? applyComponentFn(mock, undefined, sub) : undefined);
@@ -764,7 +820,7 @@ section('⑥ 组件行（P2-1/P2-2，逐行数据驱动）：patch 子行 ⇄ ex
     // 「两边复用同一份实现」：组件入口自己的 `apply(ctx)`（宿主把该行当**独立 plugin** 加载的路径）
     // 必须与门面 `applyComponent(root, …, sub)`（按组件加载的路径）注册出同一组 `(kind, path)`。
     const viaEntry = [];
-    const mock2 = { webServer: { register(route) { viaEntry.push(route); return () => {}; }, tapIndex() { return () => {}; } } };
+    const mock2 = { webServer: { register(route) { viaEntry.push(route); return () => {}; }, tapIndex() { return () => {}; } }, wallpaperEngineHost: hostService };
     const entryMod = await import(pathToFileURL(join(ROOT, rel)).href);
     let dEntry = null;
     try {
@@ -789,6 +845,8 @@ section('⑥ 组件行（P2-1/P2-2，逐行数据驱动）：patch 子行 ⇄ ex
   const subCountIssues = [];
   const perSubpackage = [];
   for (const rel of SUBPACKAGE_MODULES) {
+    // 出户组件由 ⑥ 的组件路径跑（更严：两条装载路径一致性 + 逐组件计数 + 账本），这里跳过以免重复注册。
+    if (componentEntryRels.has(rel)) continue;
     const short = rel.replace(/^packages\//, '').split('/')[0];
     const before = registered.length;
     const subMod = await import(pathToFileURL(join(ROOT, rel)).href);
@@ -819,7 +877,7 @@ section('⑥ 组件行（P2-1/P2-2，逐行数据驱动）：patch 子行 ⇄ ex
     for (const sub of subs) {
       const { rel } = entrySrcOf.get(sub);
       const mod = await import(pathToFileURL(join(ROOT, rel)).href);
-      const m = { webServer: { register() { return () => {}; }, tapIndex() { return () => {}; } } };
+      const m = { webServer: { register() { return () => {}; }, tapIndex() { return () => {}; } }, wallpaperEngineHost: hostService };
       try {
         const d = typeof mod.apply === 'function' ? mod.apply(m, undefined) : null;
         if (typeof d === 'function') { try { d(); } catch { /* 收尾失败不影响判定 */ } }
@@ -946,7 +1004,7 @@ section('⑧ 组件行取服务的 inject 姿势 + 装载账本三态（真机�
   const subs8 = componentNamesOf(rows, BARE);
   const entrySrcOf = new Map();
   for (const sub of subs8) {
-    const rel = 'lib/components/' + sub + '/index.js';
+    const rel = componentEntryRel(sub);
     entrySrcOf.set(sub, { rel, src: read(rel) });
   }
   // 组件入口的 `export const inject = ['webServer', …]` → 服务名列表（`null` = 压根没声明）。
@@ -1068,7 +1126,7 @@ section('⑧ 组件行取服务的 inject 姿势 + 装载账本三态（真机�
   //      不静默绿：P2-5C 的教训正是"mock 全绿、真门禁红"）。
   const entries = [];
   for (const sub of subs8) {
-    const rel = 'lib/components/' + sub + '/index.js';
+    const rel = componentEntryRel(sub);
     entries.push({ rel, mod: await import(pathToFileURL(join(ROOT, rel)).href) });
   }
   const facadeApply = facade.apply || (facade.default && facade.default.apply);
@@ -1092,10 +1150,12 @@ section('⑧ 组件行取服务的 inject 姿势 + 装载账本三态（真机�
   };
   // fiber 的模拟：`effect(cb)` 立刻调 cb、收下它的返回值（cordis 的 safeCollect 语义）；`unload()`
   // 逆序跑收集到的 disposer（= fiber 卸载）。
+  // P-F：⑧ 的两个往返夹具都要给组件入口补上宿主服务（`inject: ['webServer', 'wallpaperEngineHost']`）。
+  const hostService = createSubpackageHost();
   const makeFiber = (webServer) => {
     const collected = [];
     return {
-      ctx: { webServer, effect(cb) { const d = cb(); if (typeof d === 'function') collected.push(d); return d; } },
+      ctx: { webServer, wallpaperEngineHost: hostService, effect(cb) { const d = cb(); if (typeof d === 'function') collected.push(d); return d; } },
       unload() { while (collected.length) collected.pop()(); },
     };
   };
@@ -1174,6 +1234,9 @@ section('⑧ 组件行取服务的 inject 姿势 + 装载账本三态（真机�
         tapIndex() { return () => {}; }
       }
       const ctx = new Context();
+      // P-F：组件入口现在 `inject: ['webServer', 'wallpaperEngineHost']`，服务由主包 `apply()` 提供；
+      // 本夹具只装单个组件入口模块，所以在这里把同一份服务补上（与运行期同一条 provide 路径）。
+      provideSubpackageHost(ctx);
       ctx.plugin(StubWebServer);
       await settle();
       const mod = await import(pathToFileURL(join(ROOT, e.rel)).href + '?cordis9=' + Date.now());

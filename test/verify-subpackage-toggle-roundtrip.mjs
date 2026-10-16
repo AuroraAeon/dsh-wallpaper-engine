@@ -37,7 +37,7 @@ const MUT_HELPER = '__weMutNoHandoff';
  *   · 服务面形态（refactor 后三个子包宿主半边的写法）：host.handOff(ctx, dispose)
  * 变异时接收者/函数名**一起**换成恒等函数，等价于"只 return dispose、不交给 fiber"。
  */
-const HANDOFF_SRC_RE = /(?:[A-Za-z_$][\w$]*\s*\.\s*handOff|\bhandOffTeardown)\s*\(/;
+const HANDOFF_SRC_RE = /(?:[A-Za-z_$][\w$]*\s*\.\s*handOff(?:Teardown)?|\bhandOffTeardown)\s*\(/;
 const HANDOFF_MUT_RE = new RegExp(HANDOFF_SRC_RE.source, 'g');
 /** 跨包服务面（§5.1 ①）槽位：mock ctx 用的**真**服务名与真服务值，主流程里从主包叶子动态读入。 */
 let HOST_SERVICE_NAME = 'wallpaperEngineHost';
@@ -257,6 +257,27 @@ function specifiersOf(src) {
   while ((m = re.exec(String(src))) !== null) out.push(m[1]);
   return out;
 }
+/**
+ * 出户的组件/子包真名 → `packages/<dir>/<main>` 的 file:// URL（映射不到返回 null）。
+ *
+ * P-F 起主包门面按**裸包名**静态 import 出户的组件（`lib/index.js` → `dsh-plugin-wallpaper-engine-about-notice`，
+ * 见 ADR-0014 §12「主包以精确版本依赖子包」）：真实 profile 里靠 `<profile>/node_modules/<name>` 解析，
+ * 而 data: URL 变异体**解析不到任何裸名** ⇒ 必须像主包裸名那样映射成仓内 file URL。
+ */
+function subpackageEntryUrl(spec) {
+  let names;
+  try { names = readdirSync(join(ROOT, 'packages')); } catch { return null; }
+  for (const dir of names) {
+    const abs = join(ROOT, 'packages', dir, 'package.json');
+    let pkg;
+    try { pkg = JSON.parse(readFileSync(abs, 'utf8')); } catch { continue; }
+    if (pkg && pkg.name === spec) {
+      const main = String(pkg.main || './lib/index.js').replace(/^\.\//, '');
+      return pathToFileURL(join(ROOT, 'packages', dir, main)).href;
+    }
+  }
+  return null;
+}
 /** 该源码（先去注释）里的**主包说明符**；空数组 = 零主包说明符（§5.2 目标态）。 */
 function rootSpecifiersOf(src) {
   return specifiersOf(stripComments(String(src))).filter((s) => s === rootPkg.name || s.indexOf(rootPkg.name + '/') === 0);
@@ -264,7 +285,9 @@ function rootSpecifiersOf(src) {
 function mapRootSpecifiers(src) {
   return String(src).replace(/(from\s*|import\s*\(\s*)(['"])([^'"]+)\2/g, (m, pre, q, spec) => {
     const t = rootExportsTarget(spec);
-    return t ? pre + q + pathToFileURL(resolve(ROOT, t.replace(/^\.\//, ''))).href + q : m;
+    if (t) return pre + q + pathToFileURL(resolve(ROOT, t.replace(/^\.\//, ''))).href + q;
+    const sp = subpackageEntryUrl(spec);
+    return sp ? pre + q + sp + q : m;
   });
 }
 /** 装载行入口：零主包说明符（refactor 后的目标态）直接按**真文件**装载（保住 import.meta.url）；

@@ -211,7 +211,9 @@ check('负对照：合成 apply 体（自检在前、provide 在后 = 顺序错�
 const HOST_SERVICE_LITERAL = 'wallpaperEngineHost';
 const HOST_KEYS = ['ids', 'keyNames', 'keys', 'handOff', 'schema', 'http'];
 const SCHEMA_KEYS = ['isFontSetId', 'sanitizeFontset', 'FONTSET_MIGRATED_ID', 'FONTSET_SCHEMA_TAG', 'systemFontKeyOf'];
-const HTTP_KEYS = ['sendJson', 'bodyReader'];
+// P-F：`http` 面多了一个纯符号 —— 组件（media-bridge）读体的字节上限常量 `CONTROL_JSON_MAX_BYTES`
+// 不能静态 import 主包模块（§5.2 禁"直接 import 另一个包的模块级导出"）⇒ 同样从服务面取。
+const HTTP_KEYS = ['sendJson', 'bodyReader', 'CONTROL_JSON_MAX_BYTES'];
 const notSameSet = (a, b) => JSON.stringify([...a].sort()) !== JSON.stringify([...b].sort());
 
 function serviceViolations(mod2, expectName) {
@@ -285,9 +287,24 @@ const synthHost = (over) => {
 const baseHostMod = synthHost();
 const baseHostValue = baseHostMod.createSubpackageHost();
 
-check('跨包服务面契约（HOST_SERVICE_NAME 字面量 / 6 键冻结 / schema 5 键 / http 2 键 / provide 真宿主+夹具两腿）',
+check('跨包服务面契约（HOST_SERVICE_NAME 字面量 / 6 键冻结 / schema 5 键 / http 3 键 / provide 真宿主+夹具两腿）',
   mod ? serviceViolations(mod, HOST_SERVICE_LITERAL).length === 0 : false,
   mod ? JSON.stringify(serviceViolations(mod, HOST_SERVICE_LITERAL)) : '契约模块没有加载成功');
+// P-F：组件行出户后，组件宿主半边**也只**能从这个服务面取键（零主包说明符）⇒ 把每个已登记 id 的
+// 键面都真取一遍（数据驱动，不写死 about-notice）：声明面非空、且每个键都能取到值（缺键即抛）。
+const componentKeyIssues = [];
+if (mod && typeof mod.subpackageIds === 'function' && typeof mod.subpackageKeys === 'function') {
+  for (const id of mod.subpackageIds()) {
+    const names = mod.subpackageKeyNames(id);
+    if (!Array.isArray(names) || names.length === 0) { componentKeyIssues.push(id + ' 的声明面为空'); continue; }
+    let view;
+    try { view = mod.subpackageKeys(id, null); } catch (e) { componentKeyIssues.push(id + ' 取键抛错：' + e.message); continue; }
+    for (const k of names) if (view[k] === undefined) componentKeyIssues.push(id + '.' + k + ' 取到 undefined（声明面与取值面不一致）');
+  }
+}
+check('每个已登记 id（含出户的组件行）都能通过服务面取到一份**非空**键集（组件半边零主包说明符的物理前提）',
+  mod ? mod.subpackageIds().length >= 4 && componentKeyIssues.length === 0 : false,
+  componentKeyIssues.join('；') || (mod ? mod.subpackageIds().map((id) => id + '(' + mod.subpackageKeyNames(id).length + ')').join(' ') : 'n/a'));
 check('负对照：合成服务面缺 handOff 键 ⇒ 判红（键集不许少）',
   serviceViolations(synthHost({ createSubpackageHost: () => Object.freeze({ ids: () => [], keyNames: () => [], keys: () => ({}), schema: baseHostValue.schema, http: baseHostValue.http }) }), HOST_SERVICE_LITERAL).length > 0);
 check('负对照：合成服务面没冻结 ⇒ 判红',

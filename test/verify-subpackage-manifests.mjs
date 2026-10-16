@@ -425,8 +425,23 @@ function literalBody(src, name, open, close) {
 function keyTableOf(src) {
   const lit = literalBody(src, 'SUBPACKAGE_KEY_TABLE', '{', '}');
   if (!lit) return null;
-  // 顶层键缩进 2 空格（内层对象是 4 空格）；注释行已被遮蔽成空格，不会误收。
-  const ids = [...lit.masked.matchAll(/^ {2}([A-Za-z_$][\w$]*):/gm)].map((m) => m[1]);
+  // 顶层键缩进 2 空格（内层对象是 4 空格）。
+  // ⚠️ **为什么同时用 masked 与 raw**：`maskStructure()` 把字符串**内容**也换成空格（引号留着），
+  // 而 P-F 之后组件行的键必须写成带引号的形态 —— 目录名带连字符（`'about-notice'` /
+  // `'mascot-avatar'` / `'media-bridge'`），裸标识符写不出来。只读 masked 会**读不到**这些键
+  // （假绿：S10.1 变成"表里没有它"）；只读 raw 会把注释里的 `foo:` 也收进来。于是：
+  //   · masked 用来判「这一行的键位置确实有东西」（注释行已被换成空白；负对照把键删空后同样全空白）
+  //   · raw 用来取键名（含引号内的内容）
+  // 两者**逐行等长对应**（maskStructure 的等长遮蔽就是为了这个）。
+  const rawLines = lit.raw.split('\n');
+  const maskedLines = lit.masked.split('\n');
+  const keyRe = /^ {2}(?:'([A-Za-z0-9][\w.-]*)'|"([A-Za-z0-9][\w.-]*)"|([A-Za-z_$][\w$]*))\s*:/;
+  const ids = [];
+  for (let i = 0; i < rawLines.length; i++) {
+    if (!/^ {2}\S/.test(maskedLines[i] || '')) continue;
+    const m = keyRe.exec(rawLines[i] || '');
+    if (m) ids.push(m[1] || m[2] || m[3]);
+  }
   return ids.length ? ids : null;
 }
 

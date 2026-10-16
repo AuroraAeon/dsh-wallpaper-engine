@@ -67,7 +67,7 @@ Wallpaper Engine itself splits wallpapers into four types; this plugin supports 
 
 ## How it works
 
-In one line: the **host** (`lib/index.js` facade + the shared route families in `lib/routes/*.js` + each component's own `lib/components/<name>/`) locates Wallpaper Engine and your library
+In one line: the **host** (`lib/index.js` facade + the shared route families in `lib/routes/*.js` + each component's own `lib/components/<name>/`, or `packages/<name>/lib/` once it has moved out) locates Wallpaper Engine and your library
 and feeds media to the browser; the **client** (`lib/client.js`) mounts the selected wallpaper as a fixed
 layer *behind* the app's three columns and registers a first-level "Wallpaper Engine" settings tab.
 

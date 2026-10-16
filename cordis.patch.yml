@@ -32,8 +32,11 @@
     # loads it as its own plugin — its entry re-enters this bundle's
     # `applyComponent` — so disabling just this row removes the About tab's
     # /star-count + /about-qr routes and leaves the other 40 untouched.
+    # P-F (2026-10-16): this component moved out to `packages/about-notice/`, so the
+    # row `name` is now the real package name (resolved through <profile>/node_modules,
+    # same as the fx / parallax / fonts rows below). The `id` is frozen.
     - id: wallpaper-engine-about-notice
-      name: 'dsh-plugin-wallpaper-engine/about-notice'
+      name: 'dsh-plugin-wallpaper-engine-about-notice'
     # Third row: the `mascot-avatar` component's host half (C6, P2-2) — the custom
     # mascot image (/mascot) and the two session avatars (/avatar/<side>). Same
     # shape as the row above (independent plugin, re-enters `applyComponent`);

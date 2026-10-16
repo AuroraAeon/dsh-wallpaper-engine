@@ -99,11 +99,28 @@ function srcSources() {
   return out;
 }
 
-/** patch 里的组件行子路径（行 `name: '<裸包名>/<子路径>'`）—— 声明表不许出现不存在的组件。 */
+/** patch 里**承载组件宿主半边**的行 → 组件名。两种形态：
+ *   · 子路径形态（P-F 之前）：行 `name: '<裸包名>/<子路径>'` ⇒ 组件名 = 子路径
+ *   · 真包名形态（P-F 之后）：行 `id: 'wallpaper-engine-<组件>'` + `name: '<裸包名>-<组件>'`
+ *     （组件行出户到 `packages/<组件>/` 后目录名带连字符，行名只能是真包名）
+ * 为什么两种都收：出户是**逐格**搬的，迁移期内两种会并存；本判据要防的是"声明了一个没有承载行
+ * 的组件"（声明面 ↔ 行面的假绿），与那一行用哪种名字无关 —— 名字形态的收敛由
+ * `test/verify-subpackage-manifests.mjs` 的 S3.1/S4.2 与主 patch 行对账负责。 */
 function componentRowsFromPatch(text) {
+  const src = String(text);
   const out = [];
-  const re = new RegExp('name\\s*:\\s*[\'"]?' + esc(BARE) + '/([^\'"\\s#]+)', 'g');
-  for (const m of String(text).matchAll(re)) if (!out.includes(m[1])) out.push(m[1]);
+  const subRe = new RegExp('name\\s*:\\s*[\'"]?' + esc(BARE) + '/([^\'"\\s#]+)', 'g');
+  for (const m of src.matchAll(subRe)) if (!out.includes(m[1])) out.push(m[1]);
+  // 真包名形态：同一条目内 `id: wallpaper-engine-<x>` 与 `name: '<裸包名>-<x>'` 必须**成对**
+  // （只按 name 收，`<裸包名>-其他` 这种与 id 不符的行也会被算成组件行）。
+  // `(?!-\s*id:)` 防止懒匹配跨到下一条目的 name 上。
+  const rowRe = new RegExp(
+    '-\\s*id:\\s*[\'"]?(wallpaper-engine-[A-Za-z0-9][\\w.-]*)[\'"]?'
+    + '((?:(?!-\\s*id:)[\\s\\S]){0,200}?)name:\\s*[\'"]([^\'"\\s#]+)[\'"]', 'g');
+  for (const m of src.matchAll(rowRe)) {
+    const sub = m[1].slice('wallpaper-engine-'.length);
+    if (m[3] === BARE + '-' + sub && !out.includes(sub)) out.push(sub);
+  }
   return out.sort();
 }
 
@@ -455,7 +472,7 @@ check('扫描面完整：`srcSources()` 覆盖 `source-locator` 枚举出的每�
 check('negative control：扫描面被窄化一个文件 ⇒ 同一条判据判红（"覆盖 == 枚举真源"不是恒真式）',
   sources.size > 1 && new Map([...sources].slice(1)).size !== SRC_FACE.length,
   '窄化后 ' + (new Map([...sources].slice(1)).size) + ' ≠ 真源 ' + SRC_FACE.length);
-check('patch 里解析出 ≥2 个组件行（行 name 形如 `<裸包名>/<子路径>`）', patchRows.length >= 2, patchRows.join(' '));
+check('patch 里解析出 ≥2 个组件行（子路径形态 `<裸包名>/<子路径>` 或真包名形态 `<裸包名>-<组件>` + 配对 id）', patchRows.length >= 2, patchRows.join(' '));
 check('本轮范围棘轮：声明面的键集恰为 [' + SCOPE.join(', ') + ']，且不含 [' + OUT_OF_SCOPE.join(', ') + ']',
   sameKeys(Object.keys(DECL), SCOPE) && !Object.keys(DECL).some((k) => OUT_OF_SCOPE.includes(k)),
   '声明面 = [' + Object.keys(DECL).join(', ') + '] · patch 行 = [' + patchRows.join(', ') + ']');

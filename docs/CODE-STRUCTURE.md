@@ -112,12 +112,12 @@ graph TB
 - **宿主内核** `lib/kernel/*` —— 门面在**模块加载期**一次建成的各套件实例（`host-kernel.js`）、
   一次 apply 的会话段（`host-session.js`）、组件行消费的组件视图与迷你会话（`component-session.js`）、
   配置与数据目录（`config.js` / `data-dir.js`）。
-- **路由族**（`lib/routes/<族>.js` 或 `lib/components/<组件>/<族>.js`，一文件一族）—— 拿一个显式
+- **路由族**（`lib/routes/<族>.js`、`lib/components/<组件>/<族>.js`，或已出户组件的 `packages/<组件>/lib/routes/<族>.js`，一文件一族）—— 拿一个显式
   context 对象，各自注册自己的路由。族的成员是**派生量**，本文不列：路由枚举的真源是
   `test/tools/host-route-index.mjs` 的 `buildIndex()`（它把搬进 `lib/routes/` 的族按调用点放回原位），
   路由级视图是生成物 `docs/ROUTE-INDEX.md`（`verify-route-index` 重算并逐字节比对）。
   `verify-route-families` 另按账本 §7-6 的触发线盯「某族长到 ≥3 条 ⇒ 拆族或改线」。
-- **组件行**（`lib/components/<组件>/`）—— 一个 bundle 多行（[`adr/0013`](./adr/0013-bundle-multi-component-rows.md)）：
+- **组件行**（`lib/components/<组件>/`；**已出户的在 `packages/<组件>/lib/`** —— P-F 组件行统一，首个 = `packages/about-notice/`，2026-10-16）—— 一个 bundle 多行（[`adr/0013`](./adr/0013-bundle-multi-component-rows.md)）：
   组件入口 `index.js` + 它自己的路由族实现 + 该行消费的组件视图。行的开关是宿主的
   （`cordis.patch.yml`）；"哪个实现属于哪一行"由 `test/verify-route-ownership.mjs` 钉住，
   行的装载形态由 `test/verify-bundle-rows.mjs` 钉住。
@@ -139,7 +139,7 @@ graph LR
     BOOT["lib/host-boot.js<br/>BASE / 内核单例 / 组件记账"]
     KN["lib/kernel/*<br/>套件实例 · 会话 · 组件视图"]
     IDX --> R["lib/routes/*.js<br/>跨组件共享的路由族"]
-    IDX --> C["lib/components/&lt;组件&gt;/<br/>组件入口 + 自有路由族"]
+    IDX --> C["lib/components/&lt;组件&gt;/<br/>（已出户：packages/&lt;组件&gt;/lib/）<br/>组件入口 + 自有路由族"]
     IDX --> KN
     BOOT --> KN
     C --> BOOT
@@ -391,6 +391,7 @@ graph LR
    `lib/routes/`、`lib/components/<组件>/`）。
    门面 `lib/index.js` 只做注册与协议聚合，**不装新逻辑**。
    ⚠️ 若这份实现属于**某个组件行**（它的路由与浏览器可见面随行开关启停），落 `lib/components/<组件>/`
+   （**已出户的组件**落 `packages/<组件>/lib/` —— P-F，2026-10-16 起，首个 = `packages/about-notice/`）
    并由该行入口装配 —— 别放进 `lib/routes/`（归属判据见 [`ARCHITECTURE-SPLIT.md`](./ARCHITECTURE-SPLIT.md)）。
    → **随包的数据文件**（不是代码，但要跟包走）也放 `lib/<语义名>/`，**同样加进 `files`**：
    现状 `lib/fontsets/`（随包预设，只读；用户的编辑按写时复制落 `pluginDataDir()`）。
@@ -409,7 +410,7 @@ graph LR
    → `assets/<用途>/`，与代码同仓、**不进 `files`**；运行时要用的那版是**派生物**，放
    `lib/<用途>/` **并进 `files`**（`verify-package-files` P1 盯着）。
    现状两处：`assets/mascot/` 与 `assets/about/`（二维码源图 → 裁码后的 `lib/about/*.png`，
-   由 `lib/components/about-notice/about-qr.js` 直出）。
+   由 `packages/about-notice/lib/routes/about-qr.js` 直出（该组件 2026-10-16 经 P-F 出户，原 `lib/components/about-notice/about-qr.js`）。
    ⚠️ 这类目录里的 `README.md` 是**该目录的自述**（替代不了文件头注释时就写在那里：派生口径、
    替换素材的步骤、"源资产不进包"这条不变量），**与 `lib/**` 的 `README.md` 同类**；
    它们**有意不进 `docs/` 的生命周期规则**（不是常青文档，也不随版本演进），
@@ -556,8 +557,8 @@ graph LR
 | **路由表** | `docs/ROUTE-INDEX.md`（生成物） | 人 + 守卫 | 由 `test/tools/host-route-index.mjs` 复算 |
 | **构建期内联清单** | `scripts/build-client.mjs` 的 `INLINE_MODULES` | 构建 + 守卫 | 带 `markers` 锚点 |
 | **发布面** | `package.json` 的 `files` | 守卫 P1–P8 | 留在 `lib/` 的一切都会被打进包 |
-| **star 数缓存**（全插件唯一出站请求的状态） | `lib/components/about-notice/github-stars.js`：进程内 TTL + `pluginDataDir()/star-count.json` | 客户端 `src/client.js` 的 `starCount` 镜像（**自己一份同量级 TTL**） | 仓库地址的真源是 `package.json` 的 `repository`，宿主**现读**（不另抄字面量）；拉到失败**不写**时间戳 |
-| **「关于」页静态数据** | `src/about-assets.js`（仓库地址 + 两条路由路径） | 客户端渲染 + `lib/components/about-notice/about-qr.js` 直出 PNG | 二维码**源图**在 `assets/about/`（不进包），随包的是裁码后的 `lib/about/*.png`；文件名白名单在服务侧**另有一份逐字副本**（换码只换 PNG，不重建产物） |
+| **star 数缓存**（全插件唯一出站请求的状态） | `packages/about-notice/lib/routes/github-stars.js`（2026-10-16 前在 `lib/components/about-notice/`）：进程内 TTL + `pluginDataDir()/star-count.json` | 客户端 `src/client.js` 的 `starCount` 镜像（**自己一份同量级 TTL**） | 仓库地址的真源是 `package.json` 的 `repository`，宿主**现读**（不另抄字面量）；拉到失败**不写**时间戳 |
+| **「关于」页静态数据** | `src/about-assets.js`（仓库地址 + 两条路由路径） | 客户端渲染 + `packages/about-notice/lib/routes/about-qr.js` 直出 PNG（2026-10-16 前在 `lib/components/about-notice/`） | 二维码**源图**在 `assets/about/`（不进包），随包的是裁码后的 `lib/about/*.png`；文件名白名单在服务侧**另有一份逐字副本**（换码只换 PNG，不重建产物） |
 | **退役线 / 死码基线** | `test/verify-retired-lines.mjs` · `test/verify-reachability.mjs` | 守卫（**软档**：失败只出声） | 前者 = "退役线里的东西**不许复活**"；后者 = 不可达计数**只许缩小**（棘轮） |
 | **对上游的宿主要求** | `package.json` 的 **`engines.dsh`** | **插件市场与 DSH 自己的插件管理 UI** 直接从已发布的 manifest 读它（社区目录不参与），显示在插件卡片上并与运行中的宿主比对；人类读三份 README 与 [`UPGRADING.md`](./UPGRADING.md) 里的同一段散文 | 机读的那份**只有这一处**；散文是它的回声，**改一处就要改全部**。`dsh-better-sidebar` 这类**非** `@deepseek-ai/*` 的依赖**表达不了**，只存在于散文里 |
 
