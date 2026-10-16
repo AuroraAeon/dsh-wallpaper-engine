@@ -79,7 +79,7 @@ const staleMetaGuards = (registered, noTarget) => {
 const M = (...p) => p.join('/');
 const ZERO_COVERAGE_WHY = {
   // ── P2 拆包：行为级覆盖（本工具只认"直读 / 隔产物"两列，行为级覆盖按口径算零覆盖）──
-  [M('lib', 'components', 'mascot-avatar', 'index.js')]: '组件行入口（P2 拆包）：实现归属由 verify-route-ownership 的"行→入口"对账覆盖（按目录集合派生，非直读本文件）',
+  [M('packages', 'mascot-avatar', 'lib', 'index.js')]: '组件行入口（P2 拆包，P-F 出户）：实现归属由 verify-route-ownership 的"行→入口"对账覆盖（按目录集合派生，非直读本文件）',
   // ⚠️ P-F 出户后 `packages/about-notice/lib/index.js` **不需要**登记：verify-about 直读它
   //    （注册点形态判据的读取面），所以它在"直读"那一列是有守卫的 —— 登记了反而会被判"例外表空转"。
   //    （实测踩过一次：先按旧路径登记，再修 verify-about 的路径 ⇒ stale。）
@@ -142,7 +142,7 @@ console.log('\n① 每个模块都要有守卫碰过它（例外表只许缩小�
   //    （原先这里是把判据重写一遍的恒真式 —— 判据一改，负对照不会跟着红 = 假牙。）
   //    合成用的"已登记"例子取表里**当前确实在册**的那一条（表随接线不断缩小：例子过期会让
   //    正/负对照一起变成假红，见 D/F 两次收口）。
-  const registeredExample = M('lib', 'components', 'mascot-avatar', 'index.js');
+  const registeredExample = M('packages', 'mascot-avatar', 'lib', 'index.js');
   check('negative control: 新模块没守卫时会被同一条判据判出（合成输入）',
     uncoveredUnregistered(['src/zzz-new-module.js'], allowed).length === 1
     && uncoveredUnregistered([registeredExample], allowed).length === 0,

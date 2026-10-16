@@ -43,12 +43,12 @@ graph LR
     BOOT --> KN["lib/kernel/*<br/>套件实例 · 会话 · 组件视图"]
     MAIN --> R["lib/routes/*.js<br/>跨组件共享的路由族"]
     C1 --> R1["packages/about-notice/lib/*<br/>（P-F 2026-10-16 出户）"]
-    C2 --> R2["lib/components/mascot-avatar/*"]
+    C2 --> R2["packages/mascot-avatar/lib/*<br/>（P-F 2026-10-16 出户）"]
     C3 --> R3["lib/components/media-bridge/*"]
 ```
 
-（**P-F 组件行统一进行中**：`about-notice` 已出户到 `packages/about-notice/`（真名行 + 独立清单），
-`mascot-avatar` / `media-bridge` 仍住 `lib/components/`。计划与须知见 [`wip/BUNDLE-SPLIT.md`](./wip/BUNDLE-SPLIT.md) §15。）
+（**P-F 组件行统一进行中**：`about-notice` 与 `mascot-avatar` 已出户到 `packages/<组件>/`（真名行 + 独立清单），
+只剩 `media-bridge` 仍住 `lib/components/`。计划与须知见 [`wip/BUNDLE-SPLIT.md`](./wip/BUNDLE-SPLIT.md) §15。）
 
 | 段 | 住在哪 | 是什么 | 契约 / 判据 |
 |---|---|---|---|
@@ -56,7 +56,7 @@ graph LR
 | **引导叶子** | `lib/host-boot.js` | `BASE` / `PLUGIN_NAME` / `repoSlugFromPkg()` / `hostKernel` 单例 / `runComponent()` / `handOffTeardown()` / `componentProbe()` | 它不 import 门面，也不 import 组件 ⇒ 拆掉「门面 ⇄ 组件入口」的 import 环；`verify-bundle-rows` ⑥ 双向判 |
 | **宿主内核** | `lib/kernel/*` | `host-kernel.js`（模块加载期建一次的套件实例）、`host-session.js`（一次 apply 的会话段：版本戳 / 日志提示 / token 表 / faststart / 启动清扫 / 字节出站 / 媒体源 / 清单 ＋ teardown）、`component-session.js`（组件的迷你会话 + `componentViewFrom()` 视图）、`config.js`、`data-dir.js` | 对外面分两级（稳定面 / 内部面），键数与分级由 `verify-component-face` 现算；「内核绝不 import 门面」 |
 | **跨组件路由族** | `lib/routes/*.js` | 主包自己的路由，一文件一族 | 族的 `DEPS` 声明 ↔ 调用点实参双向对账；`verify-route-families` 盯触发线 |
-| **组件行** | `lib/components/<组件>/`；**已出户的**在 `packages/<组件>/lib/`（首个 = `packages/about-notice/`，2026-10-16） | 一行一个目录：入口 `index.js` + 它自己的路由族实现 + 清单（`package.json`）+ `icon.png` + `locale/*.json` | 行的存在性/形态由 `verify-bundle-rows` ⑥（入口 ⇄ 清单出口三连 ⇄ `files` 四类文件、装载等价、跨行无重复）与 `verify-route-ownership` 钉 |
+| **组件行** | `lib/components/<组件>/`；**已出户的**在 `packages/<组件>/lib/`（`packages/about-notice/` 与 `packages/mascot-avatar/`，2026-10-16；只剩 `media-bridge` 在旧位） | 一行一个目录：入口 `index.js` + 它自己的路由族实现 + 清单（`package.json`）+ `icon.png` + `locale/*.json` | 行的存在性/形态由 `verify-bundle-rows` ⑥（入口 ⇄ 清单出口三连 ⇄ `files` 四类文件、装载等价、跨行无重复）与 `verify-route-ownership` 钉 |
 | **共享内核** | `lib/settings-schema.js` | 唯一被构建期内联进浏览器的 `lib/**` 文件 | 白名单 = `test/verify-module-layout.mjs` 的 `SHARED_KERNEL_WHITELIST`（再加一个必须改清单） |
 
 **行的开关语义 = A 语义**：宿主行级。停用某个组件行 ⇒ 该组件的宿主路由**整族不注册**；
@@ -88,7 +88,7 @@ graph LR
 | `origin/main:lib/media/supervisor.js` | `lib/components/media-bridge/supervisor.js` | 组件行（子进程守护） |
 | `origin/main:lib/media/provision.js` | `lib/components/media-bridge/provision.js` | 组件行（产物解析 / 下载） |
 | `origin/main:lib/routes/about-qr.js` · `origin/main:lib/routes/github-stars.js` | `packages/about-notice/lib/routes/*.js`（原 `lib/components/about-notice/*.js`，P-F 2026-10-16 出户） | 已出户的组件行（关于页两条腿） |
-| `origin/main:lib/routes/avatar.js` · `origin/main:lib/routes/mascot.js` | `lib/components/mascot-avatar/*.js` | 组件行（头像 + 立绘） |
+| `origin/main:lib/routes/avatar.js` · `origin/main:lib/routes/mascot.js` | `packages/mascot-avatar/lib/routes/*.js`（原 `lib/components/mascot-avatar/*.js`，P-F 2026-10-16 出户） | 已出户的组件行（头像 + 立绘） |
 | `origin/main:lib/scene-probe.js` | `lib/media/scene-probe.js` | 内核媒体（`lib/media/` 只剩内核媒体文件） |
 | `origin/main:lib/media-probe.js` | `lib/media/mp4-probe.js` | 内核媒体 |
 | `origin/main:lib/transcode.js` · `origin/main:lib/video-preview.js` | `lib/media/transcode.js` · `lib/media/video-preview.js` | 内核媒体 |
@@ -162,7 +162,7 @@ graph LR
   数字都没动 —— 绿是"真的把发布面清干净"换来的，不是放宽棘轮换来的。复算：
   ```
   node test/verify-reachability.mjs        # 期望：ALL REACHABILITY CHECKS PASSED（不可达 0 个 / 0 行）
-  node test/verify-guard-map.mjs           # 期望：例外表仍只有 1 条（lib/components/mascot-avatar/index.js）
+  node test/verify-guard-map.mjs           # 期望：例外表条目都是"确实零覆盖"的（`lib/components/media-bridge/index.js` …）
   ```
   九项"发布面孤儿"已全部收口（删副本 / 移回真源）⇒ 结论由两条守卫钉住：
   `node test/verify-reachability.mjs`（不可达 0 个 / 0 行）与 `node test/verify-undefined-refs.mjs`

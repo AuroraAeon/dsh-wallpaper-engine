@@ -35,9 +35,6 @@
 
 import { readdirSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
-import { bodyReader } from '../../http-body.js';
-// JSON 应答的**唯一实现**（状态码 + 两个头 + end）—— 见 lib/json-response.js。
-import { sendJson } from '../../json-response.js';
 
 /** 文件名里那段时间戳（`Date.now()` 的 36 进制 + 4 位随机 —— 形状见 `AVATAR_FILE_RE`）：换图即换名。 */
 function avatarStamp() {
@@ -45,11 +42,11 @@ function avatarStamp() {
 }
 
 /** 注入契约（P2-7A / ADR-0013 D12）：本族从 `c` 消费的**必需**键 —— 门面/组件行调用点必须逐键给到（判据 test/verify-inject-contracts.mjs 双向对账）。 */
-export const DEPS = ['disposers', 'base', 'serveFile', 'avatarDir', 'avatarPath', 'AVATAR_SIDES', 'AVATAR_EXT', 'AVATAR_MAX_BYTES', 'atomicWriteFileP', 'armBodyIdleTimeout', 'lingerClose'];
+export const DEPS = ['disposers', 'base', 'serveFile', 'avatarDir', 'avatarPath', 'AVATAR_SIDES', 'AVATAR_EXT', 'AVATAR_MAX_BYTES', 'atomicWriteFileP', 'armBodyIdleTimeout', 'lingerClose', 'http'];
 
 export function registerAvatarRoutes(webServer, c) {
   const {
-    disposers, base: BASE, serveFile,
+    disposers, base: BASE, serveFile, http,
     avatarDir, avatarPath, AVATAR_SIDES, AVATAR_EXT, AVATAR_MAX_BYTES,
     atomicWriteFileP, armBodyIdleTimeout, lingerClose,
   } = c;
@@ -61,8 +58,9 @@ export function registerAvatarRoutes(webServer, c) {
       const method = (req.method || 'GET').toUpperCase();
       const pathname = new URL(req.url || '/', 'http://x').pathname;
       const side = decodeURIComponent(pathname.slice(`${BASE}/avatar/`.length)).replace(/\/+$/, '');
-      // 薄别名：保留调用点写法，实现收敛到 lib/json-response.js（默认带 no-store）。
-      const json = (code, payload) => sendJson(res, code, payload);
+      // 薄别名：保留调用点写法，实现收敛到主包的 lib/json-response.js（默认带 no-store），
+      // 经注入面 `http` 送达（本包零主包说明符）。
+      const json = (code, payload) => http.sendJson(res, code, payload);
       // 只认两个 side（不变量 ①）：非法的一方连目录都不碰。
       if (!AVATAR_SIDES.includes(side)) { json(400, { error: 'bad-side' }); return; }
 
@@ -101,8 +99,8 @@ export function registerAvatarRoutes(webServer, c) {
         timedOut = true;
         json(408, { error: 'request timeout' });
       });
-      // 上限 + 收完一次性解码 —— 唯一实现见 lib/http-body.js。
-      const reader = bodyReader(req, {
+      // 上限 + 收完一次性解码 —— 唯一实现见主包 lib/http-body.js（经注入面 `http`）。
+      const reader = http.bodyReader(req, {
         maxBytes: AVATAR_MAX_BYTES,
         shouldStop: () => timedOut || tooLarge,
         onOverflow: () => {

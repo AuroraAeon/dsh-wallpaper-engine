@@ -38,7 +38,7 @@
 | `verify-component-fonts.mjs` | `lib/settings-schema.js` `src/client.js` `src/effects.js` `src/font/apply.js` `src/font/components.js` | ✅ |
 | `verify-component-visibility.mjs` | `lib/components/visibility.js` `lib/routes/inventory.js` `src/panel-tabs.js` |  |
 | `verify-config-store.mjs` | `lib/kernel/config.js` `lib/media/transcode.js` |  |
-| `verify-contracts.mjs` | `lib/components/mascot-avatar/avatar.js` `lib/components/mascot-avatar/mascot.js` `lib/components/media-bridge/backend.js` `lib/components/media-bridge/index.js` `lib/components/media-bridge/legacy.js` `lib/components/media-bridge/supervisor.js` `lib/host-boot.js` `lib/index.js` `lib/kernel/host-kernel.js` `lib/media/media-dirs.js` `lib/settings-schema.js` `packages/fonts/lib/routes/fontsets.js` `packages/fonts/src/fontset-editor.js` `src/api-client.js` `src/client.js` `src/fontset-store.js` `src/panel-tabs-advanced.js` `src/panel-tabs-appearance.js` `src/panel-tabs-effects.js` `src/panel-tabs-mascot.js` `src/panel-tabs-wallpaper.js` `src/panel-tabs.js` |  |
+| `verify-contracts.mjs` | `lib/components/media-bridge/backend.js` `lib/components/media-bridge/index.js` `lib/components/media-bridge/legacy.js` `lib/components/media-bridge/supervisor.js` `lib/host-boot.js` `lib/index.js` `lib/kernel/host-kernel.js` `lib/media/media-dirs.js` `lib/settings-schema.js` `packages/fonts/lib/routes/fontsets.js` `packages/fonts/src/fontset-editor.js` `packages/mascot-avatar/lib/routes/avatar.js` `packages/mascot-avatar/lib/routes/mascot.js` `src/api-client.js` `src/client.js` `src/fontset-store.js` `src/panel-tabs-advanced.js` `src/panel-tabs-appearance.js` `src/panel-tabs-effects.js` `src/panel-tabs-mascot.js` `src/panel-tabs-wallpaper.js` `src/panel-tabs.js` |  |
 | `verify-dead-declarations.mjs` | — |  |
 | `verify-extra-glass.mjs` | `lib/settings-schema.js` `src/client.js` `src/effects.js` `src/glass-extra.js` `src/glass-panel.js` `src/quick-panel.js` | ✅ |
 | `verify-fontset.mjs` | `lib/index.js` `lib/settings-schema.js` `packages/fonts/lib/index.js` `packages/fonts/src/appearance-font-section.js` `packages/fonts/src/fontset-editor.js` `src/client.js` `src/extension-registry.js` `src/font/apply.js` `src/font/color-roles.js` `src/font/components.js` `src/font/typography.js` `src/fontset-store.js` `src/glass-panel.js` `src/media-prep.js` `src/module-reset.js` `src/panel-tabs-advanced.js` `src/panel-tabs-appearance.js` `src/panel-tabs-effects.js` `src/panel-tabs-mascot.js` `src/panel-tabs-wallpaper.js` `src/panel-tabs.js` `src/picker-modal.js` `src/picker-props-panel.js` `src/section-head.js` `src/styles-base.js` `src/styles-chrome.js` `src/styles-ext.js` `src/styles-panel.js` `src/styles-quick.js` `src/styles-settings.js` `src/styles-shell.js` `src/styles-sidebar.js` `src/styles.js` `src/system-fonts.js` `src/we-cond.js` | ✅ |
@@ -106,9 +106,6 @@
 |---|---:|---|
 | `lib/cache-dir.js` | 1 | `verify-scene-live` |
 | `lib/client.js` | 43 | `fontset-load-smoke` `live-frame-async-identity-smoke` `live-frame-backfill-smoke` `rotation-live-smoke` `rotation-prepared-leak-smoke` `rotation-smoke` `verify-about` `verify-api-client` `verify-body-caps` `verify-child-kill` `verify-client-sync` `verify-client` `verify-component-fonts` `verify-extra-glass` `verify-fontset` `verify-glass-compositing` `verify-glass-surfaces` `verify-host-paint-scope` `verify-i18n` `verify-json-response` `verify-module-layout` `verify-occlusion-client` `verify-package-files` `verify-package-publish` `verify-picker-model` `verify-picker-props` `verify-picker-upload` `verify-playback-controls` `verify-presets` `verify-reachability` `verify-readability` `verify-scene-live` `verify-scene` `verify-settings-schema-exports` `verify-softrender` `verify-subpackage-client-half` `verify-subpackage-toggle-roundtrip` `verify-system-fonts` `verify-theme-follow` `verify-theme-layer` `verify-transcode-state` `verify-types` `verify-windows-caption` |
-| `lib/components/mascot-avatar/avatar.js` | 1 | `verify-contracts` |
-| `lib/components/mascot-avatar/index.js` | 0 | **（无）** |
-| `lib/components/mascot-avatar/mascot.js` | 1 | `verify-contracts` |
 | `lib/components/media-bridge/backend.js` | 3 | `verify-cache-dir` `verify-contracts` `verify-media-bridge` |
 | `lib/components/media-bridge/index.js` | 2 | `verify-contracts` `verify-scene-live` |
 | `lib/components/media-bridge/legacy.js` | 3 | `verify-cache-dir` `verify-contracts` `verify-scene-live` |
@@ -189,6 +186,9 @@
 | `packages/fx/src/client.js` | 0 | **（无）** |
 | `packages/fx/src/ext-fx.js` | 1 | `verify-scene-live` |
 | `packages/fx/src/fx-layer.js` | 1 | `verify-scene-live` |
+| `packages/mascot-avatar/lib/index.js` | 0 | **（无）** |
+| `packages/mascot-avatar/lib/routes/avatar.js` | 1 | `verify-contracts` |
+| `packages/mascot-avatar/lib/routes/mascot.js` | 1 | `verify-contracts` |
 | `packages/parallax/lib/client.parallax.js` | 3 | `verify-client-sync` `verify-client` `verify-scene-live` |
 | `packages/parallax/lib/index.js` | 0 | **（无）** |
 | `packages/parallax/src/client.js` | 0 | **（无）** |

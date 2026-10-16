@@ -41,8 +41,11 @@
     # mascot image (/mascot) and the two session avatars (/avatar/<side>). Same
     # shape as the row above (independent plugin, re-enters `applyComponent`);
     # disabling it removes just those two routes.
+    # P-F (2026-10-16): this component moved out to `packages/mascot-avatar/`, so the
+    # row `name` is now the real package name (resolved through <profile>/node_modules,
+    # same as the fx / parallax / fonts rows below). The `id` is frozen.
     - id: wallpaper-engine-mascot-avatar
-      name: 'dsh-plugin-wallpaper-engine/mascot-avatar'
+      name: 'dsh-plugin-wallpaper-engine-mascot-avatar'
     # Fourth row: the `media-bridge` component's host half (third component) — the
     # system media integration (now playing / spectrum / artwork / reverse control)
     # and its backend (the media-bridge child process with the built-in fallback).

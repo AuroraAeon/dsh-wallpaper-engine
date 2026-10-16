@@ -49,17 +49,17 @@
 | 30 | `/settings` | lib/routes/settings.js:158 | 箭头 | disposers base ctx mediaOriginApi readSettings isBetterSidebarLoaded …(+3) | 20 |
 | 31 | `/cache-dir` | lib/routes/cache-dir.js:47 | 箭头 | disposers base CONTROL_JSON_MAX_BYTES normalizeUserDir cacheBaseDir setCacheDir …(+1) | 1 |
 | 32 | `/cache-dir/browse` | lib/routes/cache-dir.js:115 | 箭头 | disposers base normalizeUserDir | 1 |
-| 33 | `/mascot` | lib/components/mascot-avatar/mascot.js:53 | 箭头 | disposers base serveFile mascotDir mascotPath MASCOT_EXT …(+4) | 5 |
-| 34 | `/avatar` | lib/components/mascot-avatar/avatar.js:57 | 箭头 | disposers base serveFile avatarDir avatarPath AVATAR_SIDES …(+5) | 5 |
-| 35 | `/media-status` | lib/components/media-bridge/now-playing.js:87 | 箭头 | disposers base | 2 |
-| 36 | `/audio-spectrum` | lib/components/media-bridge/now-playing.js:97 | 箭头 | disposers base | 2 |
-| 37 | `/now-playing` | lib/components/media-bridge/now-playing.js:116 | 箭头 | disposers base | 3 |
-| 38 | `/now-playing/artwork` | lib/components/media-bridge/now-playing.js:130 | 箭头 | disposers base serveFile | 2 |
-| 39 | `/media-control` | lib/components/media-bridge/now-playing.js:148 | 箭头 | disposers base CONTROL_JSON_MAX_BYTES | 3 |
-| 40 | `/star-count` | packages/about-notice/lib/routes/github-stars.js:109 | async 箭头 | disposers base repoSlug log http | 2 |
-| 41 | `/about-qr` | packages/about-notice/lib/routes/about-qr.js:69 | 箭头 | disposers base aboutDir serveFile | 3 |
-| 42 | `/fontsets` | packages/fonts/lib/routes/fontsets.js:255 | async 箭头 | disposers base readFontSetId | 4 |
-| 43 | `/system-fonts` | packages/fonts/lib/routes/system-fonts.js:487 | async 箭头 | disposers base http | 3 |
+| 33 | `/media-status` | lib/components/media-bridge/now-playing.js:87 | 箭头 | disposers base | 2 |
+| 34 | `/audio-spectrum` | lib/components/media-bridge/now-playing.js:97 | 箭头 | disposers base | 2 |
+| 35 | `/now-playing` | lib/components/media-bridge/now-playing.js:116 | 箭头 | disposers base | 3 |
+| 36 | `/now-playing/artwork` | lib/components/media-bridge/now-playing.js:130 | 箭头 | disposers base serveFile | 2 |
+| 37 | `/media-control` | lib/components/media-bridge/now-playing.js:148 | 箭头 | disposers base CONTROL_JSON_MAX_BYTES | 3 |
+| 38 | `/star-count` | packages/about-notice/lib/routes/github-stars.js:109 | async 箭头 | disposers base repoSlug log http | 2 |
+| 39 | `/about-qr` | packages/about-notice/lib/routes/about-qr.js:69 | 箭头 | disposers base aboutDir serveFile | 3 |
+| 40 | `/fontsets` | packages/fonts/lib/routes/fontsets.js:255 | async 箭头 | disposers base readFontSetId | 4 |
+| 41 | `/system-fonts` | packages/fonts/lib/routes/system-fonts.js:487 | async 箭头 | disposers base http | 3 |
+| 42 | `/mascot` | packages/mascot-avatar/lib/routes/mascot.js:50 | 箭头 | disposers base serveFile http mascotDir mascotPath …(+5) | 5 |
+| 43 | `/avatar` | packages/mascot-avatar/lib/routes/avatar.js:54 | 箭头 | disposers base serveFile http avatarDir avatarPath …(+6) | 5 |
 
 **零提及（拆分前必须先补守卫）**：（无）
 
@@ -90,7 +90,7 @@
 | `packages/about-notice/lib/routes/github-stars.js` | `registerGithubStarsRoutes(webServer, c)` | 1 | `disposers` `base` `repoSlug` `cachePath` `log` `http` `fetchJson` | — |
 | `packages/fonts/lib/routes/fontsets.js` | `registerFontsetsRoutes(webServer, c)` | 1 | `disposers` `base` `readFontSetId` | — |
 | `packages/fonts/lib/routes/system-fonts.js` | `registerSystemFontsRoutes(webServer, c)` | 1 | `disposers` `base` `cachePath` `log` `schema` `http` `platform` `home` `fontDirs` `runFontCommand` | — |
-| `lib/components/mascot-avatar/avatar.js` | `registerAvatarRoutes(webServer, c)` | 1 | `disposers` `base` `serveFile` `avatarDir` `avatarPath` `AVATAR_SIDES` `AVATAR_EXT` `AVATAR_MAX_BYTES` `atomicWriteFileP` `armBodyIdleTimeout` `lingerClose` | — |
-| `lib/components/mascot-avatar/mascot.js` | `registerMascotRoutes(webServer, c)` | 1 | `disposers` `base` `serveFile` `mascotDir` `mascotPath` `MASCOT_EXT` `MASCOT_MAX_BYTES` `atomicWriteFileP` `armBodyIdleTimeout` `lingerClose` | — |
+| `packages/mascot-avatar/lib/routes/avatar.js` | `registerAvatarRoutes(webServer, c)` | 1 | `disposers` `base` `serveFile` `http` `avatarDir` `avatarPath` `AVATAR_SIDES` `AVATAR_EXT` `AVATAR_MAX_BYTES` `atomicWriteFileP` `armBodyIdleTimeout` `lingerClose` | — |
+| `packages/mascot-avatar/lib/routes/mascot.js` | `registerMascotRoutes(webServer, c)` | 1 | `disposers` `base` `serveFile` `http` `mascotDir` `mascotPath` `MASCOT_EXT` `MASCOT_MAX_BYTES` `atomicWriteFileP` `armBodyIdleTimeout` `lingerClose` | — |
 | `lib/components/media-bridge/now-playing.js` | `registerNowPlayingRoutes(webServer, c)` | 5 | `disposers` `base` `appendDiagLine` `configPath` `cacheBaseDir` `readConfig` `serveFile` `CONTROL_JSON_MAX_BYTES` `log` | — |
 

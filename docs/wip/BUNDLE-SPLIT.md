@@ -943,8 +943,9 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 ## 15. 组件行统一（`lib/components/<sub>/` → `packages/<pkg>/`）：计划与须知
 
 > **本节是 §7.9（P-F）的开工手册**：时机按 **A**（账① 一次独立机械提交，排在 P-D 之前）；
-> 须知是搬迁时的**硬约束**与**静默陷阱**。**批 1 已开工**：`about-notice` 试点于 2026-10-16 出户
-> （见 §15.2 的落地账），`mascot-avatar` / `media-bridge` 待搬（`media-bridge` 必须排在 P-D 之前）。
+> 须知是搬迁时的**硬约束**与**静默陷阱**。**批 1 / 批 2a 已开工**：`about-notice`（2026-10-16）与
+> `mascot-avatar`（2026-10-16，批 2a）已出户（见 §15.2 的落地账），只剩 `media-bridge` 待搬
+> （`media-bridge` 必须排在 P-D 之前）。
 > 本节所有路径与行号都是 2026-10-16 的实测读数；数值一律给复算命令（`docs/README.md` 写作纪律 4）。
 
 ### 15.1 前提勘误：组件行**从未发布** ⇒ 零迁移代价
@@ -992,6 +993,29 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 >   两份生成物重算（`docs/ROUTE-INDEX.md`、`docs/GUARD-MAP.md`）。
 > - **读数**：`verify` 72/72 · `docs` 6/6 · `smoke` 6/6 · `npm run verify:static` ALL PASSED。
 > - **仍未做**：`mascot-avatar`、`media-bridge`（后者须排在 P-D 之前）；账③（浏览器半边）未动。
+> - **提交**：`844168ff`（2026-10-16，已推送；CI run 38898113569 两腿绿）。
+
+> **落地账 · P-F 批 2a（`mascot-avatar`，2026-10-16，未提交）**
+> - **搬迁**：`packages/mascot-avatar/{package.json, cordis.patch.yml, icon.png, locale/{en,zh}.json,
+>   lib/index.js, lib/routes/{avatar.js, mascot.js}}`；`lib/components/mascot-avatar/` 已删 ——
+>   `lib/components/` 现在只剩 `media-bridge/` 与松散的 `visibility.js`。
+> - **步 0 接线复用批 1 的服务面**：键表登记 `'mascot-avatar'`（**6 键**：`base` / `pluginName` /
+>   `componentViewFrom` / `createComponentSession` / `runComponent` / `handOffTeardown`；它不用
+>   `log` / `pluginDataDir` / `configPath` / `repoSlugFromPkg` / `CONTROL_JSON_MAX_BYTES`）；
+>   两条路由族同批 1 改法（删主包 import、`DEPS` 增 `http`、应答走 `http.sendJson`、收体走 `http.bodyReader`）。
+> - **⚠️ 顺带修掉的一处隐疾（批 1 遗留）**：`applyComponent()` 这条**门面装载路径**的依赖面原先只有
+>   `subpackageKeys()`，而组件入口给路由族的 deps 里还有 `http`（`host.http`）⇒ 经门面 boot 时路由族
+>   拿不到应答通道，`/avatar` `/mascot` 全 500（`verify-scene` 14 条红）。修法：门面把 `httpView`
+>   （`lib/subpackage-boot.js` 导出，与组件入口那份**同一对象**）一起拼进依赖面。
+>   **教训**：出户组件的依赖面有**两条装载路径**（cordis 行 / 门面 `applyComponent`），任何一方少键都只在
+>   走那条路时才红 —— 批 1 的 `about-notice` 当时就有同一处隐疾，只是没有守卫走那条路打到它。
+> - **判据重定基**：`verify-contracts`（头像/立绘两条族的读点与 `http.sendJson` 别名正则）、
+>   `verify-guard-map`（零覆盖例外键改 `packages/mascot-avatar/lib/index.js`）、
+>   `verify-settings-schema-exports`（公开入口地板按出户进度收缩：`>= 4` → `>= 2`）。
+> - **生成物重算**：`docs/ROUTE-INDEX.md`（43 条路由 · `/mascot` `/avatar` 归到新落点）、`docs/GUARD-MAP.md`。
+> - **读数**：`verify` 72/72 · `docs` 6/6 · `smoke` 6/6 · `all` 85/85 · `npm run verify:static` ALL PASSED
+>   （`lib/client.js` 未被 build 改动）。
+> - **仍未做**：`media-bridge`（须排在 P-D 之前）；账③（组件浏览器半边）未动。
 
 ### 15.3 时机（A）与分批
 
@@ -1003,8 +1027,11 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 
 分批（每批独立提交、独立验收）：
 
-1. **批 1（账①，机械）**：三条组件并进 `packages/<pkg>/lib/**`，主包 patch 三行的 `name` 改真名，
-   主包 `files` / `exports` 收紧，判据与工具重定基（§15.5），两份生成物重算，文档散文面同批改（含本文件 §3 / §9.3 / §10.1）。
+1. **批 1（账①，机械）** —— 实际按**逐组件**落（一次一格，守卫与生成物每格重定基一次）：
+   1a `about-notice`（2026-10-16，已提交 `844168ff`）、1b `mascot-avatar`（2026-10-16）、
+   1c `media-bridge`（须排在 P-D 之前）。每格 = 该组件并进 `packages/<pkg>/lib/**` + 主包 patch 该行 `name` 改真名
+   + 主包 `files` / `exports` 收紧 + 判据与工具重定基（§15.5）+ 两份生成物重算 + 文档散文面同批改
+   （含本文件 §3 / §9.3 / §10.1）。
 2. **批 2a**：`about-notice` 浏览器半边（今天只有 `src/about-assets.js` —— 最小的试验田）。
 3. **批 2b**：`mascot-avatar` 浏览器半边（`src/avatar-import.js` / `avatar-layer.js` / `ext-avatar.js` / `panel-tabs-mascot.js`）。
 4. **`media-bridge` 的浏览器半边不单列**：它今天**没有**浏览器半边（`lib/types/index.d.ts:166` 明写

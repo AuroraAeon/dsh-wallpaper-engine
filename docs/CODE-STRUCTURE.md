@@ -117,7 +117,7 @@ graph TB
   `test/tools/host-route-index.mjs` 的 `buildIndex()`（它把搬进 `lib/routes/` 的族按调用点放回原位），
   路由级视图是生成物 `docs/ROUTE-INDEX.md`（`verify-route-index` 重算并逐字节比对）。
   `verify-route-families` 另按账本 §7-6 的触发线盯「某族长到 ≥3 条 ⇒ 拆族或改线」。
-- **组件行**（`lib/components/<组件>/`；**已出户的在 `packages/<组件>/lib/`** —— P-F 组件行统一，首个 = `packages/about-notice/`，2026-10-16）—— 一个 bundle 多行（[`adr/0013`](./adr/0013-bundle-multi-component-rows.md)）：
+- **组件行**（`lib/components/<组件>/`；**已出户的在 `packages/<组件>/lib/`** —— P-F 组件行统一，`packages/about-notice/`、`packages/mascot-avatar/`，2026-10-16）—— 一个 bundle 多行（[`adr/0013`](./adr/0013-bundle-multi-component-rows.md)）：
   组件入口 `index.js` + 它自己的路由族实现 + 该行消费的组件视图。行的开关是宿主的
   （`cordis.patch.yml`）；"哪个实现属于哪一行"由 `test/verify-route-ownership.mjs` 钉住，
   行的装载形态由 `test/verify-bundle-rows.mjs` 钉住。
@@ -391,7 +391,7 @@ graph LR
    `lib/routes/`、`lib/components/<组件>/`）。
    门面 `lib/index.js` 只做注册与协议聚合，**不装新逻辑**。
    ⚠️ 若这份实现属于**某个组件行**（它的路由与浏览器可见面随行开关启停），落 `lib/components/<组件>/`
-   （**已出户的组件**落 `packages/<组件>/lib/` —— P-F，2026-10-16 起，首个 = `packages/about-notice/`）
+   （**已出户的组件**落 `packages/<组件>/lib/` —— P-F，2026-10-16 起：`packages/about-notice/`、`packages/mascot-avatar/`）
    并由该行入口装配 —— 别放进 `lib/routes/`（归属判据见 [`ARCHITECTURE-SPLIT.md`](./ARCHITECTURE-SPLIT.md)）。
    → **随包的数据文件**（不是代码，但要跟包走）也放 `lib/<语义名>/`，**同样加进 `files`**：
    现状 `lib/fontsets/`（随包预设，只读；用户的编辑按写时复制落 `pluginDataDir()`）。

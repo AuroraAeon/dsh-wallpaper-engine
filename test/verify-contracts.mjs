@@ -224,23 +224,26 @@ const tabsSrc = panelText();
   // **不走流式落盘**：上限只有 8MB（客户端导入前已按 512px 缩过一轮）⇒ 走共享读体器 +
   // 原子落盘，内联收集器那条棘轮因此不增（见 test/verify-body-caps.mjs 的两条棘轮）。
   // ⚠️ 头像路由族在本分支归**组件行** mascot-avatar（P2 拆包；实现入包、主包不留注册点）。
-const routeSrc = read('lib/components/mascot-avatar/avatar.js');
+  // P-F（2026-10-16）：该组件行已出户到 `packages/mascot-avatar/`，实现跟着走。
+  const routeSrc = read('packages/mascot-avatar/lib/routes/avatar.js');
   // ⚠️ 读点更正（T2 #8 / task-10 G）：`AVATAR_*` / `MASCOT_*` / `avatarDir()` / `mascotDir()` 的真源
   //    在本分支是 `lib/media/media-dirs.js`（上游同名副本 `lib/asset-paths.js` 已不在 import 图上）
   //    ⇒ 本块只改"读哪个文件"，下面六条断言与期望值一字未改。
   const hostNow = read('lib/media/media-dirs.js');
-  // `const json = (code, payload) => sendJson(res, code, payload);` —— 恰好**三个**实参 ⇒ 走共享实现的
+  // `const json = (code, payload) => http.sendJson(res, code, payload);` —— 恰好**三个**实参 ⇒ 走共享实现的
   // 默认 `no-store`。四参形态（`sendJson(res, code, payload, null)` 之类）**不**匹配：那等于把这条
   // 错误路径改回可缓存，正是本判据要挡的（`no-store` 的唯一落点是 lib/json-response.js）。
-  const THIN_JSON_ALIAS = /=>\s*sendJson\(res,\s*[^,()]+,\s*[^,()]+\)\s*;/;
+  // P-F：出户后的组件路由族经注入面 `http` 调共享实现（零主包说明符）⇒ 接收者多一层 `http.`。
+  const THIN_JSON_ALIAS = /=>\s*(?:[A-Za-z_$][\w$]*\.)?sendJson\(res,\s*[^,()]+,\s*[^,()]+\)\s*;/;
   check('头像路由：只认两个 side（路径段当白名单查，不拼进文件名）',
     /AVATAR_SIDES\.includes\(side\)/.test(routeSrc) && /AVATAR_SIDES = \['user', 'ai'\]/.test(hostNow));
   check('头像路由：收体走共享读体器 + 原子落盘（不是第三个流式豁免）',
-    // ⚠️ 这条判据的**字面量形状**有讲究：verify-package-files 的 P5 会扫本文件里的 import 规格，
-    // 写成一个带引号的 `from '…/http-body.js'` 会被它当成裸包名（转义后的 `\.\.` 不以点开头）
-    // ⇒ 这里用 `\s+['"]…['"]` 形态描述那条 import（探测器的 `from\s+` 匹配不到它）。
-    /import\s*\{[^}]*bodyReader[^}]*\}\s+from\s+['"][^'"]*\/http-body\.js['"]/.test(routeSrc)
-    && /bodyReader\(req, \{/.test(routeSrc) && /maxBytes: AVATAR_MAX_BYTES/.test(routeSrc)
+    // P-F：`mascot-avatar` 出户后，共享实现（`bodyReader` / `sendJson`）不再由本族 import 主包，
+    // 改由注入面 `http` 送达（出户硬约束 = 零主包说明符，见 test/verify-subpackage-purity.mjs）
+    // ⇒ 这里改判"经 http 调用"，并把 `http` 必须登记进 DEPS 一起钉住。
+    // ⚠️ 保持不写带引号的 `from '…/http-body.js'` 字面（verify-package-files 的 P5 会把它当裸包名）。
+    /DEPS = \[[^\]]*'http'\]/.test(routeSrc) && /http\.bodyReader\(req, \{/.test(routeSrc)
+    && /maxBytes: AVATAR_MAX_BYTES/.test(routeSrc)
     && /atomicWriteFileP\(join\(dir, name\), body\)/.test(routeSrc));
   check('头像路由：换图即清兄弟（同 side 的旧文件先删，否则屏上还是旧图）',
     /name\.slice\(0, side\.length \+ 1\) !== side \+ '-'/.test(routeSrc)
@@ -255,13 +258,13 @@ const routeSrc = read('lib/components/mascot-avatar/avatar.js');
     /function avatarDir\(\) \{ return ensureDirOnce\(join\(pluginDataDir\(\), 'avatars'\)\); \}/.test(hostNow)
     && /AVATAR_MAX_BYTES = 8 \* 1024 \* 1024/.test(hostNow));
 
-  // 吉祥物立绘族（lib/routes/mascot.js）：与头像同形，但**只有一张**（导入即覆盖）。
-  const mascotRouteSrc = read('lib/components/mascot-avatar/mascot.js');
+  // 吉祥物立绘族（packages/mascot-avatar/lib/routes/mascot.js）：与头像同形，但**只有一张**（导入即覆盖）。
+  // P-F（2026-10-16）：随 `mascot-avatar` 出户，读点跟着实现走（同头像那条）。
+  const mascotRouteSrc = read('packages/mascot-avatar/lib/routes/mascot.js');
   check('立绘路由：形态与头像同族（共享读体器 + 原子落盘，不是新的流式豁免）',
-    // ⚠️ 与头像那条同一个理由：写成一个带引号的 `from '…/http-body.js'` 会被 verify-package-files
-    //    的 P5 当成裸包名（转义后的 `\.\.` 不以点开头）⇒ 用 `\s+['"]…['"]` 形态描述它。
-    /import\s*\{[^}]*bodyReader[^}]*\}\s+from\s+['"][^'"]*\/http-body\.js['"]/.test(mascotRouteSrc)
-    && /bodyReader\(req, \{/.test(mascotRouteSrc) && /maxBytes: MASCOT_MAX_BYTES/.test(mascotRouteSrc)
+    // 与头像那条同款：出户后经注入面 `http` 调共享实现，不写带引号的 `from '…/http-body.js'` 字面。
+    /DEPS = \[[^\]]*'http'\]/.test(mascotRouteSrc) && /http\.bodyReader\(req, \{/.test(mascotRouteSrc)
+    && /maxBytes: MASCOT_MAX_BYTES/.test(mascotRouteSrc)
     && /atomicWriteFileP\(join\(dir, name\), body\)/.test(mascotRouteSrc));
   check('立绘路由：**只有一张**（导入前清同族旧文件 ⇒ 再导入即覆盖）',
     /name\.slice\(0, 'mascot-'\.length\) !== 'mascot-'/.test(mascotRouteSrc)

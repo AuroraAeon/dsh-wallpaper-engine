@@ -31,9 +31,6 @@
 
 import { readdirSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
-import { bodyReader } from '../../http-body.js';
-// JSON 应答的**唯一实现**（状态码 + 两个头 + end）—— 见 lib/json-response.js。
-import { sendJson } from '../../json-response.js';
 
 /** 文件名里那段时间戳（`Date.now()` 的 36 进制 + 4 位随机 —— 形状见 `MASCOT_FILE_RE`）：换图即换名。 */
 function mascotStamp() {
@@ -41,11 +38,11 @@ function mascotStamp() {
 }
 
 /** 注入契约（P2-7A / ADR-0013 D12）：本族从 `c` 消费的**必需**键 —— 门面/组件行调用点必须逐键给到（判据 test/verify-inject-contracts.mjs 双向对账）。 */
-export const DEPS = ['disposers', 'base', 'serveFile', 'mascotDir', 'mascotPath', 'MASCOT_EXT', 'MASCOT_MAX_BYTES', 'atomicWriteFileP', 'armBodyIdleTimeout', 'lingerClose'];
+export const DEPS = ['disposers', 'base', 'serveFile', 'mascotDir', 'mascotPath', 'MASCOT_EXT', 'MASCOT_MAX_BYTES', 'atomicWriteFileP', 'armBodyIdleTimeout', 'lingerClose', 'http'];
 
 export function registerMascotRoutes(webServer, c) {
   const {
-    disposers, base: BASE, serveFile,
+    disposers, base: BASE, serveFile, http,
     mascotDir, mascotPath, MASCOT_EXT, MASCOT_MAX_BYTES,
     atomicWriteFileP, armBodyIdleTimeout, lingerClose,
   } = c;
@@ -55,8 +52,9 @@ export function registerMascotRoutes(webServer, c) {
     path: `${BASE}/mascot`,
     handler: (req, res) => {
       const method = (req.method || 'GET').toUpperCase();
-      // 薄别名：保留调用点写法，实现收敛到 lib/json-response.js（默认带 no-store）。
-      const json = (code, payload) => sendJson(res, code, payload);
+      // 薄别名：保留调用点写法，实现收敛到主包的 lib/json-response.js（默认带 no-store），
+      // 经注入面 `http` 送达（本包零主包说明符）。
+      const json = (code, payload) => http.sendJson(res, code, payload);
 
       if (method === 'GET' || method === 'HEAD') {
         const p = mascotPath();
@@ -92,8 +90,8 @@ export function registerMascotRoutes(webServer, c) {
         timedOut = true;
         json(408, { error: 'request timeout' });
       });
-      // 上限 + 收完一次性解码 —— 唯一实现见 lib/http-body.js。
-      const reader = bodyReader(req, {
+      // 上限 + 收完一次性解码 —— 唯一实现见主包 lib/http-body.js（经注入面 `http`）。
+      const reader = http.bodyReader(req, {
         maxBytes: MASCOT_MAX_BYTES,
         shouldStop: () => timedOut || tooLarge,
         onOverflow: () => {

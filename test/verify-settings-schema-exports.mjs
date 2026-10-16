@@ -404,7 +404,12 @@ const consumers = new Map(consumerFiles.map((f) => [f, readFileSync(join(ROOT, f
   check('自检：扫描面键统一 POSIX 分隔符（Windows 上 join 出反斜杠 ⇒ 公开入口豁免静默失效）',
     posixKeys, `modules=${modules.size} 个键 · consumers=${consumers.size} 个键`);
   check('自检：package.json exports 的公开入口在面内用同一个键（豁免才对得上）',
-    publicOnDisk.length >= 4 && missing.length === 0,
+    // 地板随形态收缩：P-F 每出户一格组件行，根 `exports` 就少两条 `.js` 公开入口
+    // （`./<组件>` 与 `./<组件>/package.json`；`./<组件>/locale/*.json` 不是 `.js`，本函数不收）。
+    // 2026-10-16 批 1/批 2 出户 `about-notice` / `mascot-avatar` 后 = 3（`lib/index.js` +
+    // `lib/subpackage-boot.js` + 仍在盘上的 `./media-bridge`）；`media-bridge` 出户后 = 2。
+    // 这条判据的**牙**在 `missing.length === 0`（分隔符一错，publicSet 与面键就对不上）。
+    publicOnDisk.length >= 2 && missing.length === 0,
     `公开入口（在盘上，除构建产物）${publicOnDisk.length} 个 · 面内按键命中 ${publicOnDisk.length - missing.length} 个 · 缺 ${JSON.stringify(missing)}`);
   check('负对照：面键带反斜杠而 publicSet 是 POSIX ⇒ 公开入口被误当内部模块、死导出误报（本机旧形态）',
     buggy.ok === false && buggy.offenders.length === 1 && buggy.offenders[0].name === 'DEAD',
