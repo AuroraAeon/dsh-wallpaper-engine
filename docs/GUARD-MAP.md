@@ -5,7 +5,7 @@
 > 口径：只统计守卫**代码**里真正碰到的模块（先剥注释），并区分"直接读源文件"与"隔着产物 `lib/client.js`"。
 > 写法：字面量路径 / `join(...)` 拼接 / 唯一 basename / 产物配方 / **前缀族读法** `scopeFiles|scopeText(<前缀>)` / **经共享族助手读**（`import { panelText } from './tools/src-scope.mjs'` + 真调用；族口径封在那个库里，见 DEV-GUIDE §4.6「同时是守卫的库」）/ **真源定位读**（`locate('符号')` / `locateFile('文件名')`，`test/tools/source-locator.mjs`：符号唯一声明在哪就是读了哪个模块）。
 
-模块面 165 个 · 守卫 108 个
+模块面 167 个 · 守卫 108 个
 
 ## 守卫 → 模块
 
@@ -21,7 +21,7 @@
 | `rotation-live-smoke.mjs` | — | ✅ |
 | `rotation-prepared-leak-smoke.mjs` | — | ✅ |
 | `rotation-smoke.mjs` | — | ✅ |
-| `verify-about.mjs` | `lib/host-boot.js` `lib/index.js` `lib/json-response.js` `packages/about-notice/lib/index.js` `packages/about-notice/lib/routes/about-qr.js` `packages/about-notice/lib/routes/github-stars.js` `src/about-assets.js` `src/client.js` `src/i18n-copy-core.js` `src/i18n-copy-ext.js` `src/i18n-copy-font.js` `src/i18n-copy-glass.js` `src/i18n-copy-live.js` `src/i18n-copy-panel.js` `src/i18n-copy-picker.js` `src/i18n-copy.js` `src/panel-tabs-advanced.js` `src/panel-tabs-appearance.js` `src/panel-tabs-effects.js` `src/panel-tabs-mascot.js` `src/panel-tabs-wallpaper.js` `src/panel-tabs.js` | ✅ |
+| `verify-about.mjs` | `lib/host-boot.js` `lib/index.js` `lib/json-response.js` `packages/about-notice/lib/index.js` `packages/about-notice/lib/routes/about-qr.js` `packages/about-notice/lib/routes/github-stars.js` `src/about-assets.js` `src/client.js` `src/i18n-copy-core.js` `src/i18n-copy-ext.js` `src/i18n-copy-font.js` `src/i18n-copy-glass.js` `src/i18n-copy-live.js` `src/i18n-copy-panel.js` `src/i18n-copy-pet-link.js` `src/i18n-copy-picker.js` `src/i18n-copy.js` `src/panel-tabs-advanced.js` `src/panel-tabs-appearance.js` `src/panel-tabs-effects.js` `src/panel-tabs-mascot.js` `src/panel-tabs-wallpaper.js` `src/panel-tabs.js` | ✅ |
 | `verify-adapter.mjs` | `lib/index.js` `lib/settings-schema.js` `src/adapter.js` `src/client.js` `src/effects.js` `src/panel-tabs-advanced.js` `src/panel-tabs-appearance.js` `src/panel-tabs-effects.js` `src/panel-tabs-mascot.js` `src/panel-tabs-wallpaper.js` `src/panel-tabs.js` `src/persistence.js` `src/styles-base.js` `src/styles-chrome.js` `src/styles-ext.js` `src/styles-panel.js` `src/styles-quick.js` `src/styles-settings.js` `src/styles-shell.js` `src/styles-sidebar.js` `src/styles.js` |  |
 | `verify-api-client.mjs` | `src/api-client.js` `src/client.js` `src/panel-tabs.js` | ✅ |
 | `verify-asset-paths.mjs` | `lib/media/media-dirs.js` `lib/upload-dir.js` `lib/we-assets.js` |  |
@@ -85,7 +85,7 @@
 | `verify-picker-props.mjs` | — | ✅ |
 | `verify-picker-upload.mjs` | — | ✅ |
 | `verify-playback-controls.mjs` | — | ✅ |
-| `verify-presets.mjs` | `lib/index.js` `lib/media/media-dirs.js` `lib/routes/presets.js` `lib/settings-schema.js` `src/client.js` `src/glass-panel.js` `src/i18n-copy-core.js` `src/i18n-copy-ext.js` `src/i18n-copy-font.js` `src/i18n-copy-glass.js` `src/i18n-copy-live.js` `src/i18n-copy-panel.js` `src/i18n-copy-picker.js` `src/i18n-copy.js` `src/preset-store.js` `src/quick-panel.js` | ✅ |
+| `verify-presets.mjs` | `lib/index.js` `lib/media/media-dirs.js` `lib/routes/presets.js` `lib/settings-schema.js` `src/client.js` `src/glass-panel.js` `src/i18n-copy-core.js` `src/i18n-copy-ext.js` `src/i18n-copy-font.js` `src/i18n-copy-glass.js` `src/i18n-copy-live.js` `src/i18n-copy-panel.js` `src/i18n-copy-pet-link.js` `src/i18n-copy-picker.js` `src/i18n-copy.js` `src/preset-store.js` `src/quick-panel.js` | ✅ |
 | `verify-reachability.mjs` | `lib/index.js` | ✅ |
 | `verify-readability.mjs` | `src/styles-base.js` `src/styles-chrome.js` `src/styles-ext.js` `src/styles-panel.js` `src/styles-quick.js` `src/styles-settings.js` `src/styles-shell.js` `src/styles-sidebar.js` `src/styles.js` | ✅ |
 | `verify-retired-lines.mjs` | — |  |
@@ -214,10 +214,11 @@
 | `packages/parallax/src/client.js` | 0 | **（无）** |
 | `packages/parallax/src/ext-parallax.js` | 1 | `verify-scene-live` |
 | `packages/parallax/src/parallax-layer.js` | 1 | `verify-scene-live` |
+| `packages/pet-link/lib/client.pet-link.js` | 1 | `verify-client-sync` |
 | `packages/pet-link/lib/index.js` | 2 | `verify-pet-hotplug-integration` `verify-pet-package` |
 | `packages/pet-link/lib/prepared.js` | 2 | `verify-pet-hotplug-browser` `verify-pet-hotplug-integration` |
 | `packages/pet-link/lib/routes/pet-link.js` | 1 | `verify-pet-hotplug-host` |
-| `packages/pet-link/src/i18n-copy-pet-link.js` | 0 | **（无）** |
+| `packages/pet-link/src/client.js` | 0 | **（无）** |
 | `packages/pet-link/src/pet-link-tuner.js` | 12 | `verify-pet-bubble-timing` `verify-pet-egg1-motion` `verify-pet-egg1-native-browser` `verify-pet-egg1-rebound` `verify-pet-egg2-motion` `verify-pet-follow` `verify-pet-hotplug-browser` `verify-pet-hotplug-client` `verify-pet-mascot-motion` `verify-pet-phase-browser` `verify-pet-tuner-browser` `verify-pet-tuner` |
 | `packages/pet-link/src/pet-link.js` | 12 | `verify-pet-bubble-timing` `verify-pet-egg1-motion` `verify-pet-egg1-native-browser` `verify-pet-egg1-rebound` `verify-pet-egg2-motion` `verify-pet-follow` `verify-pet-hotplug-browser` `verify-pet-hotplug-client` `verify-pet-mascot-motion` `verify-pet-phase-browser` `verify-pet-tuner-browser` `verify-pet-tuner` |
 | `src/about-assets.js` | 1 | `verify-about` |
@@ -247,6 +248,7 @@
 | `src/i18n-copy-glass.js` | 2 | `verify-about` `verify-presets` |
 | `src/i18n-copy-live.js` | 2 | `verify-about` `verify-presets` |
 | `src/i18n-copy-panel.js` | 2 | `verify-about` `verify-presets` |
+| `src/i18n-copy-pet-link.js` | 2 | `verify-about` `verify-presets` |
 | `src/i18n-copy-picker.js` | 2 | `verify-about` `verify-presets` |
 | `src/i18n-copy.js` | 4 | `verify-about` `verify-i18n` `verify-pet-tuner-browser` `verify-presets` |
 | `src/i18n.js` | 2 | `verify-i18n` `verify-pet-tuner-browser` |

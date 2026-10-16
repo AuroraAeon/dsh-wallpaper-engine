@@ -47,11 +47,13 @@ export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 
 /**
  * 地板取当前实测值：主包 + 7 个独立子包，主 patch 共 8 行。
- * 浏览器半边仍为主包、fx、parallax 和 fonts，共 4 个；pet-link 源码由主包构建内联。
+ * 浏览器半边产物 5 份：主包（src/client.js）、fx、parallax、fonts、pet-link
+ * （pet-link 收口前源码由主包构建内联、无自有产物；2026-10-15 收口成一般形态后自出
+ * packages/pet-link/lib/client.pet-link.js，地板随之 4→5）。
  * ⚠️ `clientArtifacts` 与 `test/verify-client-sync.mjs` 的产物面地板**共用这一个常量**（那边 import 它）
  * ⇒ 抬地板是**一处改动**，两边的正/负对照自动同批跟着走（原先两处各写一个数字、必须手动同批抬的隐患已消）。
  */
-export const FLOORS = { packages: 7, clientArtifacts: 4, rows: 8 };
+export const FLOORS = { packages: 7, clientArtifacts: 5, rows: 8 };
 
 // ── 路径小工具（模型一律根相对 POSIX）─────────────────────────────────────────
 

@@ -88,8 +88,10 @@ const ZERO_COVERAGE_WHY = {
   [M('packages', 'parallax', 'lib', 'index.js')]: '同上（3D 子包宿主入口，P-A 拆包）：覆盖来源与 fx 逐条相同 —— verify-subpackage-boot 的双射对账 + verify-subpackage-toggle-roundtrip 的逐行装载与拆卸',
   [M('packages', 'fx', 'src', 'client.js')]: '子包浏览器半边入口（P-A 拆包）：注入键契约由 verify-subpackage-client-half 隔产物断言，宿主键集与包间纯度由 verify-subpackage-purity 动态扫 packages/*/src 覆盖，产物侧由 verify-scene-live / verify-client 在同一 vm 里真求值，本工具只认字面量路径 ⇒ 按口径算零覆盖',
   [M('packages', 'parallax', 'src', 'client.js')]: '同上（3D 子包浏览器半边入口，P-A 拆包）：覆盖来源与 fx 逐条相同 —— verify-subpackage-client-half 的隔产物断言 + verify-subpackage-purity 的动态扫面 + verify-scene-live / verify-client 的真求值',
-  // ── PR #5（可选桌宠联动）：源码登记在 scripts/build-client.mjs 的 INLINE_MODULES，由主包构建内联 ──
-  [M('packages', 'pet-link', 'src', 'i18n-copy-pet-link.js')]: '可选桌宠联动的词条表（PR #5）：由主包构建内联进 lib/client.js，词条面由 verify-i18n 隔产物对账整族词表（每个 `weT()` 原文都要有词条）、由 verify-subpackage-purity 动态扫 packages/*/src，本工具只认字面量路径 ⇒ 按口径算零覆盖',
+  // ── PR #5（可选桌宠联动）：2026-10-15 收口成一般形态（自出浏览器半边产物）──
+  //    词条表 `src/i18n-copy-pet-link.js` 已按 fonts 惯例归主包 src/（verify-i18n 的整族词表对账覆盖它）
+  //    ⇒ 旧的那条例外登记随之删除（登记了反而会被判"例外表空转"）。
+  [M('packages', 'pet-link', 'src', 'client.js')]: '桌宠联动浏览器半边入口（收口成一般形态后自出 packages/pet-link/lib/client.pet-link.js）：注入键契约由 verify-subpackage-client-half 隔产物断言（dsh.client / exports["./client"] / 产物 id / 构建期 require 主包），宿主键集与包间纯度由 verify-subpackage-purity 动态扫 packages/*/src 覆盖，行为面由 test/verify-pet-*.mjs 那组离线回归与 verify-scene-live 的真求值覆盖，本工具只认字面量路径 ⇒ 按口径算零覆盖',
 };
 
 /**

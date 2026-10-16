@@ -370,6 +370,10 @@ const SUBPACKAGE_CLIENT_ARTIFACTS = [
   // P-C 第一刀：字体节（「字体自定义」那一节）已随子包出产物 —— 设置页/外观页要看到它，
   // 挂载台就必须像真实 loader 那样把这份 bundle 也求值掉（它的 factory 会往面板节注册表注册）。
   ['../packages/fonts/lib/client.fonts.js', 'dsh-plugin-wallpaper-engine-fonts'],
+  // pet-link 收口（2026-10-17）：桌宠联动的浏览器半边也出产物了。它的 factory 会调
+  // 主 bundle 显式键集里的 registerPetLink 把服务登记回主包（门面缓冲 + 登记到达时补做）。
+  // 求值在 apply() **之前** ⇒ 这里正是"子包先到"那一半的真实形态。
+  ['../packages/pet-link/lib/client.pet-link.js', 'dsh-plugin-wallpaper-engine-pet-link'],
 ];
 const subRequireMock = (spec) => {
   if (spec === 'dsh-plugin-wallpaper-engine') return exportsObj;
