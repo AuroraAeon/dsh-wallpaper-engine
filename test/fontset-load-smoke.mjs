@@ -114,7 +114,7 @@ function mount({ fetchImpl, store }) {
     return fetchImpl(String(url), o);
   };
   const code = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8');
-  const cap = { handoff: null };
+  const cap = { handoff: null, handoffs: [] };
   //  字体节迁侧栏：这台的面板渲染器必须把**官方侧栏 body** 也注册出来（字体 UI
   // 现在只画在侧栏外观页），且要把「外观页 + 字体节展开」的 UI 状态播进 store ——
   // 与 verify-client / verify-system-fonts 同一套手法（qp-* 键仅 UI 状态，不进 config.json）。
@@ -128,7 +128,7 @@ function mount({ fetchImpl, store }) {
   const stubTimeout = (fn, ms) => { const t = { fn, ms, cleared: false }; timers.push(t); return t; };
   const sandbox = {
     window: {
-      __ModuleLoader__: { load: (h) => { cap.handoff = h; } },
+      __ModuleLoader__: { load: (h) => { cap.handoff = h; cap.handoffs.push(h); } },
       setTimeout: stubTimeout,
       clearTimeout: (t) => { if (t) t.cleared = true; },
       addEventListener() {}, removeEventListener() {},
@@ -142,6 +142,21 @@ function mount({ fetchImpl, store }) {
   vm.createContext(sandbox);
   new vm.Script(code, { filename: 'client.js' }).runInContext(sandbox);
   const exportsObj = cap.handoff.factory((spec) => (spec === 'react' ? React : { createPortal: (n) => n }));
+  // P-C：外观页签第六节「全局字体」随字体包出产物 ⇒ 像真 loader 一样在同一个 vm 里把那份
+  // 子包产物也求值掉（它的 factory 用 require('主包名') 取主 bundle 的显式键集，再登记那一节）。
+  // 少了这一步，面板上就没有「字体集预设」开关与字体节控件 —— 本 smoke 的 33 条会全红。
+  {
+    const fontsRel = '../packages/fonts/lib/client.fonts.js';
+    const before = cap.handoffs.length;
+    new vm.Script(readFileSync(new URL(fontsRel, import.meta.url), 'utf8'), { filename: fontsRel })
+      .runInContext(sandbox);
+    const loaded = cap.handoffs.slice(before);
+    if (loaded.length !== 1) throw new Error(fontsRel + ' 必须恰好注册一份 bundle（实际 ' + loaded.length + ' 份）');
+    loaded[0].factory((spec) => {
+      if (spec === 'dsh-plugin-wallpaper-engine') return exportsObj;
+      throw new Error('unexpected require: ' + spec);
+    });
+  }
   exportsObj.apply({
     // 面板由 `slots.inject(名称, () => slots.register(meta, render))` 装配；产出元素树的是
     // **register 的第二个参数**。`apply()` 期就把首次渲染跑一遍（真机也这样），但那时库存还没到

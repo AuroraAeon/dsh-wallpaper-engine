@@ -420,7 +420,13 @@ console.log('\n⑥ 开关「主题随壁纸」：默认关 · 关时主题不变
   //    故匹配串带尾随逗号：定义行后面是 ` {`，只有**调用行**才是 `(ctx),`。
   const swatchAt = tabsCode.indexOf('swatchRow(weT("全局配色")');
   const uiCallAt = tabsCode.indexOf('renderAppearanceUiColorSection(ctx),');
-  const fontCallAt = tabsCode.indexOf('renderAppearanceFontSection(ctx),');
+  // P-C：字体节随字体包搬出页签族 ⇒ 页签里不再有 `renderAppearanceFontSection(ctx),` 那一行；
+  // 它现在由**注册表续接**渲染：`const registered = wePanelSectionsOf("appearance")…` 算出子节点，
+  // 再作为**最后一个**子节点 `registered,` 交给 React —— 而 `renderAppearanceUiColorSection(ctx),`
+  // 仍排在那个续接节点**之前** ⇒ "UI 配色在全局字体之上"这条口径不变。
+  // 位置仍按**渲染序**判（不看定义序），且必须判"续接节点在 UI 配色调用点之后"，
+  // 只判"声明在文件里存在"会变成恒真（声明在 return 之前）。
+  const fontCallAt = tabsCode.indexOf('registered,', uiCallAt);
 
   check('开关存在且默认为关（设置模型 DEFAULTS.themeFollow === false，kind = boolFalse）',
     schema.DEFAULTS.themeFollow === false && schema.KINDS.themeFollow

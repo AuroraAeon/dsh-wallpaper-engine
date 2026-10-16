@@ -104,6 +104,7 @@ const NO_MODULE_TARGET_WHY = {
   'compat-harness-surfaces.mjs': 'UI 面清单棘轮 + sidebar 源码活判据（读的是已安装的 harness 包）',
   'verify-retired-lines.mjs': '管的是**退役线的零残留**（`walk` lib/src/scripts/test 全树搜退役词），目标是"整棵树里不许出现这些词"，不是某个模块',
   'verify-guard-chain.mjs': '管的是**守卫链的形状**（`test/run-guards.mjs` 的 `MANIFEST` 与冻结 fixture 对账：成员/顺序/档位/参数/地板），读的是链自己的清单，不读任何模块',
+  'verify-ci-steps.mjs': '管的是 **CI 步骤表自身**（`.github/workflows/verify.yml` 的步骤序列 / `npm run` 脚本是否存在 / `continue-on-error` 档位 / bash 与 install 步位置），读的是工作流文本与 package.json，不读任何模块',
   'verify-static.mjs': '管的是**静态门禁的棘轮**（ESLint / tsc 的**按规则计数**基线），读的是 `test/fixtures/static-baseline.json` 与 package.json 里的两个脚本名，不读源模块',
   'verify-route-ownership.mjs': '管的是**实现归属唯一性**（行→入口按各包 exports/files 派生，跨全部族与组件行），不针对单个模块',
   'verify-bridge-ci.mjs': '管的是 **CI 桥接面**（工作流/脚本接线，不读源模块）',

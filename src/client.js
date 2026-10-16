@@ -5770,8 +5770,9 @@ exports.inject = inject;
 // ── 跨包浏览器半边通道（BUNDLE-SPLIT §6.2「宿主注入显式键集」）──────────────────────────
 // 子包产物由 loader 用 `require("dsh-plugin-wallpaper-engine")` 取本 bundle 的导出面。
 // 这里挂的是**显式键集**，不是整个 module.exports：子包要什么就登记什么，多给一个键就是多
-// 一条没人维护的隐式契约。键集与 packages/{fx,parallax}/src/client.js 的
-// *_HOST_REQUIRED 逐字对齐（缺键那两包自己会大声抛），判据见 test/verify-subpackage-client-half.mjs。
+// 一条没人维护的隐式契约。键集与 packages/{fx,parallax,fonts}/src/client.js 的
+// *_HOST_REQUIRED 逐字对齐（缺键那三包自己会大声抛），判据见 test/verify-subpackage-client-half.mjs
+// 与 .integration-notes/p-c-contract.md §5 的两方向清单。
 // 一律用 **getter**：这些是活的模块级绑定（React / selection / 文案表在求值期才落地），
 // 值拷贝既会在求值期撞 TDZ，也会让子包拿到过期的引用。
 const HOST_BRIDGE_BINDINGS = {
@@ -5789,6 +5790,29 @@ const HOST_BRIDGE_BINDINGS = {
   // 两个注册入口（子包在上面的契约里要的就是这两个名字，不是 we* 前缀的内名）。
   registerExtensionModule: () => weRegisterExtensionModule,
   registerLayerHooks: () => weRegisterLayerHooks,
+  // ── 字体半边（packages/fonts）的显式键集（P-C v2 契约 §2.2）─────────────────────────
+  // 来源 = 被搬代码里的**自由标识符**逐个点名，脚本取证：
+  //   node .integration-notes/scratch/fonts-host-keys.mjs
+  //   范围 `src/panel-tabs-appearance.js:54-420`（外观页签字体节）+ `src/fontset-editor.js`（整文件）
+  // 判据：命中「留在主 bundle 的文件在工厂作用域声明」才在这里登记（0 个未归类）。
+  // 反面同样严格：这里每多一个键就是多一条没人维护的隐式契约（多一个都不给）。
+  // React / weT / ctlText / switchRow 是 fx 那半已经要过的四个键，fonts 复用它们、**不重复登记**
+  // （重复键在对象字面量里是静默覆盖 —— `eslint no-dupe-keys` 会判红，本行就是那次判红的修复）。
+  sectionHead: () => sectionHead,
+  moduleResetButton: () => moduleResetButton,
+  FONT_FAMILY_LABELS: () => FONT_FAMILY_LABELS,
+  fontFamilyKeyOf: () => fontFamilyKeyOf,
+  filterUsableSystemFonts: () => filterUsableSystemFonts,
+  systemFontKeyOf: () => systemFontKeyOf,
+  systemFontNameOf: () => systemFontNameOf,
+  sanitizeFamilyKey: () => sanitizeFamilyKey,
+  THEME_COLOR_ROLES: () => THEME_COLOR_ROLES,
+  THEME_TYPE_ROLES: () => THEME_TYPE_ROLES,
+  THEME_SIZE_MIN: () => THEME_SIZE_MIN,
+  THEME_SIZE_MAX: () => THEME_SIZE_MAX,
+  COMPONENT_FONT_TARGETS: () => COMPONENT_FONT_TARGETS,
+  componentFontDefaults: () => componentFontDefaults,
+  registerPanelSection: () => weRegisterPanelSection,
 };
 const HOST_BRIDGE_KEYS = Object.keys(HOST_BRIDGE_BINDINGS);
 for (const bridgeKey of HOST_BRIDGE_KEYS) {

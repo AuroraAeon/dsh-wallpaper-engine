@@ -75,7 +75,7 @@ const INLINE_MODULES = [
   },
   {
     file: 'src/i18n-copy-font.js',
-    why: '英文词表域：字体与配色（font/* · fontset-editor · fontset-store）',
+    why: '英文词表域：字体与配色（font/* · fontset-store；fontset-editor 与外观页签字体节已搬进 packages/fonts，词表仍住本域、由主包 weT 供词）',
     markers: ['const WE_I18N_EN_FONT = {', '"正文": "Primary text",'],
   },
   {
@@ -243,11 +243,10 @@ const INLINE_MODULES = [
     markers: ['const gpFetch = ', 'function glassPresetFailureReason(res)', 'async function applyGlassPreset(id)',
       'async function saveGlassPreset(name)', 'async function deleteGlassPreset(id)'],
   },
-  {
-    file: 'src/fontset-editor.js',
-    why: '字体集编辑器面板（F3 阶段 3）：纯渲染 + 意图回调（网络与状态由 client 侧经显式 ctx 给）',
-    markers: ['function deleteLabel(row)', 'function renderFontSetEditor(ctx)'],
-  },
+  // P-C：字体集编辑器面板 + 外观页签字体节**已搬进 packages/fonts**（本包自己的 inline 表），
+  // 主 bundle 不再内联它们；两条通道各有配方（packages/fonts/client.build.json）。
+  // 顺序注记：这两条原先排在 `src/preset-store.js` 之后、`src/section-head.js` 之前，搬走后
+  // 本数组里 `preset-store → section-head` 的相邻关系不变（各模块都按名字引用，顺序不承载语义）。
   {
     // 面板各节的统一节头构件（二次修订：**两档都支持隐藏**）。
     // ⚠️ 必须排在 `src/glass-panel.js` 与 `src/panel-tabs.js` **之前**：那两个模块都按名字

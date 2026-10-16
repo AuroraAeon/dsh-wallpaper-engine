@@ -545,6 +545,14 @@
         {
           "kind": "guard",
           "npm": null,
+          "file": "test/verify-host-teardown.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
           "file": "test/tools/packages.mjs",
           "args": [
             "selftest"
@@ -559,6 +567,22 @@
           "args": [
             "selftest"
           ],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-guard-chain.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-ci-steps.mjs",
+          "args": [],
           "tier": "hard",
           "probe": false
         }
@@ -611,14 +635,6 @@
           "kind": "guard",
           "npm": null,
           "file": "test/verify-guard-map.mjs",
-          "args": [],
-          "tier": "soft",
-          "probe": false
-        },
-        {
-          "kind": "guard",
-          "npm": null,
-          "file": "test/verify-guard-chain.mjs",
           "args": [],
           "tier": "soft",
           "probe": false
@@ -1230,6 +1246,14 @@
         {
           "kind": "guard",
           "npm": null,
+          "file": "test/verify-host-teardown.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
           "file": "test/tools/packages.mjs",
           "args": [
             "selftest"
@@ -1244,6 +1268,22 @@
           "args": [
             "selftest"
           ],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-guard-chain.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-ci-steps.mjs",
+          "args": [],
           "tier": "hard",
           "probe": false
         },
@@ -1291,14 +1331,6 @@
           "kind": "guard",
           "npm": null,
           "file": "test/verify-guard-map.mjs",
-          "args": [],
-          "tier": "soft",
-          "probe": false
-        },
-        {
-          "kind": "guard",
-          "npm": null,
-          "file": "test/verify-guard-chain.mjs",
           "args": [],
           "tier": "soft",
           "probe": false

@@ -1066,7 +1066,7 @@ section('⑧ 面板渲染回归（配色区在总开关打开时必须渲染得�
     await import(pathToFileURL(join(root, 'src', 'we-cond.js')).href),
     // 面板会调 `renderFontSetEditor(...)`（在 bundle 里是同作用域的内联模块；独立 import 时
     // 得把它映成全局，否则 ⑧ 会以 "is not defined" 的形式假红）。
-    await import(pathToFileURL(join(root, 'src', 'fontset-editor.js')).href),
+    await import(pathToFileURL(join(root, 'packages', 'fonts', 'src', 'fontset-editor.js')).href),
     // 同理（wip §10.13）：「玻璃 UI」节的渲染器已抽到 `src/glass-panel.js`，
     // `panel-tabs.js` 里对它的调用只在**打包后**同作用域 ⇒ 这里也要映成全局。
     await import(pathToFileURL(join(root, 'src', 'glass-panel.js')).href),
@@ -1085,9 +1085,22 @@ section('⑧ 面板渲染回归（配色区在总开关打开时必须渲染得�
     schema,
   ];
   for (const mod of preludeMods) for (const [k, v] of Object.entries(mod)) globalThis[k] = v;
+  // P-C：外观页签第六节「全局字体」随字体包搬出页签族 ⇒ 判据要读"页签族 + 包内那一节"的并集；
+  // 并且要按**真入口同形**把那一节登记进共享注册表（否则 renderAppearanceTab 里的
+  // `wePanelSectionsOf` 是裸标识符 ⇒ 本段以 ReferenceError 的形式假红）。
+  const fontSectionSrc = readFileSync(join(root, 'packages', 'fonts', 'src', 'appearance-font-section.js'), 'utf8');
+  const panelAllSrcText = () => panelSrcText() + '\n;\n' + fontSectionSrc;
+  const regMod = await import(pathToFileURL(join(root, 'src', 'extension-registry.js')).href);
+  for (const [k, v] of Object.entries(regMod)) globalThis[k] = v;
+  const fontSectionMod = await import(pathToFileURL(join(root, 'packages', 'fonts', 'src', 'appearance-font-section.js')).href);
+  regMod.weRegisterPanelSection('appearance', 'fonts', {
+    id: 'fonts',
+    get title() { return globalThis.weT('全局字体'); },
+    render: fontSectionMod.renderAppearanceFontSection,
+  });
   check('前置：夹具不是空转的（角色表非空，且配色区确实按角色遍历）',
     colorRoles.THEME_COLOR_ROLES.length >= 5
-    && /THEME_COLOR_ROLES\.map/.test(panelSrcText()),
+    && /THEME_COLOR_ROLES\.map/.test(panelAllSrcText()),
     colorRoles.THEME_COLOR_ROLES.length + ' 个角色');
 
   /** 面板 ctx：只求"渲染得出"，处理器全 noop。`over.sel` 换夹具（负对照用）。 */
@@ -1287,7 +1300,7 @@ section('⑧ 面板渲染回归（配色区在总开关打开时必须渲染得�
 // "哪个按钮对应哪个意图""删除有没有过 confirm"钉成行为判据（同 verify-picker-props 的手法）。
 section('⑨ 字体集编辑器（面板可驱动：意图映射 / confirm 门控 / 来源与用法规则）');
 {
-  const editorMod = await import(pathToFileURL(join(root, 'src', 'fontset-editor.js')).href);
+  const editorMod = await import(pathToFileURL(join(root, 'packages', 'fonts', 'src', 'fontset-editor.js')).href);
   const R = {
     Fragment: 'Fragment', useState: (i) => [i, () => {}], useEffect: () => {}, useRef: (v) => ({ current: v }),
     createElement: (t, p, ...c) => { assertChildren(c); return typeof t === 'function' ? t(p || {}, ...c) : { type: t, props: p || null, children: c }; },
@@ -1557,7 +1570,7 @@ section('⑨ 字体集编辑器（面板可驱动：意图映射 / confirm 门�
     let clicked = 0;
     const baseReact = globalThis.React;
     const storeSrc = readFileSync(join(root, 'src', 'fontset-store.js'), 'utf8');
-    const editorSrc = readFileSync(join(root, 'src', 'fontset-editor.js'), 'utf8');
+    const editorSrc = readFileSync(join(root, 'packages', 'fonts', 'src', 'fontset-editor.js'), 'utf8');
     // 让假 React 也调 ref 回调：`importInput` 是模块级 ref，面板靠它去 click()。
     globalThis.React = Object.assign({}, baseReact, {
       createElement: (t, p, ...c) => {
@@ -1605,7 +1618,7 @@ section('⑨ 字体集编辑器（面板可驱动：意图映射 / confirm 门�
       // 删字体集）全部走同一套面板内令牌（`armConfirm` + `renderConfirmRow`，见 src/client.js）。
       // 判据写成**等号**：0 是终态，回增必须红（`<= 0` 与 `=== 0` 等价，但等号才读得出这一点）。
       const confirmFiles = ['src/client.js', 'src/panel-tabs.js', 'src/picker-modal.js',
-        'src/picker-props-panel.js', 'src/media-prep.js', 'src/fontset-editor.js', 'src/fontset-store.js'];
+        'src/picker-props-panel.js', 'src/media-prep.js', 'packages/fonts/src/fontset-editor.js', 'src/fontset-store.js'];
       const confirmSites = confirmFiles.reduce(
         (n, f) => n + ((readFileSync(join(root, f), 'utf8').match(/window\.confirm\(/g) || []).length), 0);
       // 只看**代码**：注释里可以提 window.confirm（说明为什么禁用），代码里不许出现。

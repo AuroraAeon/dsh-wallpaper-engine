@@ -81,8 +81,10 @@ graph LR
 - 子包产物由**包内配方** `packages/<pkg>/client.build.json`（`artifact` / `entry` / `inline[]`）驱动
   `scripts/build-client.mjs` 逐项构建（产物被 `.gitignore` 排除、**不进 git**）；声明面
   （`exports['./client']` + `dsh.client`）与配方、盘上产物三方对账（S3.4 / S10.2）。
-- **fonts 不在这个平面上**：它是 host-only 形态（没有 `dsh.client`），浏览器半边仍住在主包 `src/**` 里。
-  这是**合法**的形态，**不要**为了"看起来统一"给它补一个空的 `./client`（S3.4）。
+- **三个子包现在都在这个平面上**（2026-10-16 P-C 第一刀之后）：`packages/fonts` 已带浏览器半边
+  （`src/client.js` + 外观页签字体节 + 字体集编辑器 ⇒ 产物 `lib/client.fonts.js`），与 fx / parallax 同形。
+  host-only **形态本身仍然合法**（宿主侧功能为主的包可以只有宿主半边），只是本仓今天没有这种包了；
+  **不要**为了"看起来统一"给 host-only 包补一个空的 `./client`（S3.4）。
 
 ## 四、边表（允许 / 禁止）
 
@@ -113,15 +115,15 @@ graph LR
 | `icon.png` + `locale/{en,zh}.json` | ✓ | ✓ | ✓ | S2.1（有判据） |
 | `lib/index.js`（= `main`，宿主半边入口） | ✓ | ✓ | ✓ | S2.2 / S6.1（有判据） |
 | 宿主半边路由族 `packages/<pkg>/lib/routes/<族>.js` | —（空壳：行为全在浏览器半边） | —（同上） | ✓ `fontsets` / `system-fonts` | S2.3（人工） |
-| 浏览器半边源码 `packages/<pkg>/src/**` | ✓ | ✓ | —（**host-only**：仍住主包 `src/**`） | S1.2 / S3.4 |
-| 构建产物 `lib/client.<pkg>.js`（构建产出；被 `.gitignore` 排除，**不进 git**） | ✓ | ✓ | — | S10.2（有判据） |
-| `exports['./client']` + `dsh.client` | ✓ | ✓ | —（**两者都不写**） | S3.4（有判据） |
+| 浏览器半边源码 `packages/<pkg>/src/**` | ✓ | ✓ | ✓（P-C 第一刀：入口 `src/client.js` + 外观页签字体节 + 字体集编辑器） | S1.2 / S3.4 |
+| 构建产物 `lib/client.<pkg>.js`（构建产出；被 `.gitignore` 排除，**不进 git**） | ✓ | ✓ | ✓ `lib/client.fonts.js` | S10.2（有判据） |
+| `exports['./client']` + `dsh.client` | ✓ | ✓ | ✓ | S3.4（有判据） |
 | 主包 patch 行（`id` / `name`） | ✓ | ✓ | ✓ | S4.1 / S4.3（有判据） |
 | 根清单 `devDependencies: file:packages/<pkg>` | ✓ | ✓ | ✓ | S8.1（有判据） |
 | 发布形态：根 `dependencies` 同号精确版 + 删 `file:` | **未执行**（三包一致） | **未执行** | **未执行** | S8.2（人工执行 + `verify-package-publish.mjs` ⑨ 钉「全有或全无」） |
 | `package-lock.json` 同一次提交重算 | ✓ | ✓ | ✓ | S8.3（有判据） |
 | `lib/subpackage-boot.js` 的 `SUBPACKAGE_KEY_TABLE` 一项（键 = id 去前缀） | ✓ `fx` | ✓ `parallax` | ✓ `fonts` | S10.1（有判据） |
-| 包内配方 `packages/<pkg>/client.build.json`（`artifact` = `exports['./client']` 落点） | ✓ | ✓ | —（不得出现） | S10.2（有判据） |
+| 包内配方 `packages/<pkg>/client.build.json`（`artifact` = `exports['./client']` 落点） | ✓ | ✓ | ✓（P-C 第一刀新增） | S10.2（有判据） |
 | 生成物重算 `docs/ROUTE-INDEX.md` / `docs/GUARD-MAP.md` | 复算 | 复算 | 复算 | S10.3（生成物判据） |
 | 守卫的自动发现面（`test/tools/packages.mjs` 包发现层：磁盘枚举 + 根 patch 行；`host-route-index` / `guard-targets` / `verify-client-sync` 都读它） | 免手改 | 免手改 | 免手改 | S10.3 |
 | 注释与引用只指向稳定位置（`S*` / 实现文件头 / 判据名；不引 `docs/wip/`、`docs/archive/`） | ✓ 已收口 | ✓ 已收口 | ✓ 已收口 | S9.1 / S3.9（**人工**，无判据） |
@@ -132,6 +134,7 @@ graph LR
 1. **新增 / 删除一个独立子包** —— 三张图 + 矩阵全都要动；判据只兜住清单面与登记点。
 2. **行的 id / name 改名** —— 图里的标签与矩阵的行名会失真；`id` 本身是用户覆盖面锚点（S4.3），改名代价很大。
 3. **半边搬迁**（例如 fonts 的浏览器半边真拆出来）—— §三 与矩阵的"host-only"格要一起改，并同步 S3.4 的说明。
+   ✅ **已发生一次（2026-10-16，P-C 第一刀）**：fonts 的浏览器半边已拆出，本文 §三、矩阵三格与 ADR-0014 的 S3.4 现状行已同步。
 4. **真发布一次**（S8.2 的形态从开发期切到发布期）—— 矩阵里"未执行"三格转为"已发布"，同时要回来改 ADR-0014 的 §现状偏差（S8.2 行）与 S8.2 的口径。
 
 改本文时**不必**改 ADR-0014（那是决策记录）；除非触发 ADR-0014 §复核触发线四条之一。

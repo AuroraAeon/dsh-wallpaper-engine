@@ -455,7 +455,11 @@ section('④b 排版角色（F2）');
   // 颜色块显示当前默认色。
   // 调节面板的渲染器已抽到 src/panel-tabs.js（C）：这里按文件分源，不拼接 ——
 // 拼接会让一个文件的文本满足另一个文件的结构断言。
-const fontTabsUi = panelText();
+// P-C 例外（唯一一处）：外观页签第六节「全局字体」的渲染器已**随字体包搬出**页签族
+// （packages/fonts/src/appearance-font-section.js）⇒ 判字体节写法的判据必须把包内那一份
+// 也算进来，否则会因为"搬家"而假红（它们判的是写法，不是住处）。
+const fontTabsUi = panelText() + '\n;\n'
+  + readFileSync(join(root, 'packages', 'fonts', 'src', 'appearance-font-section.js'), 'utf8');
   // 默认值**直接显示在输入框里**（角色表：字号列未填时显示 role.defaultPx），
   // 不再用行内小字复述一遍 DSH 原字阶。
   // 三处「写法判据」提成命名函数 —— 函数名说的是它抓的**该种写法**（与标签同源），

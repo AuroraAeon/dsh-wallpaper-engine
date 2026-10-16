@@ -123,3 +123,50 @@ export function compositionDiff(chains) {
   }
   return out;
 }
+
+/**
+ * 脱链豁免的**代码内真源**（R-5）。
+ *
+ * 为什么必须有它：链会**短路**，没挂链的判据永远不会在 PR 门禁上跑；而"没跑"与"跑绿"在报告里
+ * 长得一模一样 ⇒ 一条新写的强判据可以静默脱链，没人会注意到。原先这些理由只写在文档里，
+ * 代码里没有 ⇒ 判据无从检查。现在：守卫面（`test/tools/guard-targets.mjs` 的 `guardSurface()`：
+ * `verify-*` / `*-smoke` / `e2e-*` / `compat-*`）上每个文件要么在链上，要么在这里有一条**非空**理由；
+ * 反之这里的每一条都必须**确实存在且确实脱链**（过期豁免同样判红 —— 否则它会给未来的回归打掩护）。
+ *
+ * 判据见 `test/verify-guard-chain.mjs` ⑤（正判据与负对照走 `offChainDiff` 同一个函数）。
+ */
+export const OFF_CHAIN_WHY = {
+  'compat-harness-live.mjs': '真跑**活** harness 页面（需要宿主实际启动）：本地/CI 都按需手动跑，由 .github/workflows/harness-compat.yml 单独触发；verify 链要求零外部环境依赖。',
+  'compat-harness-pages.mjs': '同族：活 harness 的页面面普查，断言依赖真实宿主实例，不进链。',
+  'compat-harness-surfaces.mjs': '同族：活 harness 的界面面普查，断言依赖真实宿主实例，不进链。',
+  'e2e-web-media-origin.mjs': '端到端媒体源判据（`npm run verify:e2e` 的手动入口）：要真宿主 + 真渲染路径，本地按需跑。',
+  'verify-bridge-ci.mjs': '`npm run verify:bridge` 的**判词入口**（要下载产物并真跑中间件）⇒ 独立 CI 步骤，不进 verify 链（链上零下载、零外部进程）。',
+  'verify-bundle-rows.mjs': '有意脱链：它 import `@deepseek-ai/cordis` 裸包，而链上零裸依赖（P5）⇒ 只能手动跑（BUNDLE-SPLIT §10.1 #2，每次改行/包必须手跑一次）。',
+  'verify-static.mjs': '静态棘轮入口（ESLint / tsc 都是 devDependencies）⇒ CI 独立步骤 `npm run verify:static`；链上零裸依赖容不下它。',
+};
+
+/** 守卫面地板（防"面变空 ⇒ 脱链判据永真"）。实测 2026-10-16 = 88。 */
+export const OFF_CHAIN_FLOOR = 80;
+
+/**
+ * 判据：守卫面上每个文件「要么在链上、要么有非空脱链理由」，且豁免表里没有过期/悬空条目。
+ * `surface` = basename 数组（`guardSurface()` 的输出）；`chained` = 链上 `file` 列表（带 `test/` 前缀）。
+ * 返回差异描述数组（空 = 一致）。正判据与负对照共用它。
+ */
+export function offChainDiff(surface, chained, whyTable = OFF_CHAIN_WHY) {
+  const out = [];
+  const onChain = new Set(chained);
+  for (const name of surface) {
+    if (onChain.has('test/' + name)) continue;
+    if (!Object.prototype.hasOwnProperty.call(whyTable, name)) {
+      out.push(`脱链且没有 OFF_CHAIN_WHY：test/${name}`);
+    } else if (!String(whyTable[name] || '').trim()) {
+      out.push(`OFF_CHAIN_WHY 是空的（空串等于没写）：test/${name}`);
+    }
+  }
+  for (const name of Object.keys(whyTable)) {
+    if (!surface.includes(name)) out.push(`OFF_CHAIN_WHY 指向不在守卫面（或已不存在）的文件：test/${name}`);
+    else if (onChain.has('test/' + name)) out.push(`OFF_CHAIN_WHY 已过期（它现在在链上）：test/${name}`);
+  }
+  return out;
+}

@@ -63,7 +63,10 @@
     # parallax：3D 视差层（src/parallax-layer.js、src/ext-parallax.js），同上。
     - id: wallpaper-engine-parallax
       name: 'dsh-plugin-wallpaper-engine-parallax'
-    # fonts：字体系统的**宿主半边**（lib/routes/fontsets.js、lib/routes/system-fonts.js
-    # 两条路由族）；字体浏览器半边仍留在主 bundle 里（P-A 不动设置面板）⇒ 本行没有 dsh.client。
+    # fonts：整个字体系统（P-C 之后宿主半边 + 浏览器半边都在本包）
+    #   · 宿主半边：lib/routes/fontsets.js、lib/routes/system-fonts.js 两条路由族；
+    #   · 浏览器半边：外观页签第六节「全局字体」+ 字体集编辑器 ⇒ 产物 lib/client.fonts.js。
+    # 注意（§6.1 = A / ADR-0013 D20）：随包走的只是**渲染器与描述符**；字体的键、默认值、
+    # 消毒与持久化仍在主包 lib/settings-schema.js（FONTSET_KEYS）与 fontsets/<id>.json。
     - id: wallpaper-engine-fonts
       name: 'dsh-plugin-wallpaper-engine-fonts'

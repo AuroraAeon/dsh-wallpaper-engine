@@ -81,6 +81,14 @@ function weComponentVisibleOf(components, name) {
   // 本页签只把 ctx 转交给各节、自己不读字段 —— 所以那不是无操作声明。
   function renderAppearanceTab(ctx) {
     const { } = ctx;
+    // 第六节「全局字体」在 P-C 之后**住在 packages/fonts**（子包把渲染器登记进
+    // src/extension-registry.js 的面板节注册表）⇒ 这里按注册表续接，屏上位置仍**在最后**
+    //（描述符不写 `order` ⇒ 落到默认位 100；顺序口径与 extensionModules() 同源）。
+    // ⚠️ 注册表为空 = 该子包没装 / 被关：页签照画前五节，**不**整页签消失
+    //    （D3①/D3③ 在这条通道上的形态：缺的是那一节，不是这一页）。
+    const registered = wePanelSectionsOf("appearance").map((section) => (
+      React.createElement(React.Fragment, { key: section.id }, section.render(ctx))
+    ));
     return React.createElement(React.Fragment, null,
       renderAppearanceThemeSection(ctx),
       renderAppearanceDetailSection(ctx),
@@ -89,7 +97,7 @@ function weComponentVisibleOf(components, name) {
       // 「全局 UI 配色」在「全局字体」**上面**（用户口径：「变成全局UI配色放在全局字体上面」）；
       // 原「输入光标」节已撤销，其唯一一行（光标颜色）并入本节（见该渲染器的 ③）。
       renderAppearanceUiColorSection(ctx),
-      renderAppearanceFontSection(ctx),
+      registered,
     );
   }
 

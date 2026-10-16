@@ -59,7 +59,7 @@
 | 40 | `/now-playing/artwork` | lib/components/media-bridge/now-playing.js:130 | 箭头 | disposers base serveFile | 2 |
 | 41 | `/media-control` | lib/components/media-bridge/now-playing.js:148 | 箭头 | disposers base CONTROL_JSON_MAX_BYTES | 3 |
 | 42 | `/fontsets` | packages/fonts/lib/routes/fontsets.js:255 | async 箭头 | disposers base readFontSetId | 4 |
-| 43 | `/system-fonts` | packages/fonts/lib/routes/system-fonts.js:487 | async 箭头 | disposers base http | 2 |
+| 43 | `/system-fonts` | packages/fonts/lib/routes/system-fonts.js:487 | async 箭头 | disposers base http | 3 |
 
 **零提及（拆分前必须先补守卫）**：（无）
 

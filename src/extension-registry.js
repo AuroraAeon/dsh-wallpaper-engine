@@ -1,5 +1,5 @@
 /**
- * extension-registry.js — 跨包「扩展模块 / 层钩子」注册表（P-A 的首个跨包贡献点）。
+ * extension-registry.js — 跨包「扩展模块 / 层钩子 / 面板节」注册表（P-A 的首个跨包贡献点）。
  *
  * 为什么需要它：P-A 之后，「扩展」页签的三项**不再住在同一个 bundle 里** ——
  *   一号 自定义会话头像（src/ext-avatar.js + src/avatar-layer.js）留在主包；
@@ -9,6 +9,10 @@
  * 于是"谁登记了什么"必须落在一张**共享注册表**上，而不是一个按数组顺序 import 的静态清单：
  *   · panel-tabs 的 `extensionModules()` 只问注册表（屏上顺序 = (order, 注册序)）；
  *   · client.js 的挂载期只问注册表（每层的 `sync` 接 store 订阅、`dispose` 交 fiber 拆卸）。
+ *
+ * P-C 又把**外观页签的「全局字体」节**搬进 packages/fonts ⇒ 同一张表多了第三个面（面板节）：
+ * 页签按 `panelId` 问 `wePanelSectionsOf(panelId)`，顺序 = (order, 注册序) —— 搬走的节**仍然**
+ * 排在五个内置节之后（描述符不写 `order` ⇒ 落到默认位 100，见 panel-tabs.js 的装订点）。
  *
  * ## 三条硬口径
  *   ① **缺什么就抛什么**（D3③「宁可显示，不可静默消失」）：id / 描述符 / sync+dispose 缺一即抛。
@@ -34,9 +38,17 @@ const weLayerHookTable = new Map();
 let weLayerAttacher = null;
 /** 挂载期由 client.js 装上的「注册表变了，重画面板」回调（迟到注册时用）。 */
 let weRegistryListener = null;
+/** 面板节注册表：panelId → Map(sectionId → { descriptor, seq })。 */
+const wePanelSectionTable = new Map();
+/** 面板节注册序（order 相同时按它 —— 同上，跨包求值顺序不是契约）。 */
+let wePanelSectionSeq = 0;
+/** 挂载期由 client.js 装上的「面板节注册表变了，重画面板」回调；未挂载时为 null。 */
+let wePanelSectionListener = null;
 
 /** 描述符的默认排序位：没写 `order` 的模块排在所有显式项之后（但仍在注册序内稳定）。 */
 const WE_EXTENSION_DEFAULT_ORDER = 100;
+/** 面板节的默认排序位（口径同上：没写 `order` 的节排在显式项之后，仍在注册序内稳定）。 */
+const WE_PANEL_SECTION_DEFAULT_ORDER = 100;
 
 function weRegistryFire() {
   if (typeof weRegistryListener === "function") {
@@ -82,6 +94,82 @@ function weExtensionModules() {
       return ao === bo ? a.seq - b.seq : ao - bo;
     })
     .map((e) => e.descriptor);
+}
+
+/**
+ * 登记一个**页签内的节**（P-C：外观页签的「全局字体」节搬进 packages/fonts 之后，
+ * 屏上位置不能靠"主 bundle 里那个数组的第 6 项"来钉，只能靠注册表）。
+ *
+ * 与扩展模块那套的三条硬口径**逐条同形**（缺什么抛什么 / 注册期不读译文 / id 唯一），
+ * 多出来的两条是本面特有的：
+ *   · `render` **缺一即抛**：没有渲染器的节在屏上是"这一节凭空没了"—— 没有报错、也没有空态；
+ *   · 顺序 = (order, 注册序)：跨包求值顺序不保证，所以顺序只能由描述符声明。
+ *
+ * @param {string} panelId 页签 id（如 "appearance"）
+ * @param {string} sectionId 节 id（React key；也是同一页签内去重的键）
+ * @param {{ id: string, title: string, order?: number, render: Function }} descriptor
+ * @returns {object} 同一个描述符（便于链式写法）
+ */
+function weRegisterPanelSection(panelId, sectionId, descriptor) {
+  if (typeof panelId !== "string" || panelId === "") {
+    throw new Error("[wallpaper-engine] 面板节 panelId 必须是非空字符串");
+  }
+  if (typeof sectionId !== "string" || sectionId === "") {
+    throw new Error("[wallpaper-engine] 面板节 sectionId 必须是非空字符串");
+  }
+  if (!descriptor || typeof descriptor !== "object") {
+    throw new Error("[wallpaper-engine] 面板节 " + panelId + "/" + sectionId + " 的描述符必须是对象");
+  }
+  if (descriptor.id !== sectionId) {
+    throw new Error("[wallpaper-engine] 面板节 id 不一致：注册 " + panelId + "/" + sectionId
+      + "，描述符 id = " + JSON.stringify(descriptor.id));
+  }
+  if (!("title" in descriptor)) {
+    throw new Error("[wallpaper-engine] 面板节 " + panelId + "/" + sectionId + " 缺 title（面板要拿它当节名）");
+  }
+  if (typeof descriptor.render !== "function") {
+    throw new Error("[wallpaper-engine] 面板节 " + panelId + "/" + sectionId
+      + " 缺 render 函数 —— 没有渲染器的节在屏上是「凭空消失」，不是空态");
+  }
+  let sections = wePanelSectionTable.get(panelId);
+  if (!sections) {
+    sections = new Map();
+    wePanelSectionTable.set(panelId, sections);
+  }
+  if (sections.has(sectionId)) {
+    throw new Error("[wallpaper-engine] 面板节重复注册：" + panelId + "/" + sectionId
+      + "（同一份 bundle 求值两次，或两个包抢同一个 id）");
+  }
+  wePanelSectionSeq += 1;
+  sections.set(sectionId, { descriptor, seq: wePanelSectionSeq });
+  wePanelSectionFire();
+  return descriptor;
+}
+
+/** 屏上顺序 = (order, 注册序)（口径同 `weExtensionModules()`）。 */
+function wePanelSectionsOf(panelId) {
+  const sections = wePanelSectionTable.get(panelId);
+  if (!sections) return [];
+  return Array.from(sections.values())
+    .sort((a, b) => {
+      const ao = typeof a.descriptor.order === "number" ? a.descriptor.order : WE_PANEL_SECTION_DEFAULT_ORDER;
+      const bo = typeof b.descriptor.order === "number" ? b.descriptor.order : WE_PANEL_SECTION_DEFAULT_ORDER;
+      return ao === bo ? a.seq - b.seq : ao - bo;
+    })
+    .map((e) => e.descriptor);
+}
+
+/** 面板节注册表的变更回调：专用的那个装了就用它，否则退回通用的（至少要有一次重画）。 */
+function wePanelSectionFire() {
+  const fn = typeof wePanelSectionListener === "function" ? wePanelSectionListener : weRegistryListener;
+  if (typeof fn === "function") {
+    try { fn(); } catch { /* 面板重画失败不许把注册链带崩 */ }
+  }
+}
+
+/** 挂载期装上/摘下「面板节注册表变了 ⇒ 重画面板」的回调（同上，由 client.js 成对设置）。 */
+function weSetPanelSectionListener(fn) {
+  wePanelSectionListener = typeof fn === "function" ? fn : null;
 }
 
 /**
@@ -140,6 +228,9 @@ function weSetRegistryListener(fn) {
 export {
   weRegisterExtensionModule,
   weExtensionModules,
+  weRegisterPanelSection,
+  wePanelSectionsOf,
+  weSetPanelSectionListener,
   weRegisterLayerHooks,
   weLayerHooks,
   weDiscoveredGroupsOf,

@@ -479,7 +479,7 @@ function buildTableOf(dirs) {
   const problems = [];
   for (const dir of dirs) {
     const rel = dir + '/' + RECIPE_REL;
-    // 没有配方文件 **不等于缺陷**：host-only 包本来就不编浏览器半边（`packages/fonts` 就是）。
+    // 没有配方文件 **不等于缺陷**：只有声明了浏览器半边的包才需要配方（P-C 之后三个包都声明）。
     // "声明了 dsh.client 却没有配方" 由下面 S10.2 的三角判据两向对账（只有那边知道 declaresClient）。
     if (!fileExists(rel)) continue;
     // 初值刻意不写：try 成功即赋值，catch 直接 continue（写 `= null` 是死赋值）。
@@ -716,11 +716,48 @@ function manifestHalfOf(m) {
 }
 
 /**
- * 把「跨包允许不同」的三处掩成占位：name / description / exports['./client'] 的目标。
+ * 把「跨包允许不同」的几处掩掉：
+ *   - name / description / exports['./client'] 目标：同形态各包天然不同。
+ *   - `peerDependencies` / `peerDependenciesMeta` **整块**（连键一起摘掉）：这两块由 ADR-0014 **S3.5**
+ *     单独管辖（每个 peer 必须在主包 peer 里、`@deepseek-ai/*` 的范围逐字取根、依赖里不得出现主包 /
+ *     子包名；正判据见 `packagesViolations` 的 S3.5 段），而 S3.8 ③ 的「同形态」管的是**字段集合与
+ *     键序**，两件事。为什么不能改用「让 fonts 删掉 peer 块」来对齐：`packages/fonts` 的宿主半边要用
+ *     `ctx.webServer`，声明 `@deepseek-ai/dsh-host-webserver` 是对的（主包 peer 里就有这一条，
+ *     I6 的宿主 peer 校验也靠它）；fx/parallax 不需要。删 peer 是退让，掩码才是把两条判据各归其位。
+ *     掩掉这两块后**剩余字段的键序仍须逐字相等**（下面的逐字对账照旧，只是不再拿 peer 块判形态）。
  * 掩完剩下的是**整份字符串**，逐字比对连排版（缩进、files 单行、键序、块位置）一并进判据。
  */
+const MASKED_BLOCKS = ['peerDependencies', 'peerDependenciesMeta'];
+
+/**
+ * 逐行摘掉顶层 `"<key>": { … }` 整块（`{` 必须与键同行，块按花括号配平到 `}`）。
+ * @returns {{text: string, removed: string[]}} removed = 真被摘掉的键（供「掩码失效」地板对账）。
+ */
+function stripMaskedBlocks(text) {
+  const lines = String(text).split('\n');
+  const kept = [];
+  const removed = [];
+  for (let i = 0; i < lines.length; i++) {
+    const km = /^\s*"(peerDependencies|peerDependenciesMeta)"\s*:\s*\{/.exec(lines[i]);
+    if (!km) { kept.push(lines[i]); continue; }
+    let depth = 0;
+    let j = i;
+    for (; j < lines.length; j++) {
+      for (const ch of lines[j]) {
+        if (ch === '{') depth++;
+        else if (ch === '}') depth--;
+      }
+      if (depth <= 0) break;
+    }
+    if (j >= lines.length) { kept.push(lines[i]); continue; } // 配平失败 ⇒ 不摘（交给「掩码失效」地板判红）
+    removed.push(km[1]);
+    i = j;
+  }
+  return { text: kept.join('\n'), removed };
+}
+
 function maskSameShape(text) {
-  return String(text)
+  return stripMaskedBlocks(text).text
     .replace(/^(\s*"name"\s*:\s*)"(?:[^"\\]|\\.)*"/m, '$1"<masked>"')
     .replace(/^(\s*"description"\s*:\s*)"(?:[^"\\]|\\.)*"/m, '$1"<masked>"')
     .replace(/"\.\/client"(\s*:\s*)"(?:[^"\\]|\\.)*"/g, '"./client"$1"<masked>"');
@@ -804,12 +841,27 @@ function manifestTemplateViolations({ dirs, texts }) {
     }
   }
 
-  // ③ 同形态逐字对账：掩掉 name / description / exports['./client'] 目标后整份字符串必须相等。
+  // ③ 同形态逐字对账：掩掉 name / description / exports['./client'] 目标 + peer 两块后整份字符串必须相等。
   const byHalf = new Map();
   for (const [dir, m] of parsed) {
     const half = manifestHalfOf(m);
     if (!byHalf.has(half)) byHalf.set(half, []);
     byHalf.get(half).push(dir);
+  }
+  // 掩码失效地板：清单里真有 peer 块、但掩码器没摘掉它（写法超出 `"<key>": {` 同行开头）⇒ 判红。
+  // 没有这一层，"掩码器写漏"会静默变成 S3.8 ③ 的假通过（判据对这两块恒真）。
+  const strippedOf = new Map();
+  for (const [dir] of parsed) strippedOf.set(dir, stripMaskedBlocks(texts.get(dir)));
+  for (const [dir, m] of parsed) {
+    const st = strippedOf.get(dir);
+    for (const k of MASKED_BLOCKS) {
+      const v = m[k];
+      const hasBlock = v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length > 0;
+      if (hasBlock && !st.removed.includes(k)) {
+        add(dir, '掩码失效：清单里有 ' + k + ' 块但同形态逐字对账没摘掉它（掩码器只认 `"' + k
+          + '": {` 与键同行的常规写法；请写成一行开头的键 + `{`，或同步改 stripMaskedBlocks —— 不许静默漏比）');
+      }
+    }
   }
   let compared = 0;
   for (const [half, members] of byHalf) {
@@ -823,7 +875,8 @@ function manifestTemplateViolations({ dirs, texts }) {
         if (ma === mb) continue;
         const d = firstDiff(ma, mb);
         const msg = '同形态（' + half + '）包 ' + a + ' 与 ' + b + ' 的包面不是逐字一致'
-          + '（除 name / description / exports["./client"] 目标外必须逐字相同）：第一处差异 L' + d.line
+          + '（除 name / description / exports["./client"] 目标，以及整块 peerDependencies / peerDependenciesMeta'
+          + '（由 S3.5 单独管辖）外必须逐字相同）：第一处差异 L' + d.line
           + ' ' + JSON.stringify(d.a) + ' ⇄ ' + JSON.stringify(d.b) + '（改回同形态模板排版）';
         add(a, msg);
         add(b, msg);
@@ -946,7 +999,13 @@ check('独立子包：登记面 / 根清单无违反（含覆盖面地板）', u
   check('negative control: files 没覆盖 exports["."] 的落点 ⇒ 判红（S3.3）',
     hit(uncovered, /S3\.3/), uncovered.join(' | ') || '（没报出来）');
 
-  const fakeClient = vOf(mutated((o) => { o.dsh = { bundle: { patch: './cordis.patch.yml' }, client: { platform: 'web' } }; }));
+  // 变异基线漂移坑：P-C 之后连"角色基准"包（packageDirs[0]）自己都声明了 exports['./client']，
+  // 旧写法只换 dsh、不删 exports['./client'] ⇒ 变异体里那两向其实**同时成立**，S3.4 自然不报红。
+  // 所以这里显式删掉落点，保证变异体真的是"声明了半边却没有落点"。
+  const fakeClient = vOf(mutated((o) => {
+    o.dsh = { bundle: { patch: './cordis.patch.yml' }, client: { platform: 'web' } };
+    if (o.exports) delete o.exports['./client'];
+  }));
   check('negative control: 声明 dsh.client 却没有 exports["./client"] ⇒ 判红（S3.4）',
     hit(fakeClient, /S3\.4/), fakeClient.join(' | ') || '（没报出来）');
 
@@ -1045,7 +1104,6 @@ check('独立子包：登记面 / 根清单无违反（含覆盖面地板）', u
   };
   const anyDir = packageDirs[0];
   const realAny = packageTexts.get(anyDir) || '';
-  const hostDir = packageDirs.find((d) => halfOfDir(d) === 'host-only');
   const tOf = (dir, text) => manifestTemplateViolations({ dirs: packageDirs, texts: new Map(packageTexts).set(dir, text) });
   const hit = (list, re) => list.some((x) => re.test(x));
 
@@ -1073,21 +1131,139 @@ check('独立子包：登记面 / 根清单无违反（含覆盖面地板）', u
   check('negative control: files 改回多行数组 ⇒ 判红（S3.8 ②）',
     multiline !== realAny && hit(filesBad, /不是规范单行字面量/), filesBad.join(' | ') || '（没报出来）');
 
-  // 负对照 ③：给 host-only 包塞 ./client —— 形态从 host-only 变成 client-half，就要与客户端形态逐字对账。
-  const withClient = hostDir == null ? '' : (() => {
-    const o = JSON.parse(packageTexts.get(hostDir));
-    o.exports['./client'] = './lib/client.host.js';
-    o.dsh = Object.assign({}, o.dsh, { client: { platform: 'web' } });
+  // 负对照 ③：形态分组一旦只剩一个成员，S3.8 ③ 就退化成恒真 —— 用**两份同形态合成清单**证明
+  // "同形态逐字对账"真的在跑。**不再依赖磁盘上还存在 host-only 包**：P-C 之后三个包都是 client-half，
+  // 原来"给 host-only 包塞 ./client"的写法会随 fonts 转形态静默失去牙（这正是本次要修的）。
+  const toHostOnly = (mutate) => {
+    const o = JSON.parse(realAny);
+    delete o.exports['./client'];
+    if (o.dsh) delete o.dsh.client;
+    if (mutate) mutate(o);
     return (JSON.stringify(o, null, 2) + '\n').replace(/^ {2}"files": \[[\s\S]*?\],$/m, MANIFEST_FILES_LINE);
-  })();
-  const shapeBad = hostDir == null ? [] : tOf(hostDir, withClient);
-  check('negative control: host-only 包塞进 exports["./client"] + dsh.client ⇒ 判红（S3.8 ③ 同形态对账）',
-    hostDir != null && hit(shapeBad, /同形态/), shapeBad.join(' | ') || '（没报出来）');
+  };
+  const hostA = toHostOnly(null);
+  // 有牙探针必须打在**没被掩掉**的字段上：license 在模板序里（同形态本该逐字相同），且不属任何掩码。
+  const hostB = toHostOnly((o) => { o.license = 'Apache-2.0'; });
+  const pairBad = manifestTemplateViolations({
+    dirs: ['packages/zzz-a', 'packages/zzz-b'],
+    texts: new Map([['packages/zzz-a', hostA], ['packages/zzz-b', hostB]]),
+  });
+  check('negative control: 两份同形态（host-only）清单在未掩字段上不一致 ⇒ 判红（S3.8 ③ 同形态逐字对账有牙，不靠 host-only 包存在）',
+    hostA !== hostB && hit(pairBad, /同形态/), pairBad.join(' | ') || '（没报出来）');
+
+  // 负对照 ③'：peer 块**整块被掩**（ADR-0014 S3.5 单独管辖、正判据在 packagesViolations）⇒ 只差 peer 块
+  // 不许借 S3.8 ③ 判红：fonts 带 @deepseek-ai/dsh-host-webserver、fx/parallax 不带，转成同形态后若不做
+  // 这一步，三个包的同形态逐字对账会因为**正确**的 peer 声明而红（掩码两向都测）。
+  const hostC = toHostOnly((o) => { o.peerDependencies = Object.assign({}, o.peerDependencies, { 'zzz-probe': '^1.0.0' }); });
+  const peerOnly = manifestTemplateViolations({
+    dirs: ['packages/zzz-a', 'packages/zzz-b'],
+    texts: new Map([['packages/zzz-a', hostA], ['packages/zzz-b', hostC]]),
+  });
+  check('negative control: 只差被掩的 peer 块 ⇒ 0 条（不误报；peer 归 S3.5 管，不拿来判形态）',
+    hostA !== hostC && peerOnly.length === 0, peerOnly.join(' | ') || '0 条');
+
+  // 负对照 ③''：掩码器没认出来的 peer 块写法 ⇒ 必须判红（掩码失效地板；否则"掩码写漏"会静默变成假通过）。
+  const peerBase = toHostOnly((o) => { o.peerDependencies = Object.assign({}, o.peerDependencies, { '@deepseek-ai/dsh-host-webserver': '>=0.1.5-rc.1' }); });
+  const maskBroken = peerBase.replace(/^(\s*)"peerDependencies"\s*:\s*\{/m, '$1"peerDependencies":\n  {');
+  const maskBad = manifestTemplateViolations({
+    dirs: ['packages/zzz-a', 'packages/zzz-b'],
+    texts: new Map([['packages/zzz-a', peerBase], ['packages/zzz-b', maskBroken]]),
+  });
+  check('negative control: peer 块写法超出掩码器 ⇒ 判红（掩码失效地板，不静默漏比）',
+    maskBroken !== peerBase && hit(maskBad, /掩码失效/), maskBad.join(' | ') || '（没报出来）');
+
+  // 负对照 ③'：同形态组只剩一个成员时必须有覆盖面地板兜着（否则逐字对账恒真）。
+  const lonely = manifestTemplateViolations({
+    dirs: ['packages/zzz-a'], texts: new Map([['packages/zzz-a', hostA]]),
+  });
+  check('negative control: 只有一份清单（无同形态对）⇒ 覆盖面地板判红（S3.8 ③ 不许恒真）',
+    hit(lonely, /覆盖面/), lonely.join(' | ') || '（没报出来）');
 
   // 负对照 ④：任一清单读不出 —— 覆盖面地板必须判红（不许静默跳过）。
   const missing = manifestTemplateViolations({ dirs: packageDirs, texts: new Map(packageTexts).set(anyDir, null) });
   check('negative control: 任一清单读不出 ⇒ 判红（覆盖面地板）',
     hit(missing, /覆盖面地板/), missing.join(' | ') || '（没报出来）');
+}
+
+// ═══ P-C 契约 §2.1：字体包带浏览器半边 ⇒ S3.4 两向 + S10.2 配方存在性对它**真的生效** ═══════════
+// 为什么单独一段：字体包本轮从 host-only 转 client-half。转形态之前，S3.4 的"有 ./client 却没声明"
+// 与 S10.2 的"声明了却没有配方"对它是**恒真**（没对象），负对照也就无从下手。这里把字体包当主体，
+// 用内存里的变异体证明四条都有牙；全部不碰磁盘（写面只有 test/**）。
+{
+  const fdir = PACKAGES_DIR + '/fonts';
+  const fReal = packageTexts.get(fdir) || '';
+  const hit = (list, re) => list.some((x) => re.test(x));
+  const fArtifact = './lib/client.fonts.js';
+  // 基线：把字体包**强制**摆成 P-C 契约 §1 的形状（已落地时 = 原样；未落地时 = 构造出的目标形状），
+  // 并且把"产物在盘"这一条喂成真 —— 这样才能把"配方/落点"四条从"文件还没编出来"里分离出来。
+  const ofFonts = (fn) => { const o = JSON.parse(fReal); fn(o); return JSON.stringify(o, null, 2) + '\n'; };
+  const declaredBase = ofFonts((o) => {
+    o.dsh = Object.assign({}, o.dsh, { client: { platform: 'web' } });
+    o.exports = Object.assign({}, o.exports, { './client': fArtifact });
+  });
+  const fInput = (text, patch) => packagesViolations({
+    ...packagesInput,
+    texts: new Map(packageTexts).set(fdir, text),
+    ...(patch || {}),
+  });
+  const withRecipe = (list) => [...(list || []).filter((b) => b.dir !== fdir), { dir: fdir, artifact: fArtifact }];
+  const artifactOnDisk = (rel) => rel === fdir + '/lib/client.fonts.js' || fileExists(rel);
+
+  const fBase = fInput(declaredBase, { buildEntries: withRecipe(buildList), fileExists: artifactOnDisk });
+  check('字体包基线（声明 + 落点 + 配方 + 产物在盘）⇒ 0 条违反（判据不是恒红）',
+    fReal.length > 0 && fBase.length === 0, fBase.join(' | ') || '0 条');
+
+  const fHalf = (() => { try { return manifestHalfOf(JSON.parse(fReal)); } catch { return '(unparsed)'; } })();
+  const clientHalfDirs = packageDirs.filter((d) => {
+    try { return manifestHalfOf(JSON.parse(packageTexts.get(d))) === 'client-half'; } catch { return false; }
+  });
+  check('字体包带浏览器半边且与 fx/parallax 同形态（P-C 契约 §1/§2：S3.4 两向 + S10.2 配方 + S3.8 ③ 同组对账都对它真的生效）',
+    fHalf === 'client-half' && clientHalfDirs.length >= 2 && clientHalfDirs.includes(fdir),
+    'packages/fonts 形态=' + fHalf + ' · client-half 组=[' + clientHalfDirs.join(' ') + ']（P-C 未落地时这条应当红）');
+
+  const fNoExport = fInput(ofFonts((o) => {
+    o.dsh = Object.assign({}, o.dsh, { client: { platform: 'web' } });
+    delete o.exports['./client'];
+  }), { buildEntries: withRecipe(buildList), fileExists: artifactOnDisk });
+  check('negative control: 字体包声明 dsh.client 却删掉 exports["./client"] ⇒ 判红（S3.4 正向）',
+    hit(fNoExport, /S3\.4/), fNoExport.join(' | ') || '（没报出来）');
+
+  const fNoDecl = fInput(ofFonts((o) => {
+    o.exports = Object.assign({}, o.exports, { './client': fArtifact });
+    if (o.dsh) delete o.dsh.client;
+  }), { buildEntries: withRecipe(buildList), fileExists: artifactOnDisk });
+  check('negative control: 字体包留 exports["./client"] 却删掉 dsh.client ⇒ 判红（S3.4 反向）',
+    hit(fNoDecl, /S3\.4/), fNoDecl.join(' | ') || '（没报出来）');
+
+  const fNoRecipe = fInput(declaredBase, {
+    buildEntries: (buildList || []).filter((b) => b.dir !== fdir), fileExists: artifactOnDisk,
+  });
+  check('negative control: 字体包声明了 dsh.client 却没有 client.build.json 配方 ⇒ 判红（S10.2 存在性，不再走 host-only 豁免）',
+    hit(fNoRecipe, /S10\.2/), fNoRecipe.join(' | ') || '（没报出来）');
+
+  const fWrongArtifact = fInput(declaredBase, {
+    buildEntries: [...(buildList || []).filter((b) => b.dir !== fdir), { dir: fdir, artifact: './lib/client.wrong.js' }],
+    fileExists: (rel) => rel === fdir + '/lib/client.wrong.js' || artifactOnDisk(rel),
+  });
+  check('negative control: 字体包配方 artifact 与 exports["./client"] 不一致 ⇒ 判红（S10.2 三角对账）',
+    hit(fWrongArtifact, /S10\.2/), fWrongArtifact.join(' | ') || '（没报出来）');
+
+  // 产物现在是真在盘上了（fonts-pc 的 build 已落），所以要**显式**把落点的产物喂成"不在盘"，
+  // 否则这条负对照会随产物落地静默失去牙（正如 §3.8 ③ 那条负对照遇到的同一类漂移）。
+  const fGhostArtifact = fInput(declaredBase, {
+    buildEntries: withRecipe(buildList),
+    fileExists: (rel) => (rel === fdir + '/lib/client.fonts.js' ? false : artifactOnDisk(rel)),
+  });
+  check('negative control: 字体包配方落点的产物不在盘 ⇒ 判红（S10.2 产物存在性）',
+    hit(fGhostArtifact, /S10\.2/) && hit(fGhostArtifact, /不在盘/), fGhostArtifact.join(' | ') || '（没报出来）');
+
+  const fontsBuild = (buildList || []).find((b) => b.dir === fdir) || null;
+  // 配方里的 artifact 是 package-relative（仓内三份配方都写 `lib/…` 不带 `./`），与 exports['./client'] 的
+  // 目标比对必须先归一化（`./` 前缀不影响落点）—— 否则这条读数会因为写法差异恒红。
+  const normRel = (s) => String(s == null ? '' : s).replace(/^\.\//, '');
+  check('字体包配方登记面读数（复算入口：packages/fonts/client.build.json）',
+    fontsBuild == null || normRel(fontsBuild.artifact) === normRel(fArtifact),
+    '配方=' + JSON.stringify(fontsBuild) + '（未落地时上面那条正向判据负责判红）');
 }
 console.log('');
 if (failed) {

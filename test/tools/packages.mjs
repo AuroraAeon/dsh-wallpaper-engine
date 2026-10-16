@@ -595,14 +595,24 @@ function runSelftest() {
   const clone = (m) => JSON.parse(JSON.stringify(m));
   const abs = (rel) => absOf(ROOT, rel);
   const subNoClient = base.packages.find((p) => p.kind === 'subpath' && p.clientArtifact === null);
-  const standaloneNoClient = base.packages.find((p) => p.kind === 'standalone' && p.clientArtifact === null);
   const standaloneClient = base.packages.find((p) => p.kind === 'standalone' && p.clientArtifact !== null);
 
-  // ① 模型里删掉一个包（挑没有浏览器半边的 standalone，避免连带动 clientPackages 地板）
+  // ① 模型里删掉一个包（挑带浏览器半边的 standalone：删它同时摘掉 clientPackages 一项，
+  //    产物数 4→3 仍**正好压在地板线上**、不额外触发产物地板 ⇒ 这条负对照只留"删包"一个缺陷）。
+  //    ⚠️ 曾经这里挑的是"不带浏览器半边的 standalone"（当时的 host-only 包）；P-C 之后字体包
+  //    也有产物了、本仓已无这种真实包 ⇒ 该写法会 `undefined.dir` 崩掉。负对照不许依赖
+  //    "盘面上恰好有某个形态的包"这种会随重构漂移的前提（否则重构一落地，判据自己先烂）。
+  //    TODO（P-C 收口轮）：`FLOORS.clientArtifacts` 实测已到 4（main+fonts+fx+parallax），
+  //    与 `test/verify-client-sync.mjs` 自己的产物地板（3）是一根棘轮 ⇒ 两处必须**同批**抬到 4，
+  //    并同步把本条负对照的期望 tag 加上 `floor/clientArtifacts`、把那边的"2 份 ⇒ 不达标"
+  //    负对照改基到"3 份 ⇒ 不达标"。本轮先不抬，避免两根棘轮一高一低。
   {
     const m = clone(base);
-    m.packages = m.packages.filter((p) => p.dir !== standaloneNoClient.dir);
-    control('\u2460 负对照：模型里删掉包 ' + standaloneNoClient.dir + ' ⇒ 地板 + 死行',
+    const victim = m.packages.find((p) => p.kind === 'standalone' && p.clientArtifact !== null);
+    if (!victim) throw new Error('[selftest] 负对照 ① 需要至少一个带浏览器半边的 standalone 包');
+    m.packages = m.packages.filter((p) => p.dir !== victim.dir);
+    m.clientPackages = m.clientPackages.filter((p) => p.dir !== victim.dir);
+    control('\u2460 负对照：模型里删掉包 ' + victim.dir + ' ⇒ 地板 + 死行',
       m, io, ['floor/packages', 'rows/deadRow']);
   }
 

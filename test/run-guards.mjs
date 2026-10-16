@@ -185,6 +185,15 @@ const VERIFY_STEPS = [
   //    （I6：宿主整次安装被拒 + 回滚）、`dsh.client` ⟺ `exports['./client']` 失配（C2：浏览器半边静默不加载）
   //    —— 每一条都是"用户会撞上"的后果，不是仓库内务 ⇒ 硬档。判据面与档位依据见 adr/0014 S3。
   step('test/verify-subpackage-manifests.mjs'),
+  // ⑦ 主包 apply() 的**交接位置**（R-1 的真实形态；P2-6 gate-r1）：出货宿主的 `register` 判重在
+  //    插入**之前** ⇒ 文档点名的"40 处单表达式兜底"没有可失败的中间态（那 20 个文件安全、零改动）；
+  //    真缺陷是 `handOffTeardown(ctx, dispose)` 原本排在 `apply()` 最后一行 —— 中途抛错（最现实：
+  //    上次装载残留撞 `duplicate … route`）那一行永不执行 ⇒ `ctx.effect` 从未登记 ⇒ fiber 不回滚、
+  //    前序各族已注册路由全部残留。判据 = 源码序 + 行为（真 lib/index.js × 正序 mock 宿主，
+  //    残留 31 → 0、注册面 32 条两臂同序逐字节相等），另有 6 条负对照与 4 条覆盖面地板。
+  //    真 cordis 往返仍未跑（`@deepseek-ai/cordis` 是 peer，本轮口径 `npm ci --omit=peer`）⇒
+  //    fiber 回滚语义是**源码推读**，守卫只在文件头如实标注，不升级为"已验证"。
+  step('test/verify-host-teardown.mjs'),
   // ⑥ 包发现层 `test/tools/packages.mjs` 的**自检**（P-B 基石）：上面这一批"包面"判据
   //    （client-sync 的产物集合 / bundle-rows 的行⇄包对账 / subpackage-manifests 的清单面 /
   //    host-route-index 一族的行·包解析）与 `scripts/build-client.mjs` 都读它 ⇒ 它自己坏了会
@@ -194,6 +203,19 @@ const VERIFY_STEPS = [
   // ← 还原（旧链最末一步）：`js-text` 的**自检**（字符串感知的剥注释/作用域/函数体提取，
   // 是上面一批"文本判据"的共同底座 ⇒ 它自己坏了会连带整批判据失真）。
   step('test/tools/js-text.mjs', ['selftest']),
+  // ⑧ 链的**形状自检**（R-4 收口：由 docs 软档升 hard）。它把 MANIFEST 与
+  //    `test/fixtures/verify-chain.json` 逐条对账（顺序 / 档位 / 参数 / 文件名），另判每组硬档地板、
+  //    每个 file 真实存在、`all` = build + 三组有序拼接，以及 ⑤「守卫面上脱链者必须有代码内理由」。
+  //    原先它挂在 docs 组，而 CI 的 `verify:docs` 步是 `continue-on-error: true` ⇒ 把链上头两步
+  //    交换一下，**硬档可以全绿**、只有软档出声。"链的形状"是发布面（静默掉一条守卫 = 一条硬档
+  //    判据无声脱离 PR 门禁）⇒ 按 ADR-0004 归硬档，放本组末尾（它是全组的自检，读的是 MANIFEST
+  //    而非某一步的产物；`--list-json` 只打印不执行，不会递归）。
+  step('test/verify-guard-chain.mjs'),
+  // ⑨ CI 步骤表自检（R-7，task-11 交付）：`test/tools/ci-workflow.mjs` 的行扫描 + 判据（序列 / 脚本
+  //    存在性 / `continue-on-error` 只在 verify:docs / 产物出库与无尾随空白两步真的在跑 / install 在
+  //    第一条 npm run 之前），正判据与 10 条负对照共用一个纯函数（变异喂内存文本，不碰真 workflow）。
+  //    与 ⑧ 同理归硬档：删掉 `verify:static` 或 `verify:bridge` 这类改动只有它能拦。
+  step('test/verify-ci-steps.mjs'),
 ];
 
 /** `npm run verify:docs` —— 软档（只出声）。全部经 warn-only 降级。 */
@@ -206,7 +228,6 @@ const DOCS_STEPS = [
   // （这一类；`node --check` 与聚焦判据都照不到它）。
   step('test/verify-undefined-refs.mjs', [], 'soft'),
   step('test/verify-guard-map.mjs', [], 'soft'),
-  step('test/verify-guard-chain.mjs', [], 'soft'),
 ];
 
 /** `npm run smoke` —— 节点级行为冒烟（硬档）。 */

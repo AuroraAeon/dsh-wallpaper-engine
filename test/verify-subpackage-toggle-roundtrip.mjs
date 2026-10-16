@@ -570,6 +570,362 @@ if (plugins.length > 0) {
   check('注册了路由的行：apply 体里都有交接调用（handOffTeardown( / <receiver>.handOff(）', textIssues.length === 0, textIssues.join('；'));
 }
 
+// ── P-C 字体实例（task-8 第 3 条）：关掉 `wallpaper-engine-fonts` 行 ⇒
+//   ① 宿主路由整族缺席 ② 外观页签不再画字体节（可见面由面板节注册表派生）③ 关闭后零残留
+//   ④ 只有该行状态变化。
+//
+// v2 口径（Lead）：本轮只搬「字体节的渲染器」——屏上那一节的 `descriptor.render` 必须来自注册表，
+// 主 bundle 不再内联它；`fontset-store/system-fonts/font/apply/typography/color-roles` 留在主包，
+// 所以这里**不**断言那 5 个文件不在主包。
+// 四个观测面都做成纯函数（输入是量出来的集合/文本/注册表模块），负对照喂合成输入，不靠磁盘变异。
+
+const FONTS_ROW_ID = 'wallpaper-engine-fonts';
+const FONTS_PKG_NAME = 'dsh-plugin-wallpaper-engine-fonts';
+const PANEL_ID = 'appearance';
+const FONTS_SECTION_ID = 'fonts';
+const FONTS_ROW = rows.filter((r) => r.id === FONTS_ROW_ID && r.name === FONTS_PKG_NAME)[0];
+const FONTS_PLUGIN = FONTS_ROW ? plugins.filter((p) => p.label === FONTS_ROW.name)[0] : undefined;
+
+/** ①③④ 宿主面：字体行整族缺席/在场、关闭后零残留、只动自己那行。 */
+function fontsRowHostProblems(i) {
+  const bad = [];
+  // 前提（判据要有牙）：字体行的宿主半边必须真留下可观测的贡献，否则"关闭后整族缺席"是恒真。
+  if (!i.own || i.own.size === 0) {
+    bad.push('字体行的宿主半边在独占 table 里注册 0 条路由 —— "关闭后整族缺席"对它恒真（本轮它应贡献 fontsets + system-fonts 整族）');
+    return bad;
+  }
+  const leak = inter(i.offKeys, i.own);
+  if (leak.length) bad.push('关闭态仍在表里：' + leak.join(', '));
+  const onExtra = minus(i.onKeys, new Set([...i.offKeys, ...i.own]));
+  if (onExtra.size) bad.push('开启态多出不属于任何一行的路由：' + [...onExtra].join(', '));
+  const onMissing = minus(new Set([...i.offKeys, ...i.own]), i.onKeys);
+  if (onMissing.size) bad.push('开启态缺了本行整族里的路由：' + [...onMissing].join(', '));
+  if (!sameSet(i.restoredKeys, i.offKeys)) {
+    bad.push('再关掉后路由表没有回到关闭态：残留 ' + [...minus(i.restoredKeys, i.offKeys)].join(', ')
+      + ' / 又少了 ' + [...minus(i.offKeys, i.restoredKeys)].join(', '));
+  }
+  const stolen = [];
+  for (const [label, keys] of i.otherOwn) {
+    const ov = inter(keys, i.own);
+    if (ov.length) stolen.push(label + ' 也注册了字体行的族：' + ov.slice(0, 3).join(', '));
+  }
+  if (stolen.length) bad.push('只有字体行该动它的族，实际：' + stolen.join('；'));
+  return bad;
+}
+
+/** ② 浏览器面：字体节只能经面板节注册表显形（关行 = 字体产物不装载 ⇒ 注册表里没有这一节）。 */
+function panelSectionProblems(reg, panelId, sectionId) {
+  if (!reg || typeof reg !== 'object') return ['面板节注册表模块装载不到'];
+  const bad = [];
+  for (const fn of ['weRegisterPanelSection', 'wePanelSectionsOf', 'weSetPanelSectionListener']) {
+    if (typeof reg[fn] !== 'function') bad.push('src/extension-registry.js 没导出 ' + fn + '（P-C 契约 §2.1 冻结接口）');
+  }
+  if (bad.length) return bad;
+  const fresh = reg.wePanelSectionsOf(panelId);
+  if (!Array.isArray(fresh)) return ['wePanelSectionsOf("' + panelId + '") 不返回数组'];
+  if (fresh.some((s) => s && s.id === sectionId)) {
+    bad.push('面板节注册表在**没有装载字体产物**的初始态就已经有节 "' + sectionId + '" —— '
+      + '这一节的显形不受行状态约束（直接渲染 / 静态注册），关掉行它照样在屏上');
+  }
+  let fired = 0, titleReads = 0;
+  const prev = reg.wePanelSectionsOf(panelId).length;
+  reg.weSetPanelSectionListener(() => { fired++; });
+  reg.weRegisterPanelSection(panelId, sectionId, {
+    id: sectionId,
+    get title() { titleReads++; return '字体'; },
+    order: 210,
+    render: () => null,
+  });
+  const after = reg.wePanelSectionsOf(panelId);
+  const mine = after.filter((s) => s && s.id === sectionId);
+  if (mine.length !== 1) bad.push('注册字体节后 wePanelSectionsOf("' + panelId + '") 里看到 ' + mine.length + ' 个节（应为 1）');
+  else if (typeof mine[0].render !== 'function') bad.push('注册表里的字体节没有 render 函数（descriptor.render 必须来自注册表）');
+  if (after.length !== prev + 1) bad.push('注册字体节后节数 ' + after.length + '，应为 ' + prev + ' + 1');
+  if (fired === 0) bad.push('注册面板节没有通知 weSetPanelSectionListener 的订阅者 —— 迟到注册不会重画，外观页签看不到这一节');
+  if (titleReads !== 0) bad.push('注册期读了 title ' + titleReads + ' 次（契约 §2.1：注册期不得求值 getter，那时 i18n 表可能还没到位）');
+
+  // §2.1 第三条硬口径（id 唯一）：作用域 = **一次页面生命周期**。同页二次注册必须当场抛 —— 它把
+  // "同一页面内 bundle 被求值两次"这种异常状态暴露出来，而不是静默半渲染；且抛错必须是原子的。
+  // （运行期同页"关→开→关"不做判据：DSH 行开关在浏览器侧 = 客户端图 prune + 客户端重载，
+  //   真实链路上"关→再开"是新的页面生命周期，注册表随之重建。见 Lead v3 裁决。）
+  let dupErr = null;
+  try {
+    reg.weRegisterPanelSection(panelId, sectionId, { id: sectionId, title: () => '字体', render: () => null });
+  } catch (e) { dupErr = e; }
+  if (!dupErr) {
+    bad.push('同一 (' + panelId + '/' + sectionId + ') 二次注册没有抛错（契约 §2.1 ③ id 唯一：作用域 = 一次页面生命周期，'
+      + '二次注册意味着同一页面内 bundle 被求值两次，必须当场暴露而不是静默半渲染）');
+  } else if (!/重复注册/.test(String((dupErr && dupErr.message) || dupErr))) {
+    bad.push('二次注册抛了错但文案里没有"重复注册"：' + String((dupErr && dupErr.message) || dupErr).split('\n')[0]);
+  }
+  const afterDup = reg.wePanelSectionsOf(panelId).filter((s) => s && s.id === sectionId).length;
+  if (afterDup !== 1) {
+    bad.push('二次注册抛错后节表被改动："' + sectionId + '" 现在有 ' + afterDup + ' 个（抛错必须是原子的，不留半注册的节）');
+  }
+
+  // §2.1 第一条硬口径（缺什么抛什么）+ 描述符形状：四条非法注册必须当场抛，且抛错必须原子。
+  // 补牙理由：这两条是 §2.1 冻结接口的承重面（导出的 renderer 会被主包直接调用；缺 render 的节在屏上是
+  // "凭空消失"），原先只有"注册成功"的正向读数，非法描述符照收的实现会被判绿。
+  const countBefore = reg.wePanelSectionsOf(panelId).length;
+  const miss = [];
+  const mustThrow = (why, fn) => {
+    try { fn(); miss.push(why + '（没有抛）'); } catch { /* 抛了才合格 */ }
+  };
+  mustThrow('描述符缺 render', () => reg.weRegisterPanelSection(panelId, '__we_probe_norender', { id: '__we_probe_norender', get title() { return 'x'; } }));
+  mustThrow('描述符缺 title', () => reg.weRegisterPanelSection(panelId, '__we_probe_notitle', { id: '__we_probe_notitle', render: () => null }));
+  mustThrow('描述符 id 与 sectionId 不一致', () => reg.weRegisterPanelSection(panelId, '__we_probe_mismatch', { id: '__we_probe_other', get title() { return 'x'; }, render: () => null }));
+  mustThrow('描述符不是对象', () => reg.weRegisterPanelSection(panelId, '__we_probe_null', null));
+  mustThrow('sectionId 为空字符串', () => reg.weRegisterPanelSection(panelId, '', { id: '', get title() { return 'x'; }, render: () => null }));
+  mustThrow('panelId 为空字符串', () => reg.weRegisterPanelSection('', '__we_probe_nopanel', { id: '__we_probe_nopanel', get title() { return 'x'; }, render: () => null }));
+  if (miss.length) bad.push('§2.1 ①「缺什么抛什么」没抛：' + miss.join('；'));
+  const countAfter = reg.wePanelSectionsOf(panelId).length;
+  if (countAfter !== countBefore) {
+    bad.push('非法注册改动了节表：' + countBefore + ' -> ' + countAfter + '（抛错必须是原子的）');
+  }
+  if (reg.wePanelSectionsOf('').length !== 0) bad.push('空 panelId 的注册在表里留下了节（panelId 校验失效）');
+
+  // §2.1 顺序口径 = (order, 注册序)，描述符不写 order ⇒ 落到默认位。屏上顺序必须与今天逐项一致，
+  // 而"跨包求值顺序不保证"意味着顺序只能由声明决定 —— 所以这里用注册序**反向**登记三个节来钉它。
+  reg.weRegisterPanelSection(panelId, '__we_probe_late', { id: '__we_probe_late', get title() { return '晚'; }, order: 300, render: () => null });
+  reg.weRegisterPanelSection(panelId, '__we_probe_default', { id: '__we_probe_default', get title() { return '默认位'; }, render: () => null });
+  const orderIds = reg.wePanelSectionsOf(panelId).map((s) => s && s.id);
+  const wantOrder = ['__we_probe_default', sectionId, '__we_probe_late'];
+  if (orderIds.join(',') !== wantOrder.join(',')) {
+    bad.push('屏上顺序不等于 (order, 注册序)：实得 [' + orderIds.join(', ') + ']，应为 [' + wantOrder.join(', ')
+      + ']（默认位 ' + 100 + ' < ' + sectionId + ' 的 210 < 300；仅按注册序排会把字体节挤到末尾之外）');
+  }
+  return bad;
+}
+
+/** ② 的归属面（文本）：字体节的注册住在**字体包产物**里，主包产物不许内联，屏上可见面必须按注册表取节。 */
+const FONTS_REG_RE = /registerPanelSection\s*\([^)]{0,160}fonts/;
+/**
+ * 注册表的取节面（panel-tabs / 外观页签按它画节）。
+ * 口径必须是**大小写不敏感 + 不要求调用形式**：§2.1 冻的是 `wePanelSectionsOf(panelId)`
+ * （大写 P，本文件早先写的 /panelSectionsOf\s*\(/ 只认小写 p，对真实现恒不命中 —— 假红），
+ * 而消费侧也可能写成解构后的别名（`const { wePanelSectionsOf: sectionsOf } = host;`）。
+ */
+const PANEL_READ_RE = /panelsectionsof\b/i;
+function fontsSectionOwnershipProblems(t) {
+  const bad = [];
+  // 文本面一律先过 stripComments()：注释里写一句 `registerPanelSection(… "fonts" …)` **不算**注册
+  // （否则"注册真代码被删掉、注释留着"会恒绿 = 假绿），反向也不许拿注释当"主包内联"的证据。
+  if (typeof t.fontsArtifact !== 'string' || t.fontsArtifact.length === 0) {
+    bad.push('字体包客户端产物读不到（' + t.fontsArtifactRel + '）—— 没有地方注册这一节，外观页签不会有字体节');
+  } else if (!FONTS_REG_RE.test(stripComments(t.fontsArtifact))) {
+    bad.push('字体包客户端产物里没有面板节注册（/registerPanelSection( … fonts/）：' + t.fontsArtifactRel
+      + ' —— 字体节的显形不在包产物里（注释里的字句不算，已过 stripComments），关行不能让它消失');
+  }
+  // 覆盖面无牙地板（真空为真）：主包产物 / 外观页签源码**读不到**时，"主包没有内联这一节"会静默通过。
+  // 这与 verify-host-teardown 的 NC3 是同一个纪律：判据的输入取不到就必须判红，不许真空为真。
+  if (typeof t.rootArtifact !== 'string' || t.rootArtifact.length === 0) {
+    bad.push('主包客户端产物读不到（' + (t.rootArtifactRel || 'lib/client.js') + '）—— "主包没有内联这一节"对它是真空为真');
+  }
+  if (typeof t.rootAppearanceSrc !== 'string' || t.rootAppearanceSrc.length === 0) {
+    bad.push('外观页签源码读不到（src/panel-tabs-appearance.js）—— 同上，"没有内联注册"是真空为真');
+  }
+  for (const [label, text] of [['主包客户端产物', t.rootArtifact], ['外观页签源码', t.rootAppearanceSrc]]) {
+    if (typeof text === 'string' && FONTS_REG_RE.test(stripComments(text))) {
+      bad.push(label + '里内联了字体节的面板节注册（注释不算，已过 stripComments）—— 这一节又回到"不受行状态约束"的静态渲染');
+    }
+  }
+  const readers = (t.panelSrcs || []).filter(([, text]) => typeof text === 'string' && PANEL_READ_RE.test(stripComments(text)));
+  if (readers.length === 0) {
+    bad.push('外观页签 / 面板层源码里没有一处按注册表取节（/panelSectionsOf( …/）：可见面不是从注册表派生的，'
+      + '"关行 ⇒ 外观页签不再画字体节"不成立（字体节的显形又回到静态清单）');
+  }
+  return bad;
+}
+
+{
+  if (!FONTS_ROW || !FONTS_PLUGIN) {
+    check('字体实例前提：根 patch 有字体行（id=' + FONTS_ROW_ID + ' name=' + FONTS_PKG_NAME + '）且入口可装载',
+      false, FONTS_ROW ? '行入口装载失败（' + FONTS_ROW.rel + '）' : 'cordis.patch.yml 里找不到该行');
+  } else {
+    const own = measureOwn([FONTS_PLUGIN]).get(FONTS_PLUGIN.label);
+    const others = plugins.filter((p) => p.label !== FONTS_PLUGIN.label);
+    const otherOwn = measureOwn(others);
+    const t = makeTable();
+    for (const p of others) { const f = makeFiber(t.webServer); loadDroppingReturn(p.apply, f.ctx); }
+    const offKeys = keySet(t.table);
+    const fOn = makeFiber(t.webServer);
+    loadDroppingReturn(FONTS_PLUGIN.apply, fOn.ctx);
+    const onKeys = keySet(t.table);
+    fOn.unload();
+    const restoredKeys = keySet(t.table);
+    const probs = fontsRowHostProblems({ own, offKeys, onKeys, restoredKeys, otherOwn });
+    check('字体实例 ①③④：关 -> 开 -> 再关 字体行整族缺席/在场、关闭后零残留、只动自己那行',
+      probs.length === 0, probs.join('\n      '));
+    console.log('    · 字体行宿主贡献 ' + own.size + ' 条：' + [...own].slice(0, 4).join(', ') + (own.size > 4 ? ' …' : ''));
+    const leftover = inter(keySet(t.table), own);
+    check('字体实例③：关掉字体行后它自己的路由一条不剩', leftover.length === 0, leftover.join(', '));
+
+    // 负对照（合成输入，不依赖磁盘变异）：检测函数必须不是恒真。
+    const neg = [];
+    const negCase = (patch, why) => {
+      const r = fontsRowHostProblems(Object.assign({ own, offKeys, onKeys, restoredKeys, otherOwn }, patch));
+      if (r.length === 0) neg.push(why + '（没有被判红）');
+    };
+    negCase({ offKeys: new Set([...offKeys, [...own][0]]) }, '关闭态仍留着字体行的一条路由');
+    negCase({ onKeys: minus(onKeys, new Set([[...own][0]])) }, '开启态少了一条本行路由');
+    negCase({ restoredKeys: new Set([...restoredKeys, [...own][0]]) }, '再关掉后有残留');
+    negCase({ own: new Set() }, '字体行宿主侧 0 贡献（前提缺失）');
+    negCase({ otherOwn: new Map([['others', new Set([...own])]]) }, '别的行也注册了字体族的同一族');
+    check('负对照：字体行宿主面检测函数在合成坏输入下都判红（不恒真）', neg.length === 0, neg.join('；'));
+
+    // ② 运行时：真注册表模块（fresh 实例 = "字体产物还没装载"的初始态）
+    let reg = null, regErr = null;
+    try { reg = await import(pathToFileURL(join(ROOT, 'src/extension-registry.js')).href + '?fonts-instance=' + Date.now()); }
+    catch (e) { regErr = e; }
+    const regProbs = regErr
+      ? ['装载 src/extension-registry.js 失败：' + String(regErr.message || regErr).split('\n')[0]]
+      : panelSectionProblems(reg, PANEL_ID, FONTS_SECTION_ID);
+    check('字体实例②：外观页签的字体节只能经面板节注册表显形（初始态无此节 / 装上后可见 / 订阅者被通知 / 注册期不读译文 / 同页二次注册原子抛错 / §2.1 ①缺什么抛什么且原子 / 顺序 = (order, 注册序)）',
+      regProbs.length === 0, regProbs.join('\n      '));
+
+    // ② 负对照：合成实现。'good' 是**正对照**（其余 modes 都是"只差一处"的坏实现）——
+    // 没有正对照，新增的"缺什么抛什么 / 顺序 (order, 注册序)"就可能恒红而没人发现。
+    const mkFake = (mode) => {
+      let listener = null;
+      let titleReads = 0;
+      const table = new Map();                       // panelId -> Map(sectionId -> {descriptor, seq})
+      let seq = 0;
+      const DEFAULT_ORDER = 100;
+      const fire = () => { if (typeof listener === 'function') listener(); };
+      const put = (panelId, sectionId, d) => {
+        let m = table.get(panelId);
+        if (!m) { m = new Map(); table.set(panelId, m); }
+        seq += 1; m.set(sectionId, { descriptor: d, seq });
+      };
+      return {
+        // 可观察的"注册期读译文"计数：负对照靠它证明 readTitle 那一条**真的**读了 title
+        // （否则"判红"可能来自别的缺陷，负对照就没有牙）。用普通读取，不引入 `void`（静态棘轮 no-void）。
+        get titleReads() { return titleReads; },
+        weRegisterPanelSection(panelId, sectionId, d) {
+          if (mode === 'readTitle' && d && typeof d.title !== 'undefined') titleReads += 1;
+          if (mode === 'nothrow') { put(panelId, sectionId, d); fire(); return d; }
+          if (mode === 'static') return d;           // 静态实现：注册被吞掉，节却一直在屏上
+          if (typeof panelId !== 'string' || panelId === '') throw new Error('panelId 非法');
+          if (typeof sectionId !== 'string' || sectionId === '') throw new Error('sectionId 非法');
+          if (!d || typeof d !== 'object' || d.id !== sectionId || !('title' in d) || typeof d.render !== 'function') {
+            throw new Error('描述符不合法');
+          }
+          const m = table.get(panelId);
+          if (m && m.has(sectionId)) throw new Error('面板节重复注册：' + panelId + '/' + sectionId);
+          put(panelId, sectionId, d);
+          if (mode !== 'silent') fire();
+          return d;
+        },
+        wePanelSectionsOf(panelId) {
+          if (mode === 'static') return [{ id: 'fonts', title: '字体', render: () => null }];
+          const m = table.get(panelId);
+          if (!m) return [];
+          const list = Array.from(m.values());
+          if (mode !== 'unsorted') list.sort((a, b) => {
+            const ad = a.descriptor || {}, bd = b.descriptor || {};
+            const ao = typeof ad.order === 'number' ? ad.order : DEFAULT_ORDER;
+            const bo = typeof bd.order === 'number' ? bd.order : DEFAULT_ORDER;
+            return ao === bo ? a.seq - b.seq : ao - bo;
+          });
+          return list.map((e) => e.descriptor);
+        },
+        weSetPanelSectionListener(fn) { listener = fn; },
+      };
+    };
+    const goodFake = mkFake('good');
+    const goodFakeProbs = panelSectionProblems(goodFake, PANEL_ID, FONTS_SECTION_ID);
+    check('正对照：合成正确实现（校验 + 原子 + 通知 + 不读译文 + (order, 注册序)）⇒ 0 条（判据可满足，不是恒红）',
+      goodFakeProbs.length === 0, goodFakeProbs.join(' | ') || '0 条');
+    const regNeg = [], regCaught = [];
+    for (const [why, fake] of [
+      ['注册表初始态就直接给出字体节（直接渲染，不受行状态约束）', mkFake('static')],
+      ['注册面板节不通知订阅者（迟到注册不重画）', mkFake('silent')],
+      ['注册期就求值 title（把 weT 拉到 bundle 求值期）', mkFake('readTitle')],
+      ['注册表缺 wePanelSectionsOf 导出', { weRegisterPanelSection() {}, weSetPanelSectionListener() {} }],
+      ['缺什么都不抛（描述符缺 render/title、id 不一致、空 id 照收）', mkFake('nothrow')],
+      ['顺序退回注册序（忽略 descriptor.order 与默认位）', mkFake('unsorted')],
+    ]) {
+      const r = panelSectionProblems(fake, PANEL_ID, FONTS_SECTION_ID);
+      if (r.length === 0) regNeg.push(why + '（没有被判红）');
+      else regCaught.push(why + ' ⇒ ' + r[0]);
+    }
+    check('负对照：面板节检测函数在"直接渲染 / 不通知 / 求值译文 / 缺接口 / 不校验 / 顺序错"六种合成实现下都判红',
+      regNeg.length === 0, regNeg.join('；') || regCaught.join(' ； '));
+    console.log('    · 面板节负对照逐条命中原因：' + regCaught.join(' ； '));
+    // 「注册期不读译文」这条负对照的自证：合成实现在注册期**真的**读了 title（titleReads>0），
+    // 且判红原因里确实有"注册期读了 title" —— 排除"被别的缺陷顺手判红"。
+    const readTitleFake = mkFake('readTitle');
+    const rtProbs = panelSectionProblems(readTitleFake, PANEL_ID, FONTS_SECTION_ID);
+    check('负对照（readTitle 自证）：合成实现注册期确实读了 title（titleReads=' + readTitleFake.titleReads + '）且判红原因含"注册期读了 title"',
+      readTitleFake.titleReads > 0 && rtProbs.some((x) => x.indexOf('注册期读了 title') >= 0),
+      'titleReads=' + readTitleFake.titleReads + ' · ' + (rtProbs.join(' | ') || '（没报出来）'));
+
+    // ② 归属：注册住在字体包产物里，主包不许内联
+    const fontsPkg = pkgs.filter((p) => p.manifest && p.manifest.name === FONTS_PKG_NAME)[0];
+    const fontsArtifactRel = fontsPkg
+      ? (exportTarget(fontsPkg.manifest.exports && fontsPkg.manifest.exports['./client']) || '').replace(/^\.\//, '')
+      : '';
+    const fontsArtifactAbs = fontsPkg && fontsArtifactRel ? fontsPkg.dir + '/' + fontsArtifactRel : '';
+    const rootClientRel = (exportTarget(rootPkg.exports && rootPkg.exports['./client']) || './lib/client.js').replace(/^\.\//, '');
+    const panelSrcRels = ['src/panel-tabs-appearance.js', 'src/panel-tabs.js', 'src/client.js'].filter((rel) => isFile(join(ROOT, rel)));
+    const owned = {
+      fontsArtifactRel: fontsArtifactAbs || '(清单里没有 exports["./client"])',
+      fontsArtifact: fontsArtifactAbs && isFile(join(ROOT, fontsArtifactAbs)) ? read(fontsArtifactAbs) : '',
+      rootArtifact: isFile(join(ROOT, rootClientRel)) ? read(rootClientRel) : '',
+      rootAppearanceSrc: isFile(join(ROOT, 'src/panel-tabs-appearance.js')) ? read('src/panel-tabs-appearance.js') : '',
+      panelSrcs: panelSrcRels.map((rel) => [rel, read(rel)]),
+      rootArtifactRel: rootClientRel,
+    };
+    const ownProbs = fontsSectionOwnershipProblems(owned);
+    check('字体实例②归属：字体节的注册住在字体包客户端产物里、主包产物不许内联、可见面按注册表取节',
+      ownProbs.length === 0, ownProbs.join('\n      '));
+    // 负对照自证：把每个坏输入**被抓到的第一条原文原因**打出来（否则"没有变红"这件事在日志里
+    // 只剩一句 ok，复核者无法判断它是因为目标缺陷变红、还是被别的地板顺手判红）。
+    const ownNeg = [], ownCaught = [];
+    const GOOD_ART = 'const host = require("dsh-plugin-wallpaper-engine"); host.registerPanelSection("appearance", "fonts", { id: "fonts" });';
+    const BAD_ROOT = 'x.registerPanelSection("appearance", "fonts", { id: "fonts", render: () => null });';
+    const GOOD_READ = ['x', 'const secs = wePanelSectionsOf("appearance");'];
+    // 每个坏输入只带**一个**缺陷：主包产物 / 外观页签源码默认给"读得到、但没内联注册"的正常文本，
+    // 否则新加的覆盖面无牙地板会替别的缺陷判红，负对照就不再是"这条缺陷被抓到"的证据。
+    const GOOD_ROOT = 'window.__ModuleLoader__.load({ id: "dsh-plugin-wallpaper-engine", factory: () => {} });';
+    const GOOD_APP = 'export function renderAppearanceFontSection() { return null; }';
+    const base = (over) => Object.assign({
+      fontsArtifactRel: 'x', rootArtifact: GOOD_ROOT, rootAppearanceSrc: GOOD_APP, panelSrcs: [GOOD_READ],
+    }, over);
+    for (const [why, tt] of [
+      ['字体产物里没有面板节注册（节留在主包 = 直接渲染）', base({ fontsArtifact: 'window.__ModuleLoader__.load({ id: "fonts", factory: () => {} });' })],
+      ['字体产物里只有注释写了面板节注册（注释不算注册 ⇒ 不许假绿）', base({
+        fontsArtifact: 'window.__ModuleLoader__.load({ id: "fonts", factory: () => {} });'
+          + ' /* host.registerPanelSection("appearance", "fonts", { id: "fonts" }); */',
+      })],
+      ['主包客户端产物内联了字体节注册', base({ fontsArtifact: GOOD_ART, rootArtifact: BAD_ROOT })],
+      ['外观页签源码内联了字体节注册', base({ fontsArtifact: GOOD_ART, rootAppearanceSrc: BAD_ROOT })],
+      ['字体产物读不到（清单没声明 exports["./client"]）', base({ fontsArtifact: '' })],
+      ['主包客户端产物读不到（覆盖面无牙：没内联恒真）', base({ fontsArtifact: GOOD_ART, rootArtifact: '' })],
+      ['外观页签源码读不到（覆盖面无牙：没内联恒真）', base({ fontsArtifact: GOOD_ART, rootAppearanceSrc: '' })],
+      ['可见面不按注册表取节（一处 panelSectionsOf( 都没有）', base({ fontsArtifact: GOOD_ART, panelSrcs: [] })],
+      ['可见面用了别的名字 / 别的注册表（不是面板节注册表的取节面）', base({ fontsArtifact: GOOD_ART, panelSrcs: [['x', 'const secs = panelSections("appearance");']] })],
+    ]) {
+      const r = fontsSectionOwnershipProblems(tt);
+      if (r.length === 0) ownNeg.push(why + '（没有被判红）');
+      else ownCaught.push(why + ' ⇒ ' + r[0]);
+    }
+    check('负对照：归属检测函数在"节没搬进产物 / 只有注释注册 / 主包内联 / 页签内联 / 产物缺失 / 两份文本读不到 / 可见面不派生 / 取节面被替名"九种坏输入下都判红',
+      ownNeg.length === 0, ownNeg.join('；') || ownCaught.join(' ； '));
+    console.log('    · 归属负对照逐条命中原因：' + ownCaught.join(' ； '));
+    // 正对照：两侧都能满足 ⇒ 0 条。没有这一条，"可见面不派生"会恒红 —— 假红比恒真更坏，
+    // 它会让真实现落地后仍旧看不到绿（本轮就踩过：GOOD_READ 里的 wePanelSectionsOf 是大写 P，
+    // 而旧正则是 /panelSectionsOf\s*\(/ 只认小写 p）。
+    const goodAll = base({ fontsArtifact: GOOD_ART });
+    const goodProbs = fontsSectionOwnershipProblems(goodAll);
+    check('正对照：字体产物里有面板节注册 + 可见面按注册表取节 ⇒ 0 条（归属判据两侧都可满足，不是恒红）',
+      goodProbs.length === 0, goodProbs.join(' | ') || '0 条');
+    console.log('    · 字体包客户端产物：' + (owned.fontsArtifact
+      ? owned.fontsArtifactRel + '（' + owned.fontsArtifact.length + ' 字符）'
+      : '不在盘（等 fonts-pc 落 packages/fonts/src/client.js + client.build.json 后 npm run build）'));
+  }
+}
+
 console.log('');
 if (failed) { console.log('SUBPACKAGE TOGGLE ROUNDTRIP CHECKS FAILED -- ' + failed + ' failed'); process.exit(1); }
 console.log('ALL SUBPACKAGE TOGGLE ROUNDTRIP CHECKS PASSED');

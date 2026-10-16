@@ -341,7 +341,17 @@ async function main() {
     //  再：verify 68→69 / all 82→83 —— 新增 `test/tools/packages.mjs selftest`（包发现层自检：
     // 上面一批包面判据与 `scripts/build-client.mjs` 都读它，属"判据底座的底座"；档位依据同
     // `js-text` selftest —— 它坏了会让一整批判据静默失真）。
-    const CHAIN_FLOOR = { verify: 69, docs: 7, smoke: 6, all: 83 };
+    //  再：verify 69→70 / all 83→84 —— 新增 `test/verify-host-teardown.mjs`（R-1 的真实形态：
+    // `handOffTeardown` 必须早于 `apply()` 体内任何注册点，中途抛错时 fiber 才拿得到 teardown；
+    // 硬档依据 = 后果是"路由整族残留在宿主表里、开关再也关不干净"）。
+    //  再：verify 70→71 / docs 7→6 —— `verify-guard-chain`（链的形状自检）由 docs 软档升 hard
+    // （ADR-0004：链的形状属**发布面** —— 静默掉一条守卫 = 一条硬档判据无声脱离 PR 门禁，而 CI 对
+    // `verify:docs` 是 `continue-on-error`，软档拦不住；R-4。它另含 R-5「脱链必须有代码内理由」⑤）。
+    // all 不变（组内搬家）。
+    //  再：verify 71→72 / all 84→85 —— 新增 `test/verify-ci-steps.mjs`（R-7：CI 步骤表自身无判据时，
+    // 删掉 `verify:static` / `verify:bridge` 步不会让任何判据变红；硬档依据 = 后果是"一整类门禁静默
+    // 从 PR 上消失"，同 ⑧ 的发布面口径）。
+    const CHAIN_FLOOR = { verify: 72, docs: 6, smoke: 6, all: 85 };
     /** 地板表与 GROUPS 的对齐体检：键名必须与**组名**逐一对齐（纯函数 ⇒ 负对照可直接喂）。 */
     const floorGaps = (groups, floors) => groups.map(([, g]) => g).filter((g) => !Number.isInteger(floors[g]));
     const problems = floorGaps(GROUPS, CHAIN_FLOOR).map((g) => '地板表缺组 ' + g

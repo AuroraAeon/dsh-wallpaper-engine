@@ -367,6 +367,9 @@ const exportsObj = factory(requireMock);
 const SUBPACKAGE_CLIENT_ARTIFACTS = [
   ['../packages/parallax/lib/client.parallax.js', 'dsh-plugin-wallpaper-engine-parallax'],
   ['../packages/fx/lib/client.fx.js', 'dsh-plugin-wallpaper-engine-fx'],
+  // P-C 第一刀：字体节（「字体自定义」那一节）已随子包出产物 —— 设置页/外观页要看到它，
+  // 挂载台就必须像真实 loader 那样把这份 bundle 也求值掉（它的 factory 会往面板节注册表注册）。
+  ['../packages/fonts/lib/client.fonts.js', 'dsh-plugin-wallpaper-engine-fonts'],
 ];
 const subRequireMock = (spec) => {
   if (spec === 'dsh-plugin-wallpaper-engine') return exportsObj;
@@ -4320,7 +4323,12 @@ setTimeout(async () => {
 // 装配函数体内不得再出现那批标记，且必须调子渲染器；负对照证明同一条判据能判出
 // "标记确实在子渲染器里"（否则是个恒真判据）。
 {
-  const src = panelText();   // 刀4：页签族并集（helper 声明顺序判据按构建序）。
+  // P-C 第一刀：字体节（连同它的 `renderFont*` 子渲染器）已随子包出产物 ⇒ 这一族的"运行时真实
+  // 作用域"从"主包页签族"变成"主包页签族 ∪ 字体包的节源码"。判据强度不变（还是同一批标记与
+  // 声明序），只是取文来源跟着实现走 —— 不并上它，HELPERS 那五条会以"找不到"的形式假红。
+  const fontsSectionSrc = readFileSync(
+    new URL('../packages/fonts/src/appearance-font-section.js', import.meta.url), 'utf8');
+  const src = panelText() + '\n;\n' + fontsSectionSrc;   // 刀4：页签族并集（helper 声明顺序判据按构建序）。
   const bodyOf = (name) => {
     const i = src.indexOf('function ' + name + '(');
     assert.ok(i >= 0, '找不到 ' + name + '（判据不得空转）');

@@ -445,9 +445,12 @@ section('⑤ 客户端通道：登记进产物 / 浏览器安全 / 只碰自己�
   check('清单只在「侧栏外观页 + 字体节展开 + 字体自定义打开」时才去要（宿主那次扫描很贵）',
     /qpTab === "appearance" && fontOpen && sel\.fontCustom/.test(qp)
     && /if \(v\) ensureSystemFonts\(false\)/.test(client));
+  // P-C：字体节的渲染器随字体包搬出页签族 ⇒ 判"那一节画了什么/拿没拿到入口"必须读
+  // **页签族 + 包内那一节**的并集（判的是行为口径，不是文件住处）。
+  const panelAllText = panelText() + '\n;\n' + read('packages/fonts/src/appearance-font-section.js');
   check('面板拿到了全局字族与重新扫描两个入口（ctx 少一个就是"点了没反应"）',
-    /onGlobalFamily, onRefreshSystemFonts/.test(panelText()));
-  const tabs = stripComments(panelText());
+    /onGlobalFamily, onRefreshSystemFonts/.test(panelAllText));
+  const tabs = stripComments(panelAllText);
   check('下拉的选项与本机字体状态行都走同一条"本浏览器能否匹配"的筛',
     /filterUsableSystemFonts\(sel\.systemFonts\)\.fonts/.test(tabs)
     && /filterUsableSystemFonts\(sel\.systemFonts\)/.test(tabs));
@@ -657,10 +660,10 @@ section('⑧ 真渲染（构建产物）：内置族键 + 本机字体同列、�
     return json({ ok: true });
   };
 
-  const cap = { handoff: null };
+  const cap = { handoff: null, handoffs: [] };
   const sandbox = {
     window: {
-      __ModuleLoader__: { load: (h) => { cap.handoff = h; } },
+      __ModuleLoader__: { load: (h) => { cap.handoff = h; cap.handoffs.push(h); } },
       setTimeout: (fn, ms) => { const t = { fn, ms, cleared: false, fired: false }; timers.push(t); return t; },
       clearTimeout: (t) => { if (t) t.cleared = true; },
       addEventListener() {}, removeEventListener() {},
@@ -680,6 +683,20 @@ section('⑧ 真渲染（构建产物）：内置族键 + 本机字体同列、�
     if (spec === 'react-dom') return { createPortal: (node) => node };
     throw new Error('unexpected require: ' + spec);
   });
+  // P-C：外观页签第六节「全局字体」随字体包出产物 ⇒ 挂载台必须像真 loader 一样，
+  // 在同一个 vm 上下文里把那份子包产物也求值掉（它的 factory 用 require('主包名')
+  // 取主 bundle 的显式键集，再往面板节注册表登记那一节）—— 否则面板上根本没有字体节。
+  {
+    const fontsRel = '../packages/fonts/lib/client.fonts.js';
+    const before = cap.handoffs.length;
+    new vm.Script(readFileSync(new URL(fontsRel, import.meta.url), 'utf8'), { filename: fontsRel })
+      .runInContext(sandbox);
+    const loaded = cap.handoffs.slice(before);
+    if (loaded.length !== 1) throw new Error(fontsRel + ' 必须恰好注册一份 bundle（实际 ' + loaded.length + ' 份）');
+    loaded[0].factory((spec) => (spec === 'dsh-plugin-wallpaper-engine' ? exportsObj : (() => {
+      throw new Error('unexpected require: ' + spec);
+    })()));
+  }
 
   const renders = [];
   const slots = { inject: (key, cb) => cb(), register: (opts, render) => { renders.push({ opts, render }); } };

@@ -1,12 +1,21 @@
 /**
  * index.js — **字体系统子包的宿主入口**。
  *
- * 落点 = 字体子包的宿主半边（ADR-0014 S3.4：host-only 形态，浏览器半边仍住主包 `src/**`）：
+ * 落点 = 字体子包的**宿主半边**（ADR-0014 S3.4）：
  *   · 搬进来的：字体系统的**两条宿主路由族** —— `fontsets`（字体集 /fontsets）与
  *     `system-fonts`（本机字体清单 /system-fonts），见 ./routes/*.js。
- *   · **不搬**的：浏览器半边（`src/font/**`、`src/fontset-store.js`、`src/fontset-editor.js`、
- *     `src/system-fonts.js`）仍在主 bundle 内联 —— 字体浏览器面就是设置面板的字体段；
- *     ADR-0014 S3.4 要求 host-only 不声明没有实现的半边 ⇒ 本包**不声明** `dsh.client`（声明了却没有 exports['./client'] 会按 ADR-0014 S3.4 抛错）。
+ *   · P-C（2026-10-16）之后**浏览器半边也随包走**：入口 `src/client.js` + 外观页签第六节
+ *     「全局字体」渲染器 `src/appearance-font-section.js` + 字体集编辑器 `src/fontset-editor.js`，
+ *     产物 `lib/client.fonts.js` ⇒ 本包**声明** `dsh.client` 且清单里有 `exports['./client']`
+ *     （ADR-0014 S3.4 的两向判据）。
+ *   · **仍然不搬**：`src/fontset-store.js`、`src/system-fonts.js`、`src/font/apply.js`、
+ *     `src/font/typography.js`、`src/font/color-roles.js`、`src/font/components.js`
+ *     （它们与主包其它半边在求值期/运行期双向耦合，见 §6.1 = A 的归属裁决）。
+ *
+ * ⚠️ 归属（务必先读）：用户口径 **§6.1 = A「代码归属，不是状态归属」**（正本 = ADR-0013 **D20**）。
+ *    字体键的**真源与状态**在主包 `lib/settings-schema.js`（`FONTSET_KEYS` 单点定义）与
+ *    `fontsets/<id>.json`；本包裹走的只是**渲染器与描述符** ⇒ 本包**不持键、不持久化、
+ *    不注册 `settings.section`**，读值一律经主包构造的渲染 ctx（或本文件声明的 `host` 面）。
  *
  * 两条加载路径共用这一个实现（与 lib/components/about-notice/index.js 同形）：
  *   ① 宿主按 patch 行（cordis.patch.yml）当独立 plugin 加载 ⇒ `apply(ctx, config)`（拆出后**唯一**

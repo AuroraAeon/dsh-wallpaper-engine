@@ -283,7 +283,7 @@ const routeSrc = read('lib/components/mascot-avatar/avatar.js');
   // （手抄就会漂：客户端放行、宿主拒收，反之亦然 —— 那是最难查的一类"看起来没反应"）。
   const kernel = read('lib/settings-schema.js');
   const storeSrc = read('src/fontset-store.js');
-  const editorSrc = read('src/fontset-editor.js');
+  const editorSrc = read('packages/fonts/src/fontset-editor.js');
   // P-A：字体集族已随子包行出户（packages/fonts/lib/routes/fontsets.js），判据跟着实现走。
   const routeSrc = read('packages/fonts/lib/routes/fontsets.js');
   const tag = /const\s+FONTSET_SCHEMA_TAG\s*=\s*'([^']+)'\s*\+\s*FONTSET_SCHEMA_VERSION/.exec(kernel);
@@ -291,7 +291,7 @@ const routeSrc = read('lib/components/mascot-avatar/avatar.js');
     Boolean(tag) && /const\s+FONTSET_SCHEMA_VERSION\s*=\s*\d+/.test(kernel), tag ? tag[1] + 'N' : '(没解析到)');
   // 字面量只许出现在共享内核：其余会 import 的两半都只能写常量名。
   const literalSites = ['lib/index.js', 'packages/fonts/lib/routes/fontsets.js', 'src/fontset-store.js',
-    'src/fontset-editor.js', 'src/client.js', 'src/api-client.js']
+    'packages/fonts/src/fontset-editor.js', 'src/client.js', 'src/api-client.js']
     .filter((f) => /dsh-we\/fontset@/.test(read(f)));
   check('字体集的版本字面量只出现在共享内核（两半都引用常量名，不手抄）',
     literalSites.length === 0, literalSites.join(',') || '零处手抄');

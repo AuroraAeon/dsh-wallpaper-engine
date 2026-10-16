@@ -126,6 +126,15 @@ async function loadExtensionRegistry() {
       try { reg.weRegisterExtensionModule('avatar', avatarMod.AVATAR_EXTENSION_MODULE); return false; }
       catch { return true; }
     })());
+  // P-C：外观页签的第六节「全局字体」已随字体包搬走 ⇒ 夹具按**真入口同形**登记它。
+  // 挂载台与 ext-fx / ext-parallax 一样是"按文件 import 包内源文件"，取的也是同一份渲染器；
+  // 描述符形状与 packages/fonts/src/client.js 逐字同形（title 是 accessor ⇒ 注册期不读译文）。
+  const fontSectionMod = await import(pathToFileURL(join(root, 'packages', 'fonts', 'src', 'appearance-font-section.js')).href);
+  reg.weRegisterPanelSection('appearance', 'fonts', {
+    id: 'fonts',
+    get title() { return globalThis.weT('全局字体'); },
+    render: fontSectionMod.renderAppearanceFontSection,
+  });
   return reg;
 }
 // Keep every cache/config write inside the workspace (same stance as
@@ -989,6 +998,12 @@ const liveSrc = liveText();
 const prepSrc = readFileSync(join(root, 'src', 'media-prep.js'), 'utf8');
 // 刀4：panel-tabs 已按域拆成 5 个兄弟模块 + 组装点 ⇒ 判"页签族的渲染/接缝"一律扫**并集**。
 const tabsSrc = panelText();
+// P-C：外观页签第六节「全局字体」的渲染器随字体包搬出页签族（packages/fonts/src/appearance-font-section.js）
+// ⇒ 判"该节画什么 / 有没有 surface 门 / 有没有 ↺ / 解构了哪些 ctx 字段"的判据必须读
+//    **页签族 + 包内那一节**的并集 —— 它们判的是行为口径，不是文件住处。
+const fontSectionSrc = readFileSync(join(root, 'packages', 'fonts', 'src', 'appearance-font-section.js'), 'utf8')
+  .replace(/\r\n/g, '\n');
+const tabsSrcWithFontSection = tabsSrc + '\n;\n' + fontSectionSrc;
 // 组装点自身：只喂给"8 个 render*Tab 声明在 src/panel-tabs.js"那条不变量（族并集会让它变弱）。
 const tabsHubSrc = readFileSync(join(root, 'src', 'panel-tabs.js'), 'utf8');
 // `fnBody` 的实现在 `test/tools/assert-harness.mjs`（`fnNameBody`，取首个 `\n}`；
@@ -2849,9 +2864,9 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
   //    的 656 字符。
   const gatedSidebar = (text, label) => new RegExp('(?<!!)sidebarSurface &&[\\s\\S]{0,800}?weT\\("' + label + '"\\)').test(text);
   check('「全局字体」节两档都画（两个方向的 surface 门都已摘掉；折叠门保留；输入光标照旧无门）',
-    !gated(tabsSrc, '全局字体') && !gatedSidebar(tabsSrc, '全局字体')
-      && tabsSrc.includes('open && switchRow(weT("字体自定义"')
-      && !gated(tabsSrc, '输入光标'));
+    !gated(tabsSrcWithFontSection, '全局字体') && !gatedSidebar(tabsSrcWithFontSection, '全局字体')
+      && tabsSrcWithFontSection.includes('open && switchRow(weT("字体自定义"')
+      && !gated(tabsSrcWithFontSection, '输入光标'));
   check('播放页的准备与诊断行（出图来源 / 实时帧 / 自定义画面 / 帧率上限 / 源信息 / 转码进度）只在设置页档渲染',
     ['出图来源', '实时帧', '自定义画面', '帧率上限'].every((label) => gated(tabsSrc, label))
       && tabsSrc.includes('!sidebarSurface && sel.type === "video" && sel.mediaInfo')
@@ -3697,7 +3712,8 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
   // 在 CRLF 上它**匹配不到**，`indexOf` 回 -1 会让切片一路吃到文件尾（把别人的解构也当成
   // 这一节的），于是判据会把整个词表都报成"漏解构"。这类"切错了还照旧报"正是判据要防的形状。
   const tabsSrcNow = panelText()
-    .replace(/\r\n/g, '\n');
+    .replace(/\r\n/g, '\n')
+    + '\n;\n' + fontSectionSrc;
   // 这些名字在产物里是**内联同一作用域**的常量 / 纯组件 / 纯函数；单独 import 时按内联规则
   // 补 globalThis 替身（`weT` 由 tools/weT-shim.mjs 装、React 等由上面那块装）。
   Object.assign(globalThis, {
@@ -4026,7 +4042,7 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
     // ⚠️ 刀4 之后节的渲染器搬到了 src/panel-tabs-*.js 域模块 ⇒ 扫**页签族全文**（组装点在末尾），
     //    而不是组装点单文件（否则六处调用全在域模块里 ⇒ 假红 missing=theme,detail,…）。
     const appearanceModules = ['theme', 'detail', 'corners', 'uiColor', 'font'];
-    const panelAllSrc = panelText();
+    const panelAllSrc = panelText() + '\n;\n' + fontSectionSrc;
     const missingModules = appearanceModules.filter((m) => !panelAllSrc.includes('moduleResetButton("' + m + '"'));
     check('#192 外观六模块各挂 ↺ + 玻璃 UI 也挂 + 共用构件阻止冒泡',
       missingModules.length === 0
