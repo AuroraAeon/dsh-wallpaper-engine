@@ -131,9 +131,9 @@
 - **字体段**：内嵌活动字体集的 `FONTSET_KEYS` 值 + 集名。应用时**写回字体集**
   而不是塞进 settings（它们不在 settings 白名单里），走 `setFontValues` / `persistFontSet`。
 - **吉祥物段**：内嵌图片本体（base64）+ 文件名 + 显示盒。应用时落盘到 `mascot/`
-  再写文件名（形状必须过 `MASCOT_FILE_RE`，复用 `lib/components/mascot-avatar/mascot.js` 的落盘语义）。
+  再写文件名（形状必须过 `MASCOT_FILE_RE`，复用 `packages/mascot-avatar/lib/routes/mascot.js` 的落盘语义）。
 - **头像段**：内嵌两张图的本体 + 文件名。应用时落盘到 `avatars/` 再写文件名
-  （形状过 `AVATAR_FILE_RE`，复用 `lib/components/mascot-avatar/avatar.js` 的落盘语义）。
+  （形状过 `AVATAR_FILE_RE`，复用 `packages/mascot-avatar/lib/routes/avatar.js` 的落盘语义）。
 - **勾选默认值**：字体段**默认勾**、吉祥物段**默认勾**、头像段**默认不勾**
   （用户口径：头像体积翻倍、与「分享一份外观配置」关系最弱）。
 - **不勾的后果必须在对话框里写出来**（用户明确要求）：不勾 = **那一族一个字都不动接收方**
@@ -211,7 +211,7 @@
 **D5 — 上限与安全重新论证（承 Context 第 8 条）。**
 携带 base64 资产后上限必须重算，并给**单份资产的字节闸**（超限则拒绝并说明是**哪一项**，
 不做静默截断）。资产文件名与内容一律走既有消毒路径，**不新增第二条落盘通道**：
-落盘复用 `lib/components/mascot-avatar/mascot.js` / `lib/components/mascot-avatar/avatar.js`
+落盘复用 `packages/mascot-avatar/lib/routes/mascot.js` / `packages/mascot-avatar/lib/routes/avatar.js`
 已经验证过的原子写 + 同族清理语义。
 
 **D6 — 旧预设直接作废，不做兼容（撤销初版 D4 的读容忍）。**

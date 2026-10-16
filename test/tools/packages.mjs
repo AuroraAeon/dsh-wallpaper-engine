@@ -46,11 +46,13 @@ import { fileURLToPath } from 'node:url';
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 /**
- * 地板（实测值，`floor/*` 违规低于它就红）：主包 + 3 个 subpath 组件包 + 3 个 standalone 子包
- * ⇒ `packages` 数组 6 项；浏览器半边产物 = 主包 `lib/client.js` + `packages/fx` + `packages/parallax` = 3；
- * 主 patch `insert` 行 = 7（4 主包行 + 3 子包行）。
+ * 地板（实测值，`floor/*` 违规低于它就红）：主包 + **6 个**独立子包（P-F 组件行统一后三格组件也出户了）
+ * ⇒ `packages` 数组 6 项；浏览器半边产物 = 主包 `lib/client.js` + `packages/fx` + `packages/parallax`
+ * + `packages/fonts`（P-C 第一刀起）= **4**；主 patch `insert` 行 = 7（4 主包行 + 3 子包行）。
+ * ⚠️ `clientArtifacts` 与 `test/verify-client-sync.mjs` 的产物面地板**共用这一个常量**（那边 import 它）
+ * ⇒ 抬地板是**一处改动**，两边的正/负对照自动同批跟着走（原先两处各写一个数字、必须手动同批抬的隐患已消）。
  */
-export const FLOORS = { packages: 6, clientArtifacts: 3, rows: 7 };
+export const FLOORS = { packages: 6, clientArtifacts: 4, rows: 7 };
 
 // ── 路径小工具（模型一律根相对 POSIX）─────────────────────────────────────────
 
@@ -594,7 +596,11 @@ function runSelftest() {
 
   const clone = (m) => JSON.parse(JSON.stringify(m));
   const abs = (rel) => absOf(ROOT, rel);
-  const subNoClient = base.packages.find((p) => p.kind === 'subpath' && p.clientArtifact === null);
+  // P-F 批 1c 起三格组件也已出户 ⇒ 发现层不再有任何 `kind === 'subpath'` 的包；"没有浏览器半边的包"
+  // 改从**任意** kind 里找（today = about-notice / mascot-avatar / media-bridge 三个 standalone）。
+  // 负对照不许依赖"盘面上恰好有某个形态的包"（≥ P-C 那次 `subNoClient` 崩掉的教训）。
+  const subNoClient = base.packages.find((p) => p.clientArtifact === null);
+  if (!subNoClient) throw new Error('[selftest] 负对照 ③/⑦ 需要至少一个不带浏览器半边的包（main 之外的任一形态）');
   const standaloneClient = base.packages.find((p) => p.kind === 'standalone' && p.clientArtifact !== null);
 
   // ① 模型里删掉一个包（挑带浏览器半边的 standalone：删它同时摘掉 clientPackages 一项，
@@ -602,10 +608,9 @@ function runSelftest() {
   //    ⚠️ 曾经这里挑的是"不带浏览器半边的 standalone"（当时的 host-only 包）；P-C 之后字体包
   //    也有产物了、本仓已无这种真实包 ⇒ 该写法会 `undefined.dir` 崩掉。负对照不许依赖
   //    "盘面上恰好有某个形态的包"这种会随重构漂移的前提（否则重构一落地，判据自己先烂）。
-  //    TODO（P-C 收口轮）：`FLOORS.clientArtifacts` 实测已到 4（main+fonts+fx+parallax），
-  //    与 `test/verify-client-sync.mjs` 自己的产物地板（3）是一根棘轮 ⇒ 两处必须**同批**抬到 4，
-  //    并同步把本条负对照的期望 tag 加上 `floor/clientArtifacts`、把那边的"2 份 ⇒ 不达标"
-  //    负对照改基到"3 份 ⇒ 不达标"。本轮先不抬，避免两根棘轮一高一低。
+  //    ✅ 已收（P-F 批 1c，2026-10-16）：`FLOORS.clientArtifacts` 已抬到 4（main+fonts+fx+parallax），
+  //    且 `test/verify-client-sync.mjs` 的产物地板**直接 import 同一个常量** ⇒ 两处不会再一高一低
+  //    （它那边的"地板 − 1 份 ⇒ 不达标"负对照也自动跟着走）。
   {
     const m = clone(base);
     const victim = m.packages.find((p) => p.kind === 'standalone' && p.clientArtifact !== null);
@@ -613,7 +618,7 @@ function runSelftest() {
     m.packages = m.packages.filter((p) => p.dir !== victim.dir);
     m.clientPackages = m.clientPackages.filter((p) => p.dir !== victim.dir);
     control('\u2460 负对照：模型里删掉包 ' + victim.dir + ' ⇒ 地板 + 死行',
-      m, io, ['floor/packages', 'rows/deadRow']);
+      m, io, ['floor/packages', 'floor/clientArtifacts', 'rows/deadRow']);
   }
 
   // ② 合成多一条 patch 行 ⇒ 死行
@@ -648,14 +653,18 @@ function runSelftest() {
       m, io, ['floor/packages', 'floor/clientArtifacts', 'floor/rows']);
   }
 
-  // ⑥ 清单名改成主包名 ⇒ 清单名规则
+  // ⑥ 清单名改成主包名 ⇒ 清单名规则（连带：行按 `name` 认领 ⇒ 改名后该包的行失配/被主包重复认领）
+  //   P-F 批 1c 起 `subNoClient` 已是 standalone 形态（发现层不再有 subpath 包）⇒ 命中的是
+  //   `name/rule-standalone`（"standalone 必须用自身真名"），不再是 `name/rule-subpath`；
+  //   改名同时把行认领关系打散 ⇒ 一次性断言整条因果链（staleRow / dupClaim / deadRow）。
   {
     const m = clone(base);
     const rel = subNoClient.manifestPath;
     const mf = JSON.parse(io.readText(abs(rel)));
     mf.name = base.main.name;
-    control('\u2465 负对照：subpath 清单名改成主包名 ⇒ 清单名规则违规',
-      m, ioWith(io, { readText: { [abs(rel)]: JSON.stringify(mf, null, 2) } }), ['name/rule-subpath']);
+    control('\u2465 负对照：非主包清单名改成主包名 ⇒ 清单名规则违规（连带行认领打散）',
+      m, ioWith(io, { readText: { [abs(rel)]: JSON.stringify(mf, null, 2) } }),
+      ['name/rule-standalone', 'rows/staleRow', 'rows/dupClaim', 'rows/deadRow']);
   }
 
   // ⑦ 盘上多一个包而 patch 无行 ⇒ 未登记（rows/noRow）

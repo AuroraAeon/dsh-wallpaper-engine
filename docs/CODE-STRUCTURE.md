@@ -112,12 +112,12 @@ graph TB
 - **宿主内核** `lib/kernel/*` —— 门面在**模块加载期**一次建成的各套件实例（`host-kernel.js`）、
   一次 apply 的会话段（`host-session.js`）、组件行消费的组件视图与迷你会话（`component-session.js`）、
   配置与数据目录（`config.js` / `data-dir.js`）。
-- **路由族**（`lib/routes/<族>.js`、`lib/components/<组件>/<族>.js`，或已出户组件的 `packages/<组件>/lib/routes/<族>.js`，一文件一族）—— 拿一个显式
+- **路由族**（`lib/routes/<族>.js`，或组件包内的 `packages/<组件>/lib/routes/<族>.js`，一文件一族）—— 拿一个显式
   context 对象，各自注册自己的路由。族的成员是**派生量**，本文不列：路由枚举的真源是
   `test/tools/host-route-index.mjs` 的 `buildIndex()`（它把搬进 `lib/routes/` 的族按调用点放回原位），
   路由级视图是生成物 `docs/ROUTE-INDEX.md`（`verify-route-index` 重算并逐字节比对）。
   `verify-route-families` 另按账本 §7-6 的触发线盯「某族长到 ≥3 条 ⇒ 拆族或改线」。
-- **组件行**（`lib/components/<组件>/`；**已出户的在 `packages/<组件>/lib/`** —— P-F 组件行统一，`packages/about-notice/`、`packages/mascot-avatar/`，2026-10-16）—— 一个 bundle 多行（[`adr/0013`](./adr/0013-bundle-multi-component-rows.md)）：
+- **组件行**（**组件包** `packages/<组件>/lib/` —— P-F 组件行统一，旧落点 `lib/components/<组件>/` 已不存在，`packages/about-notice/`、`packages/mascot-avatar/`、`packages/media-bridge/`，2026-10-16）—— 一个 bundle 多行（[`adr/0013`](./adr/0013-bundle-multi-component-rows.md)）：
   组件入口 `index.js` + 它自己的路由族实现 + 该行消费的组件视图。行的开关是宿主的
   （`cordis.patch.yml`）；"哪个实现属于哪一行"由 `test/verify-route-ownership.mjs` 钉住，
   行的装载形态由 `test/verify-bundle-rows.mjs` 钉住。
@@ -129,7 +129,7 @@ graph TB
   该守卫现在是 0 不可达 / 0 行）。
 - **共享管道** `lib/http-body.js` —— 请求体读取的唯一实现，路由族共用，不各写一份。
 
-组件的**浏览器可见面**另有单一真源：`lib/components/visibility.js`（"哪个组件渲染哪一块"的宿主侧声明，
+组件的**浏览器可见面**另有单一真源：`lib/component-visibility.js`（"哪个组件渲染哪一块"的宿主侧声明，
 门面再导出一次使它在 import 图上），两侧对账由 `test/verify-component-visibility.mjs` 承担；
 组件能拿到什么由 `test/verify-component-face.mjs` 按内核的组件视图逐键对账。
 
@@ -139,7 +139,7 @@ graph LR
     BOOT["lib/host-boot.js<br/>BASE / 内核单例 / 组件记账"]
     KN["lib/kernel/*<br/>套件实例 · 会话 · 组件视图"]
     IDX --> R["lib/routes/*.js<br/>跨组件共享的路由族"]
-    IDX --> C["lib/components/&lt;组件&gt;/<br/>（已出户：packages/&lt;组件&gt;/lib/）<br/>组件入口 + 自有路由族"]
+    IDX --> C["packages/&lt;组件&gt;/lib/<br/>（旧 lib/components/&lt;组件&gt;/ 已不存在）<br/>组件入口 + 自有路由族"]
     IDX --> KN
     BOOT --> KN
     C --> BOOT
@@ -388,9 +388,9 @@ graph LR
    **这是唯一被允许的共享形态**，第二个共享内核要显式登记（§6 的共享内核白名单）。
 3. **是宿主自己的实现吗？**
    → `lib/<语义名>.js` **并加进 `files`**。按职责分子目录（现状：`lib/kernel/`、`lib/media/`、
-   `lib/routes/`、`lib/components/<组件>/`）。
+   `lib/routes/`、`packages/<组件>/lib/routes/`）。
    门面 `lib/index.js` 只做注册与协议聚合，**不装新逻辑**。
-   ⚠️ 若这份实现属于**某个组件行**（它的路由与浏览器可见面随行开关启停），落 `lib/components/<组件>/`
+   ⚠️ 若这份实现属于**某个组件行**（它的路由与浏览器可见面随行开关启停），落 `packages/<组件>/lib/`
    （**已出户的组件**落 `packages/<组件>/lib/` —— P-F，2026-10-16 起：`packages/about-notice/`、`packages/mascot-avatar/`）
    并由该行入口装配 —— 别放进 `lib/routes/`（归属判据见 [`ARCHITECTURE-SPLIT.md`](./ARCHITECTURE-SPLIT.md)）。
    → **随包的数据文件**（不是代码，但要跟包走）也放 `lib/<语义名>/`，**同样加进 `files`**：
@@ -429,7 +429,7 @@ graph LR
 
 | 要加什么 | 落在哪 | 还必须在哪登记 |
 |---|---|---|
-| 一条宿主路由 | `lib/routes/<族>.js`（成族才单独成文件，否则就近）；属于某组件行 ⇒ `lib/components/<组件>/<族>.js` | 路由索引由生成器自动重算；组件归属另由 `verify-route-ownership` 判 |
+| 一条宿主路由 | `lib/routes/<族>.js`（成族才单独成文件，否则就近）；属于某组件行 ⇒ `packages/<组件>/lib/routes/<族>.js`（旧形态 `lib/components/<组件>/<族>.js` 已不存在） | 路由索引由生成器自动重算；组件归属另由 `verify-route-ownership` 判 |
 | 一个设置项 | `lib/settings-schema.js` 的 `DEFAULTS` + `KINDS` | 面板读取即可，**不要另写一张 UI 表**。⚠️ 若涉及**字体角色 / 字号上下限**，浏览器侧那份副本（`src/font/color-roles.js` / `typography.js`）**也要改**（见 §7 第 1 行） |
 | 两端都要用的状态 | `lib/<语义名>.js` | `INLINE_MODULES`（构建期内联；这是**唯一**被允许的共享形态） |
 | 浏览器端一块 UI / 行为 | `src/<语义名>.js` | `INLINE_MODULES`（**漏登记静默失效**） |

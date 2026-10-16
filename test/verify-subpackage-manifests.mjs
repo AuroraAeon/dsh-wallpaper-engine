@@ -61,7 +61,7 @@
  */
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 // 发现层（task-1 冻结接口）：枚举面 ⇄ 发现层的发散判据靠它，不写死包名单。
 import { discoverPackages } from './tools/packages.mjs';
 
@@ -234,8 +234,20 @@ const bareRows = rows.filter((r) => r.name === rootPkg.name);
 const subs = [...new Set(rows
   .filter((r) => r.name && r.name.startsWith(rootPkg.name + '/'))
   .map((r) => r.name.slice(rootPkg.name.length + 1)))];
-check('派生：patch 恰好一行裸包名 + 至少一行子包行', bareRows.length === 1 && subs.length >= 1,
-  '裸行 ' + bareRows.length + ' · 子行 ' + (subs.join(' ') || '（没有）'));
+// ⚠️ P-F 批 1c 起：三格组件已全部出户到 `packages/<pkg>/`，patch 里的 `name` 改成**真包名**
+// ⇒ **子路径形态的组件行**为 0 条，这是"形态已统一"的**预期终态**，不是"少了行"。据此本段拆成：
+//   · 声明面（`COMPONENT_VIEW_KEYS`）每一格都必须有一条**真名**行（出户后的形态，漏一条就点名）；
+//   · 子路径形态若还残留（未出户组件 / 将来有人按旧形态登记新组件），它仍必须过下面那套
+//     `manifestViolations()` —— 生产里没有这类行时，负对照改用**合成夹具**继续给那个判据喂牙。
+const { COMPONENT_VIEW_KEYS } = await import(pathToFileURL(join(ROOT, 'lib', 'kernel', 'component-session.js')).href);
+const declaredComponents = Object.keys(COMPONENT_VIEW_KEYS || {}).sort();
+const realRowNames = new Set(rows.map((r) => r.name).filter(Boolean));
+const missingRealRows = declaredComponents.filter((n) => !realRowNames.has(rootPkg.name + '-' + n));
+check('派生：patch 恰好一行裸包名 + 声明面每一格都有真名行（子路径形态已统一时允许 0 条）',
+  bareRows.length === 1 && declaredComponents.length >= 1 && missingRealRows.length === 0,
+  '裸行 ' + bareRows.length + ' · 真名行覆盖 ' + (declaredComponents.length - missingRealRows.length) + '/' + declaredComponents.length
+    + (missingRealRows.length ? ' · 缺真名行 ' + missingRealRows.join(' ') : '')
+    + (subs.length ? ' · 未出户子路径行 ' + subs.join(' ') : ' · 子路径行 0 条（全部出户）'));
 
 const fileExists = (rel) => existsSync(join(ROOT, rel)) && statSync(join(ROOT, rel)).isFile();
 const dirExists = (rel) => existsSync(join(ROOT, rel)) && statSync(join(ROOT, rel)).isDirectory();
@@ -261,14 +273,37 @@ for (const sub of subs) {
   } catch { /* 上面已经把 parse 失败记进 allProblems */ }
   check('子包清单包面：' + sub, v.length === 0, v.length ? v.join(' | ') : shown);
 }
-check('覆盖面：派生的每个子包目录都有一份可 parse 的清单', texts.size === subs.length && subs.length >= 1,
-  texts.size + '/' + subs.length + ' 份：' + [...texts.keys()].join(' '));
+check('覆盖面：派生的每个子路径组件目录都有一份可 parse 的清单（0 条 = 全部出户，不是漏扫）',
+  texts.size === subs.length,
+  texts.size + '/' + subs.length + ' 份：' + ([...texts.keys()].join(' ') || '（子路径形态已无生产用例）'));
 
 // ═══ 负对照：全部在**内存**里改文本 / 改对象再喂**同一个** manifestViolations ═════════
 {
-  const sub = subs[0];
-  const real = texts.get(sub) || '';
-  const base = { sub, rootPkg, fileExists, dirExists };
+  // P-F：生产里若已无子路径形态（`subs` 空），用**合成夹具**喂同一个判据 —— 判据的牙不随用例消失。
+  const PROBE_SUB = 'probe';
+  const PROBE_DIR = COMPONENTS_DIR + '/' + PROBE_SUB;
+  const probeRootPkg = Object.assign({}, rootPkg, {
+    exports: Object.assign({}, rootPkg.exports, {
+      ['./' + PROBE_SUB]: './' + PROBE_DIR + '/index.js',
+      ['./' + PROBE_SUB + '/package.json']: './' + PROBE_DIR + '/package.json',
+      ['./' + PROBE_SUB + '/locale/*.json']: './' + PROBE_DIR + '/locale/*.json',
+    }),
+  });
+  const probeText = JSON.stringify({
+    name: rootPkg.name + '-' + PROBE_SUB,
+    version: rootPkg.version,
+    type: 'module',
+    main: './index.js',
+    exports: { '.': './index.js', './package.json': './package.json', './locale/*.json': './locale/*.json' },
+    peerDependencies: { '@deepseek-ai/dsh-host-webserver': (rootPkg.peerDependencies || {})['@deepseek-ai/dsh-host-webserver'] },
+  }, null, 2) + '\n';
+  const probeFileExists = (rel) => rel === PROBE_DIR + '/index.js' || rel === PROBE_DIR + '/package.json' || fileExists(rel);
+  const probeDirExists = (rel) => rel === PROBE_DIR + '/locale' || dirExists(rel);
+
+  const sub = subs[0] || PROBE_SUB;
+  const real = texts.get(subs[0]) || probeText;
+  const base = { sub, rootPkg: subs[0] ? rootPkg : probeRootPkg,
+    fileExists: subs[0] ? fileExists : probeFileExists, dirExists: subs[0] ? dirExists : probeDirExists };
   /** 在内存里改一份对象再序列化（绝不写盘）。 */
   const mutated = (fn) => {
     const o = JSON.parse(real);
@@ -277,7 +312,8 @@ check('覆盖面：派生的每个子包目录都有一份可 parse 的清单', 
   };
   const violationsOf = (text) => manifestViolations({ ...base, text });
 
-  check('正对照：磁盘上的原样文本 ⇒ 0 条违反', real.length > 0 && violationsOf(real).length === 0,
+  check('正对照：原样文本（磁盘上的，或全部出户后的合成夹具）⇒ 0 条违反',
+    real.length > 0 && violationsOf(real).length === 0,
     violationsOf(real).join(' | ') || '0 条');
   check('正对照：JSON.parse → 重新序列化 ⇒ 仍 0 条（判据不是恒红）', violationsOf(mutated(() => {})).length === 0);
 

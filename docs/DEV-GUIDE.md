@@ -54,7 +54,7 @@ npm run verify:static # 静态门禁（棘轮 + 负对照；CI 里是**独立步
 ## 1. 加一条宿主路由
 
 **落点**：`lib/routes/<族>.js`；若这一族**属于某个组件行**（路由与浏览器可见面随行开关启停）
-⇒ `lib/components/<组件>/<族>.js`；组件已出户（P-F 起，如 `packages/about-notice/`）
+⇒ `packages/<组件>/lib/routes/<族>.js`；组件已出户（P-F 起，如 `packages/about-notice/`）
 ⇒ `packages/<组件>/lib/routes/<族>.js`（**必须落 `lib/routes/` 这一层**，否则 `docs/ROUTE-INDEX.md` 会静默少行），
 由该行入口装配（归属判据见 [`ARCHITECTURE-SPLIT.md`](./ARCHITECTURE-SPLIT.md)）。只有当这一族**已经成规模**时才单独成文件，
 否则就近放在已有的族里（准入条件见 `CODE-STRUCTURE.md` §4）。
@@ -76,7 +76,7 @@ export function registerDiagRoutes(webServer, c) {
 
 | 改什么 | 为什么 |
 |---|---|
-| 门面 `lib/index.js` 里把依赖传进这个族的 context 对象（属于组件行 ⇒ 该行的 `lib/components/<组件>/index.js` 入口；已出户 ⇒ `packages/<组件>/lib/index.js`） | 路由模块**不得继承**门面的 import（守卫 `verify-module-layout` 的『路由模块不得"继承" lib/index.js 的 import』会判）；族的 `DEPS` 声明与调用点实参键**双向对账**（守卫 `verify-inject-contracts`，少给 / 多给都算红） |
+| 门面 `lib/index.js` 里把依赖传进这个族的 context 对象（属于组件行 ⇒ 该行的 `packages/<组件>/lib/index.js` 入口；已出户 ⇒ `packages/<组件>/lib/index.js`） | 路由模块**不得继承**门面的 import（守卫 `verify-module-layout` 的『路由模块不得"继承" lib/index.js 的 import』会判）；族的 `DEPS` 声明与调用点实参键**双向对账**（守卫 `verify-inject-contracts`，少给 / 多给都算红） |
 | `package.json` 的 `files`（若新增了文件） | 留在 `lib/` 的一切都会被打进包；P1 会判 |
 | 文档：**不用手写路径表** | 路由索引是生成物 |
 | **收 body 的路由：上限 + 收完一次性解码** | 收 body 的路由见下面的"读请求体"一节；`verify-body-caps` 会从磁盘枚举判它 |
@@ -547,7 +547,7 @@ node test/run-guards.mjs verify --list-json # 机器可读的有序步骤表（P
 | `lib/webwallgl/**`、`lib/we-focus-guard.js` | 进，带浏览器全局 | 物理在发布面、运行期在页面里 |
 
 **它已经抓到的真缺陷**（写在这里是为了说明"这一层值它占的 CI 分钟数"，不是编年史）：
-`lib/components/media-bridge/now-playing.js` 里漏解构的常量（`POST` 带体必 `ReferenceError`）、
+`packages/media-bridge/lib/routes/now-playing.js` 里漏解构的常量（`POST` 带体必 `ReferenceError`）、
 `src/client.js` 里两份同名函数（脚本语义下**后声明静默胜出**，删掉活的那份会让死的那份无声复活）、
 守卫自身的块作用域越界引用与重复对象键、以及 `tsc` 报出的一批属性名错配。
 

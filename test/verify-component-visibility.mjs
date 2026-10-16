@@ -8,7 +8,7 @@
  * "没声明的东西被顺手藏了"。
  *
  * ── 判据（每条都有牙；正判据与负对照调**同一份**判据函数）────────────────────────
- *   ① **覆盖**：声明表（`lib/components/visibility.js` 的 `COMPONENT_VISIBILITY`）里的每个
+ *   ① **覆盖**：声明表（`lib/component-visibility.js` 的 `COMPONENT_VISIBILITY`）里的每个
  *      `(组件, file, symbol)` 落点在磁盘上存在（file 在 `src/` 扫描面内、symbol 是该文件的顶层
  *      具名函数），且函数体内**真的**读组件状态 —— 判据要求那一句 gate 调用的**第一个实参提到
  *      `components`**（把状态面传进来），写死 `true` / `undefined` 这种"假 gate"会被判红。
@@ -229,7 +229,7 @@ function auditVisibility(decl, gate, sources) {
   }
 
   const sites = [];
-  // ⚠️ 除了规范 gate 符号，还要认**注入别名**（见 lib/components/visibility.js 的
+  // ⚠️ 除了规范 gate 符号，还要认**注入别名**（见 lib/component-visibility.js 的
   // COMPONENT_GATE_ALIASES）：模块边界真实化后，可单独 import 的模块通过注入拿到同一 gate，
   // 于是出现第二个调用名。**词汇扩展，不变量不变**（组件名字面量仍只许出现在 gate 实参里）。
   // ⚠️ 别名表**不许静默回落成空表**：`|| []` 会让"声明面把表搬走/改名"变成"词汇没了但判据照绿"
@@ -314,7 +314,7 @@ function auditVisibility(decl, gate, sources) {
  * **真的**——声明的文件在扫描面内、符号真的在那个文件里声明、真的被调用（≥1 处）、
  * 且规范 gate 的**注入点**真实存在于 `gate.file`（`injectedBy = gate.symbol` 或调用形态）。
  *
- * 由来（审计发现）：`lib/components/visibility.js` 里那段注释写着"判据强制：`GATE.file` 里必须存在
+ * 由来（审计发现）：`lib/component-visibility.js` 里那段注释写着"判据强制：`GATE.file` 里必须存在
  * `<injectedBy>(<GATE.symbol>)` 的注入调用"，但**全仓没有一条判据读 `injectedBy`**（grep 零命中）
  * ⇒ 散文承诺了判据、判据不存在；别名只要写进数组就自动被当"第二个调用名"认账，
  * 哪怕它没声明、没调用、注入点被删（= 绕过 gate 的自由补丁）。这条把它们补齐。
@@ -487,7 +487,7 @@ check('声明落点 ≥ ' + SCOPE.length + ' 个、gate 调用点 ≥ 声明落�
   '声明 ' + audit.stats.entries + ' 个落点 / gate 调用 ' + audit.stats.sites + ' 个');
 
 // ── 别名词汇（`COMPONENT_GATE_ALIASES`）──────────────────────────────────────────
-// 审计发现：`lib/components/visibility.js` 里那段注释**承诺**"判据强制 GATE.file 里必须存在
+// 审计发现：`lib/component-visibility.js` 里那段注释**承诺**"判据强制 GATE.file 里必须存在
 // `<injectedBy>(<GATE.symbol>)` 的注入调用"，但全仓没有一条判据读 `injectedBy`（grep 零命中）
 // ⇒ 别名只要写进数组就自动被认账，哪怕它没声明 / 没调用 / 注入点被删（= 绕过 gate 的自由补丁）。
 // 下面三条把它补成机器判据，负对照见 ③ NC-6/NС-7。

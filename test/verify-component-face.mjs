@@ -199,11 +199,15 @@ function componentEntryRel(name) {
   }
   return null;
 }
-/** `lib/components/` 下还剩哪些组件目录（出户是逐格搬的 ⇒ 迁移期内两种落点并存，判据两个方向都查）。 */
-const legacyComponentDirs = readdirSync(join(ROOT, COMPONENTS_DIR), { withFileTypes: true })
-  .filter((e) => e.isDirectory())
-  .map((e) => e.name)
-  .sort();
+/** `lib/components/` 下还剩哪些组件目录（出户是逐格搬的 ⇒ 迁移期内两种落点并存，判据两个方向都查）。
+ *  P-F 三格全部出户后该目录**已不存在**（D-16：`visibility.js` 也搬去 `lib/component-visibility.js`）
+ *  ⇒ 目录缺席 = 合法终态，返回空集；`existsSync` 是承重的（缺了会 ENOENT 崩在扫描而非判红）。 */
+const legacyComponentDirs = existsSync(join(ROOT, COMPONENTS_DIR))
+  ? readdirSync(join(ROOT, COMPONENTS_DIR), { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .map((e) => e.name)
+    .sort()
+  : [];
 // **组件清单的声明面真源 = 会话导出的 `COMPONENT_VIEW_KEYS`**（③ 要逐键对账的那一份），入口落点按
 // 上面两种形态现解析。为什么不再从 `lib/components/` 反推：P-F 起组件行可以出户到 `packages/<k>/`，
 // "组件"从此不是那个目录的同义词；而普通子包（fx / parallax / fonts）不在这份声明里 ⇒ 不会混进来。

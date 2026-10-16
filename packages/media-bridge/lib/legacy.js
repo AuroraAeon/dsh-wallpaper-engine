@@ -1,11 +1,11 @@
 /**
  * legacy.js — 「系统正在播放」的两路数据源（宿主侧实现，现为**回落路径**）。
  *
- * 首选实现是 media-bridge 子进程（lib/components/media-bridge/supervisor.js：
+ * 首选实现是 media-bridge 子进程（packages/media-bridge/lib/supervisor.js：
  * macOS 走 MediaRemote + CoreAudio Process Tap、Windows 走 GSMTC + WASAPI、
  * Linux 走 MPRIS + PulseAudio/PipeWire，三平台同一套 API）。本文件保留一个版本
  * 做兜底：产物取不到、子进程起不来、协议版本不匹配、或连续崩溃超预算时，**媒体后端门面**
- * （lib/components/media-bridge/backend.js 的 `createMediaBackend()`）自动切回这里 —— 能力降级，但功能不消失。
+ * （packages/media-bridge/lib/backend.js 的 `createMediaBackend()`）自动切回这里 —— 能力降级，但功能不消失。
  *
  * 两路数据源：
  *
@@ -32,8 +32,8 @@ import { fileURLToPath } from 'node:url';
 
 const BANDS = 64;
 const SELF_DIR = dirname(fileURLToPath(import.meta.url));
-/** audio-tap.swift 在 lib/ 下（与 lib/index.js 同级），本文件在 lib/components/media-bridge/ 下。 */
-const TAP_SWIFT = resolve(SELF_DIR, '..', '..', 'audio-tap.swift');
+/** audio-tap.swift 随本包走（与本文件同目录）—— P-F 出户后本文件在 `packages/media-bridge/lib/`，不再跨包指向主包 `lib/`。 */
+const TAP_SWIFT = resolve(SELF_DIR, 'audio-tap.swift');
 
 // ── 迷你 radix-2 FFT（Linux/Windows 的 ffmpeg 源用；macOS 的 Swift 工具自带 vDSP）──
 /** 原地复数 FFT（长度必须是 2 的幂）。 */
@@ -150,7 +150,7 @@ function detectFfmpegSource(platform) {
  * @param {string|(() => string)} [o.cacheBaseDir] 缓存根（见 `lib/kernel/data-dir.js` 的 `cacheBaseDir()`）：
  *   封面缓存落 `<cacheBaseDir>/artwork`。缺省 `<dataDir>/cache`，行为与从前逐字一致；
  *   传访问器时**每写一次封面现问一次**（改了「缓存位置」不必重启宿主）。
- * @param {import('../../log.js').LogCall} [o.log] 日志被调用面（`log(msg, level?)`）；缺省空实现。
+ * @param {(text: any, level?: string) => void} [o.log] 日志被调用面（`log(msg, level?)`）；缺省空实现。
  * @param {boolean} [o.audio] 音频频谱开关（跟用户设置走：路由族 `ensureMedia()` 每次现读设置，
  *   由媒体后端门面 `backend.js` 按需构造本实现时传入）。
  */

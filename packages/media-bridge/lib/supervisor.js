@@ -174,7 +174,7 @@ export function bridgeServeArgs({ cacheDir = '', audio = true, online = false, m
  * @param {object} o
  * @param {string} o.binPath 中间件可执行文件（`provision.js` 解析出的产物路径）
  * @param {string} o.cacheDir 中间件的 `--cache-dir`（缓存根由 backend.js **每次现问**后传入）
- * @param {import('../../log.js').LogCall} [o.log] 日志被调用面（`log(msg, level?)`）；缺省空实现
+ * @param {(text: any, level?: string) => void} [o.log] 日志被调用面（`log(msg, level?)`）；缺省空实现
  * @param {(name: string, data?: unknown) => void} [o.diag] 诊断上报（宿主注入 `appendDiagLine` 包装）
  * @param {((why: string) => void)|null} [o.onFatal] 判定"跑不起来"时的回调（上层据此回落 legacy）
  */

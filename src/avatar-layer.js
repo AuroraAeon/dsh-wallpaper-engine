@@ -128,7 +128,7 @@ let avatarGroupRaf = 0;
 /**
  * 头像图的 URL：`/avatar/<side>?v=<文件名>`。
  * 文件名进查询串既是"这一方到底设置过没有"的判据，也是**缓存键** —— 换图 ⇒ 换名 ⇒
- * URL 变（路由那边因此敢给长缓存，见 lib/components/mascot-avatar/avatar.js 的不变量 ④）。
+ * URL 变（路由那边因此敢给长缓存，见 packages/mascot-avatar/lib/routes/avatar.js 的不变量 ④）。
  * 没设置过就返回空串（调用方画内置默认头像）。
  */
 function avatarImageUrl(side, selLike) {

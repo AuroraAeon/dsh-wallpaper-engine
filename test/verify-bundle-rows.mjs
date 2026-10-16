@@ -641,7 +641,12 @@ section('⑥ 组件行（P2-1/P2-2，逐行数据驱动）：patch 子行 ⇄ ex
     const { rel } = entrySrcOf.get(sub);
     // P2-3D（D2 硬化）：与组件侧同构 —— 具名 / 默认 / 命名空间三种导入形态都解析（旧写法只认具名表，
     // 门面改用默认或命名空间导入组件入口时这条镜像判据会静默空转）。
-    componentImportNames.push(...importNamesFrom(stripComments(String(facade)), (spec) => spec.startsWith('.') && join(dirname(facadePath), spec) === join(ROOT, rel)));
+    // P-F：组件出户后门面按**裸包名** import 该组件入口（`dsh-plugin-wallpaper-engine-<sub>`，与 §12 的
+    // 发布形态同形）⇒ 两种写法都认，否则三格全出户后这里解析出空集、判据静默失效（本轮实测抓到）。
+    componentImportNames.push(...importNamesFrom(stripComments(String(facade)), (spec) =>
+      spec.startsWith('.')
+        ? join(dirname(facadePath), spec) === join(ROOT, rel)
+        : spec === BARE + '-' + sub));
   }
   const facadeHits = namesHit(moduleScopeWithoutImports(facade), componentImportNames);
   check('门面（lib/index.js）的模块作用域不出现组件入口的导入名（实现表必须建在函数体内）',

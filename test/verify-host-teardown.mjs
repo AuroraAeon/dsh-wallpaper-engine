@@ -203,6 +203,10 @@ function toOldOrder(src) {
   const indent = m[1];
   const name = m[2];
   let out = src.replace(m[0] + '\n', '');
+  // 仓库契约是 LF（.gitattributes `* text=auto eol=lf`）：CRLF 检出时上面这条删不掉那一行
+  // （`m[0]` 不含 `\r`）⇒ 半变异体（只换了末行、交接行仍在原位）会让 NC1 报"位置 issue 缺失"、
+  // NC2 报"旧序残留 0"，看起来像判据坏了。这里显式判"删掉了没有"，没删就说清是变换失败。
+  if (out === src) return null;
   const tailRe = new RegExp('^[ \\t]*return ' + name + ';[ \\t]*$', 'm');
   if (!tailRe.test(out)) return null;
   out = out.replace(tailRe, indent + 'return handOffTeardown(ctx, dispose);');

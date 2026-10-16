@@ -31,6 +31,12 @@
 3. **一致性靠人记**：子包自带的 `cordis.patch.yml` 与主包 patch 里那一行"必须逐字一致"、
    开发期与发布期的两种依赖形态（`file:` ↔ 同号精确版本）都只写在注释与计划里。
 
+> **2026-10-16 修订（P-F 组件行统一）**：上面问题 1 与问题 2 的**形态**已消解 —— 三条组件行
+> （`about-notice` / `mascot-avatar` / `media-bridge`）全部出户到 `packages/<pkg>/`（ADR-0013 D6/D8 的终态），
+> 主包 patch 那一行改真名、`id` 不变，`lib/components/` 目录已删除；D3② 的可见面声明真源 `visibility.js`
+> 移到 `lib/component-visibility.js`（内容与 `lib/index.js` 的再导出位置不变）。本 ADR 的问题清单与 S1.1
+> 措辞**保留原样**，作为「为什么会有两种行」的历史记录。
+
 ### 用户口径（2026-10-15）
 
 - 把子包的规则**写成成文规范**，并让**所有子包**（现有三个 + 后续拆出的）统一到它；
@@ -96,7 +102,8 @@
 
 - **S1.1 [人工]** 本规范把"子包"限定为**独立子包行**：`packages/<pkg>/`，主包 patch 里以
   **真名**（`name: '<主包名>-<pkg>'`）插入的一行。主包 `files` 内的
-  `lib/components/<sub>/`（子路径名行）另行称为**组件行**，由 ADR-0013 与
+  `lib/components/<sub>/`（子路径名行；**2026-10-16 起仓里已无此形态**，三条组件行统一到 `packages/<pkg>/`）
+  另行称为**组件行**，由 ADR-0013 与
   `test/verify-subpackage-manifests.mjs` 的组件行章节管辖。
 - **S1.2 [人工]** **半边**：宿主半边（`lib/**`，进程内、由 cordis 行加载）与浏览器半边
   （`src/**` + 构建产物 `lib/client.<pkg>.js`，由客户端加载器按包级 `dsh.client` 加载）。

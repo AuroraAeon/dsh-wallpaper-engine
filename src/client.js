@@ -1876,7 +1876,7 @@ const PICKER_TAB_LEGACY = {
 // ⚠️ **不要**在这里接一张"组件名 → 页签"的表：那是浏览器侧的第二份可见面映射，D3② 明文禁止
 // （判据见 test/verify-component-visibility.mjs 的双向对账）。将来真出现"某组件独占一整页"时，
 // 三件事必须一起做：① 把该页签的**字面量** gate 写进下面的派生；② 在宿主侧可见面声明表
-// （lib/components/visibility.js）加这条落点；③ 让对账守卫强制①②同时发生。
+// （lib/component-visibility.js）加这条落点；③ 让对账守卫强制①②同时发生。
 function visiblePickerTabs() {
   return PICKER_TABS;
 }
@@ -1946,7 +1946,7 @@ function writeSavedPickerOpen(key, on) {
 }
 
 // ── 仓库 star 数（「关于」页签那行「⭐ 当前 N star」）────────────────────────────
-// 数据由宿主代取（lib/components/about-notice/github-stars.js：只读一条腿、10 分钟 TTL、落盘缓存兜底、
+// 数据由宿主代取（packages/about-notice/lib/routes/github-stars.js：只读一条腿、10 分钟 TTL、落盘缓存兜底、
 // 失败静默），客户端只管"什么时候问一次"与"怎么显示"。**不是设置**：不进 selection、
 // 不落盘 —— 换机器 / 清缓存都只是重新取一次，没有需要持久化的用户意图。
 // 与宿主同一量级的 TTL：避免每次重渲染、每次切页签都打一次网络（GitHub 未认证限流
@@ -4921,7 +4921,7 @@ const NOTICE_VERSION = "1.3.3";
 // 配图就绪探针的节奏：HEAD 轮询到新白名单在场（= 后端已重启）才弹；旧后端一直
 // 不在场超过 WAIT 则降级为**无图**弹出（文案信息完整；求星入口另有「关于」页那枚常驻按钮
 // 与它的重看按钮，不靠弹窗这一条命）。探针打在 /about-qr 上是自清洁的：404 响应 no-store、200
-// no-cache（lib/components/about-notice/about-qr.js），怎么轮询都不会污染 Electron 缓存。
+// no-cache（packages/about-notice/lib/routes/about-qr.js），怎么轮询都不会污染 Electron 缓存。
 const NOTICE_ART_WAIT_MS = 90000;
 // 探针的**退避表**（不是固定间隔）：旧后端在场时，1.5s 一拍的固定轮询在一个时限里就是
 // 60 个 HEAD，而每个 404 都会在 DevTools 控制台留下一行 —— 用户看到的是"一屏红字"

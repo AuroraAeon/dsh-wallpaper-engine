@@ -6,7 +6,7 @@
  * `extensionModules()` 上方）：panel-tabs 只负责把它排在「扩展」页签里（**第一个**），
  * 具体的控件与文案全在本文件。装饰本体在 `src/avatar-layer.js`（会话界面上的 DOM 补丁），
  * 设置项的真源在 `lib/settings-schema.js` 的五个 `avatar*` 键，图片本体在宿主的
- * `~/.dsh-wallpaper-engine/avatars/`（经 `lib/components/mascot-avatar/avatar.js` 读写）。
+ * `~/.dsh-wallpaper-engine/avatars/`（经 `packages/mascot-avatar/lib/routes/avatar.js` 读写）。
  *
  * 契约：
  *   需要的外界：`ctx`（由 `src/client.js` 在 `renderExtensionsTab({...})` 的调用点组装）——

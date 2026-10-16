@@ -35,11 +35,6 @@
       "types": "./lib/types/client.d.ts",
       "default": "./lib/client.js"
     },
-    "./media-bridge": {
-      "default": "./lib/components/media-bridge/index.js"
-    },
-    "./media-bridge/package.json": "./lib/components/media-bridge/package.json",
-    "./media-bridge/locale/*.json": "./lib/components/media-bridge/locale/*.json",
     "./subpackage-boot.js": "./lib/subpackage-boot.js",
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
@@ -60,7 +55,7 @@
     "lib/fontsets/",
     "lib/glass-presets/",
     "lib/about/",
-    "lib/components/",
+    "lib/component-visibility.js",
     "lib/client.js",
     "lib/http-body.js",
     "lib/json-response.js",
@@ -94,7 +89,6 @@
     "lib/shim-seed.js",
     "lib/we-props.js",
     "lib/we-focus-guard.js",
-    "lib/audio-tap.swift",
     "lib/types/index.d.ts",
     "lib/types/client.d.ts",
     "cordis.patch.yml",
@@ -161,6 +155,7 @@
     "dsh-plugin-wallpaper-engine-fonts": "file:packages/fonts",
     "dsh-plugin-wallpaper-engine-fx": "file:packages/fx",
     "dsh-plugin-wallpaper-engine-mascot-avatar": "file:packages/mascot-avatar",
+    "dsh-plugin-wallpaper-engine-media-bridge": "file:packages/media-bridge",
     "dsh-plugin-wallpaper-engine-parallax": "file:packages/parallax",
     "eslint": "^10.12.0",
     "typescript": "^7.0.2"

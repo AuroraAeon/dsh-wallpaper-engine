@@ -388,7 +388,7 @@ function weComponentVisibleOf(components, name) {
             rel: "noopener noreferrer",
             title: weT("在浏览器里打开项目仓库"),
           }, weT("⭐ 去 GitHub 点亮 Star")),
-          // 实时 star 数：宿主代取（带缓存，见 lib/components/about-notice/github-stars.js）。
+          // 实时 star 数：宿主代取（带缓存，见 packages/about-notice/lib/routes/github-stars.js）。
           // 取不到时**整行不消失**、改说"暂时取不到" —— 数字是点缀，按钮才是主操作。
           stars
             ? React.createElement("span", {

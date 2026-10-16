@@ -109,7 +109,8 @@ const NO_MODULE_TARGET_WHY = {
   'verify-guard-chain.mjs': '管的是**守卫链的形状**（`test/run-guards.mjs` 的 `MANIFEST` 与冻结 fixture 对账：成员/顺序/档位/参数/地板），读的是链自己的清单，不读任何模块',
   'verify-ci-steps.mjs': '管的是 **CI 步骤表自身**（`.github/workflows/verify.yml` 的步骤序列 / `npm run` 脚本是否存在 / `continue-on-error` 档位 / bash 与 install 步位置），读的是工作流文本与 package.json，不读任何模块',
   'verify-static.mjs': '管的是**静态门禁的棘轮**（ESLint / tsc 的**按规则计数**基线），读的是 `test/fixtures/static-baseline.json` 与 package.json 里的两个脚本名，不读源模块',
-  'verify-route-ownership.mjs': '管的是**实现归属唯一性**（行→入口按各包 exports/files 派生，跨全部族与组件行），不针对单个模块',
+  // P-F 批 1c：`verify-route-ownership.mjs` 现在**直读**各包的 `lib/index.js` 与实现文件（双形态落点解析），
+  // 不再是"零模块目标"的元守卫 ⇒ 原例外条目已被元守卫表判为"登记了却已有目标，该删"。
   'verify-bridge-ci.mjs': '管的是 **CI 桥接面**（工作流/脚本接线，不读源模块）',
   'verify-undefined-refs.mjs': '管的是**未定义引用**（"用了但没 import/声明"的非全局内置名），扫 lib/src/scripts 全树按 AST 判，目标不是某个模块',
 };

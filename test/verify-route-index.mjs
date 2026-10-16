@@ -20,10 +20,10 @@
  * （该循环后来已搬进 `lib/routes/media-bytes.js`，本判据的 ② 节相应改成**按文件**对账。）
  * ⑤ 用 mock webServer 真的跑一遍 `apply()` 数注册条数，是唯一能发现这类折叠的判据。
  */
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { buildIndex, parseRouteModuleText, COMPONENT_MODULES, SUBPACKAGE_MODULES, rowRegistrationCounts } from './tools/host-route-index.mjs';
+import { buildIndex, parseRouteModuleText, SUBPACKAGE_MODULES, rowRegistrationCounts } from './tools/host-route-index.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 let failed = 0;
@@ -177,13 +177,23 @@ console.log('\n⑤ 索引 == 运行时真实注册的路由（唯一能发现"�
   const dispose = (host.apply || (host.inject && host.apply))(mock);
   // P2-1/P2-2：组件行是**独立 plugin**（patch 里一行一行加载）⇒ 同一条 mock 上逐行都跑一遍，再与
   // 索引做**严格等式**（并集，不是 ≥）。放松成 ≥ 就发现不了"组件行悄悄少注册一条 / 多注册一条"。
-  // 组件清单（`COMPONENT_MODULES`）与"每行该注册几条"（该入口调用的路由族条数）都**现算** ——
-  // 不写死组件名，也不写死 2。
+  // 组件清单与"每行该注册几条"（该入口调用的路由族条数）都**现算** —— 不写死组件名，也不写死 2。
+  // ⚠️ P-F 批 1c：三格组件已全部出户到 `packages/<pkg>/` ⇒ 发现层的 `kind === 'subpath'` 为空，
+  // `COMPONENT_MODULES` 是空数组**属预期形态**（不是"少了行"）。组件清单因此改由**声明面**现解析：
+  // `COMPONENT_VIEW_KEYS` 点名的每一格 → 出户落 `packages/<pkg>/lib/index.js`、未出户落
+  // `lib/components/<pkg>/index.js`。出户那几格在下面的**子包行**循环里要跳过，否则同一 mock 上
+  // 注册两遍（并集等式与 (kind,path) 去重都会误红），而它们已经在这一节按门面分发点姿势各跑过一遍。
+  const { COMPONENT_VIEW_KEYS } = await import(pathToFileURL(join(ROOT, 'lib', 'kernel', 'component-session.js')).href);
+  const declaredComponents = Object.keys(COMPONENT_VIEW_KEYS || {}).sort();
+  const entryRelOf = (name) => (existsSync(join(ROOT, 'packages', name, 'lib', 'index.js'))
+    ? 'packages/' + name + '/lib/index.js' : 'lib/components/' + name + '/index.js');
+  const componentEntryRels = declaredComponents.map(entryRelOf);
   const componentDisposers = [];
   const perComponent = [];
   const countIssues = [];
-  for (const rel of COMPONENT_MODULES) {
-    const sub = rel.replace(/^lib\/components\//, '').replace(/\/index\.js$/, '');
+  for (let i = 0; i < declaredComponents.length; i++) {
+    const sub = declaredComponents[i];
+    const rel = componentEntryRels[i];
     const before = registered.length;
     componentDisposers.push(typeof applyComponent === 'function' ? applyComponent(mock, undefined, sub) : undefined);
     const got = registered.length - before;
@@ -192,15 +202,18 @@ console.log('\n⑤ 索引 == 运行时真实注册的路由（唯一能发现"�
     else if (got !== exp.expected) countIssues.push(sub + ' 注册 ' + got + ' 条 ≠ 路由族 ' + exp.expected + ' 条（' + exp.fns.join(' ') + '）');
     perComponent.push(sub + '=' + got);
   }
-  check('每个组件行在同一个 mock 上注册的条数 == 它调用的路由族条数（逐行数据驱动）',
-    COMPONENT_MODULES.length >= 1 && countIssues.length === 0,
+  check('每个组件（声明面的每一格）在同一个 mock 上注册的条数 == 它调用的路由族条数（逐行数据驱动）',
+    declaredComponents.length >= 1 && componentEntryRels.every((rel) => existsSync(join(ROOT, rel))) && countIssues.length === 0,
     countIssues.join('；') || perComponent.join(' '));
   // P-A：**子包行**也是独立 plugin（patch 里裸真名一行）⇒ 与组件行同款在同一个 mock 上逐行跑一遍。
   // 这一遍同时是 D3③ 的机器事实：跨行注册面若重合，本节的 (kind, path) 重复判据当场现形
   // （fonts 搬迁期实测：主包门面与子包行都注册 fontsets ⇒ 装第二行时 "duplicate prefix route"）。
   const subpackageDisposers = [];
   const perSubpackage = [];
+  const outMovedComponents = new Set(componentEntryRels);
   for (const rel of SUBPACKAGE_MODULES) {
+    // P-F：出户组件已在上面的组件节按门面分发点姿势跑过 ⇒ 这里跳过，避免同一 mock 重复注册。
+    if (outMovedComponents.has(rel)) continue;
     const short = rel.replace(/^packages\//, '').split('/')[0];
     const before = registered.length;
     const entry = await import(pathToFileURL(join(ROOT, rel)).href);

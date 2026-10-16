@@ -44,11 +44,11 @@ graph LR
     MAIN --> R["lib/routes/*.js<br/>跨组件共享的路由族"]
     C1 --> R1["packages/about-notice/lib/*<br/>（P-F 2026-10-16 出户）"]
     C2 --> R2["packages/mascot-avatar/lib/*<br/>（P-F 2026-10-16 出户）"]
-    C3 --> R3["lib/components/media-bridge/*"]
+    C3 --> R3["packages/media-bridge/lib/*（P-F 批 1c 2026-10-16 出户）"]
 ```
 
 （**P-F 组件行统一进行中**：`about-notice` 与 `mascot-avatar` 已出户到 `packages/<组件>/`（真名行 + 独立清单），
-只剩 `media-bridge` 仍住 `lib/components/`。计划与须知见 [`wip/BUNDLE-SPLIT.md`](./wip/BUNDLE-SPLIT.md) §15。）
+`media-bridge` 已于 P-F 批 1c（2026-10-16）出户；随后 `visibility.js` 移到 `lib/component-visibility.js` ⇒ **`lib/components/` 目录已删除**。计划与须知见 [`wip/BUNDLE-SPLIT.md`](./wip/BUNDLE-SPLIT.md) §15。）
 
 | 段 | 住在哪 | 是什么 | 契约 / 判据 |
 |---|---|---|---|
@@ -56,12 +56,12 @@ graph LR
 | **引导叶子** | `lib/host-boot.js` | `BASE` / `PLUGIN_NAME` / `repoSlugFromPkg()` / `hostKernel` 单例 / `runComponent()` / `handOffTeardown()` / `componentProbe()` | 它不 import 门面，也不 import 组件 ⇒ 拆掉「门面 ⇄ 组件入口」的 import 环；`verify-bundle-rows` ⑥ 双向判 |
 | **宿主内核** | `lib/kernel/*` | `host-kernel.js`（模块加载期建一次的套件实例）、`host-session.js`（一次 apply 的会话段：版本戳 / 日志提示 / token 表 / faststart / 启动清扫 / 字节出站 / 媒体源 / 清单 ＋ teardown）、`component-session.js`（组件的迷你会话 + `componentViewFrom()` 视图）、`config.js`、`data-dir.js` | 对外面分两级（稳定面 / 内部面），键数与分级由 `verify-component-face` 现算；「内核绝不 import 门面」 |
 | **跨组件路由族** | `lib/routes/*.js` | 主包自己的路由，一文件一族 | 族的 `DEPS` 声明 ↔ 调用点实参双向对账；`verify-route-families` 盯触发线 |
-| **组件行** | `lib/components/<组件>/`；**已出户的**在 `packages/<组件>/lib/`（`packages/about-notice/` 与 `packages/mascot-avatar/`，2026-10-16；只剩 `media-bridge` 在旧位） | 一行一个目录：入口 `index.js` + 它自己的路由族实现 + 清单（`package.json`）+ `icon.png` + `locale/*.json` | 行的存在性/形态由 `verify-bundle-rows` ⑥（入口 ⇄ 清单出口三连 ⇄ `files` 四类文件、装载等价、跨行无重复）与 `verify-route-ownership` 钉 |
+| **组件行** | `packages/<组件>/lib/`（2026-10-16 三格全部出户；旧落点 `lib/components/<组件>/` 已不存在）（`packages/about-notice/`、`packages/mascot-avatar/`、`packages/media-bridge/`，2026-10-16 全部出户） | 一行一个目录：入口 `index.js` + 它自己的路由族实现 + 清单（`package.json`）+ `icon.png` + `locale/*.json` | 行的存在性/形态由 `verify-bundle-rows` ⑥（入口 ⇄ 清单出口三连 ⇄ `files` 四类文件、装载等价、跨行无重复）与 `verify-route-ownership` 钉 |
 | **共享内核** | `lib/settings-schema.js` | 唯一被构建期内联进浏览器的 `lib/**` 文件 | 白名单 = `test/verify-module-layout.mjs` 的 `SHARED_KERNEL_WHITELIST`（再加一个必须改清单） |
 
 **行的开关语义 = A 语义**：宿主行级。停用某个组件行 ⇒ 该组件的宿主路由**整族不注册**；
 浏览器半边仍随整包加载，可见面由宿主行状态派生、双向对账（[`HOW-IT-WORKS.md`](./HOW-IT-WORKS.md)
-与 `lib/components/visibility.js`）。**当前**不做成多包、也**不**做每组件一格客户端开关
+与 `lib/component-visibility.js`）。**当前**不做成多包、也**不**做每组件一格客户端开关
 （[`adr/0013`](./adr/0013-bundle-multi-component-rows.md) 的非目标）；⚠️ **目标形态已于 2026-10-14 改为
 「多包」**（该 ADR 的 D6/D8 就地改写，实施计划见 [`wip/BUNDLE-SPLIT.md`](./wip/BUNDLE-SPLIT.md)）——
 本条描述的是**本分支的现状**，不是终态。
@@ -82,11 +82,11 @@ graph LR
 
 | 上游（`origin/main`） | 本分支真源 | 形态 |
 |---|---|---|
-| `origin/main:lib/routes/now-playing.js` | `lib/components/media-bridge/now-playing.js` | 组件行（媒体桥） |
-| `origin/main:lib/media/index.js`（后端门面 `/media-status` 族） | `lib/components/media-bridge/backend.js` | 组件行 |
-| `origin/main:lib/media/legacy.js` | `lib/components/media-bridge/legacy.js` | 组件行（内置回落实现） |
-| `origin/main:lib/media/supervisor.js` | `lib/components/media-bridge/supervisor.js` | 组件行（子进程守护） |
-| `origin/main:lib/media/provision.js` | `lib/components/media-bridge/provision.js` | 组件行（产物解析 / 下载） |
+| `origin/main:lib/routes/now-playing.js` | `packages/media-bridge/lib/routes/now-playing.js`（原 `lib/components/media-bridge/now-playing.js`，P-F 批 1c 2026-10-16 出户） | 已出户的组件行（媒体桥） |
+| `origin/main:lib/media/index.js`（后端门面 `/media-status` 族） | `packages/media-bridge/lib/backend.js` | 已出户的组件行 |
+| `origin/main:lib/media/legacy.js` | `packages/media-bridge/lib/legacy.js` | 已出户的组件行（内置回落实现） |
+| `origin/main:lib/media/supervisor.js` | `packages/media-bridge/lib/supervisor.js` | 已出户的组件行（子进程守护） |
+| `origin/main:lib/media/provision.js` | `packages/media-bridge/lib/provision.js` | 已出户的组件行（产物解析 / 下载） |
 | `origin/main:lib/routes/about-qr.js` · `origin/main:lib/routes/github-stars.js` | `packages/about-notice/lib/routes/*.js`（原 `lib/components/about-notice/*.js`，P-F 2026-10-16 出户） | 已出户的组件行（关于页两条腿） |
 | `origin/main:lib/routes/avatar.js` · `origin/main:lib/routes/mascot.js` | `packages/mascot-avatar/lib/routes/*.js`（原 `lib/components/mascot-avatar/*.js`，P-F 2026-10-16 出户） | 已出户的组件行（头像 + 立绘） |
 | `origin/main:lib/scene-probe.js` | `lib/media/scene-probe.js` | 内核媒体（`lib/media/` 只剩内核媒体文件） |
@@ -120,7 +120,7 @@ graph LR
 | 依赖注入 | 门面内自由引用 | 每个路由族带**显式 `DEPS` 声明**，与调用点实参**双向对账**（`verify-inject-contracts`） |
 | 组件能拿到什么 | —（没有这层） | 内核的**组件视图**（`componentViewFrom()`，缺键即抛；`verify-component-face` 对账） |
 | 内核对外面 | 无此概念 | 稳定面 / 内部面两级：内部面本文件外不得直接解构，跨族复用要先升稳定面 + 补契约 |
-| 浏览器可见面 | 整包一套 | 宿主侧单一真源 `lib/components/visibility.js`；经 `/inventory` 的 `components` 字段下发（`verify-component-visibility`） |
+| 浏览器可见面 | 整包一套 | 宿主侧单一真源 `lib/component-visibility.js`；经 `/inventory` 的 `components` 字段下发（`verify-component-visibility`） |
 | 释放纪律 | 一次加载一次卸载 | 内核单例 + **引用计数租约**（`acquireKernelLease` / `releaseKernelLease`）：多行共享内核，最后一个卸载者才 dispose；组件行**有意不 acquire**（没有可释放的共享资源） |
 
 > **不属于差异的一件事**：WebWallGL 已在上游完成 **npm 化**（`origin/main` 的 `lib/webwallgl/` 同样
@@ -133,7 +133,7 @@ graph LR
 
 1. **先分类，再动手**。这段改动属于哪一类？
    发现 / 传输 / 设置 / 字节出站 → **主包叶子**（`lib/*.js`、`lib/media/*.js`，由内核装配）；
-   系统媒体桥 / 关于页 / 头像立绘 → **组件行**（`lib/components/<组件>/`）；
+   系统媒体桥 / 关于页 / 头像立绘 → **组件行**（`packages/<组件>/lib/`）；
    两侧共用的规则 → `lib/settings-schema.js`（改它必须重新 `npm run build`）。
 2. **路由族归属判据（三问，任一为"是"就进组件行）**：它的浏览器可见面是否**随行开关启停**？
    它是否自成一条与主包零交叉的边（自带子进程 / 自带磁盘载体）？它的实现是否只被这一族消费？
@@ -162,7 +162,7 @@ graph LR
   数字都没动 —— 绿是"真的把发布面清干净"换来的，不是放宽棘轮换来的。复算：
   ```
   node test/verify-reachability.mjs        # 期望：ALL REACHABILITY CHECKS PASSED（不可达 0 个 / 0 行）
-  node test/verify-guard-map.mjs           # 期望：例外表条目都是"确实零覆盖"的（`lib/components/media-bridge/index.js` …）
+  node test/verify-guard-map.mjs           # 期望：例外表条目都是"确实零覆盖"的（`packages/mascot-avatar/lib/index.js` …）
   ```
   九项"发布面孤儿"已全部收口（删副本 / 移回真源）⇒ 结论由两条守卫钉住：
   `node test/verify-reachability.mjs`（不可达 0 个 / 0 行）与 `node test/verify-undefined-refs.mjs`
@@ -190,7 +190,7 @@ graph LR
 - 现行结构规范与边界：[`CODE-STRUCTURE.md`](./CODE-STRUCTURE.md)（§2 宿主半边、§2.2 套件、§2.3 门面剩什么）
 - 决策：[`adr/0013-bundle-multi-component-rows.md`](./adr/0013-bundle-multi-component-rows.md) ·
   [`adr/0003`](./adr/0003-build-time-module-inlining.md) · [`adr/0002`](./adr/0002-settings-schema-single-source.md)
-- 行的开关与可见面：[`HOW-IT-WORKS.md`](./HOW-IT-WORKS.md) · `lib/components/visibility.js`
+- 行的开关与可见面：[`HOW-IT-WORKS.md`](./HOW-IT-WORKS.md) · `lib/component-visibility.js`
 - 生成物：[`ROUTE-INDEX.md`](./ROUTE-INDEX.md) · [`GUARD-MAP.md`](./GUARD-MAP.md)
 - 复算入口：`node test/verify-inject-contracts.mjs` · `node test/verify-bundle-rows.mjs` ·
   `node test/verify-route-ownership.mjs` · `node test/verify-component-face.mjs` ·

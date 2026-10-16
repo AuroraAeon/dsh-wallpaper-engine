@@ -33,7 +33,7 @@
 | 包 | 职责 | 备注 |
 |---|---|---|
 | **主包** `dsh-plugin-wallpaper-engine` | 设置面板、配置文件、WE 壁纸获取、多平台识别与差异处理、**留给其它插件的钩子**、以及"大部分组件都依赖的基础模块" | 唯一被"一次安装"的名字 |
-| **壁纸子插件** | WE 壁纸与自定义导入壁纸的**渲染**；壁纸库 + 播放-画面里的配置项、声音、省电 | 以现在的 `lib/components/media-bridge` 为基础，**大改** |
+| **壁纸子插件** | WE 壁纸与自定义导入壁纸的**渲染**；壁纸库 + 播放-画面里的配置项、声音、省电 | 以现在的 `packages/media-bridge`（P-F 批 1c 出户，原 `lib/components/media-bridge`）为基础，**大改** |
 | **UI 子插件** | 玻璃面板、侧边栏圆角等**前端 UI**；外观里的配置项 | **字体除外** |
 | **字体系统子插件** | 字体集 / 排版 / 应用 | 已可自成一系；**目标形态 = 整个「字体自定义」配置类**（宿主半边 + 浏览器半边 + 外观页签字体节 + 字体键所有权），**定案 A**（2026-10-15，§7.8） |
 | **点击与拖尾效果子插件** | `src/fx-layer.js` 一族 | 天然低耦合 |
@@ -413,7 +413,7 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 
 ### 7.0 起步态（已达成，作为基线）
 
-单包 + 4 行（**这是拆包起点**；现行形态 = 7 行，见文件头「基线」）；D3 的界面级开关语义已落地（状态面 `/inventory.components`、可见面声明 `lib/components/visibility.js`、
+单包 + 4 行（**这是拆包起点**；现行形态 = 7 行，见文件头「基线」）；D3 的界面级开关语义已落地（状态面 `/inventory.components`、可见面声明 `lib/component-visibility.js`、
 判据 `test/verify-component-visibility.mjs`）；守卫链 `node test/run-guards.mjs all` **全绿**
 （步数与地板以 `test/run-guards.mjs` 与 `test/verify-package-files.mjs` 的 `CHAIN_FLOOR` 为准，本文不抄数）。
 **度量口径见本文件末的附录 E；历史进度与追版本日志见 `CHANGELOG.md` 与 git 历史。**
@@ -515,7 +515,7 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 
 ### 7.4 P-D 壁纸子插件（**最大的一块，最后做**）
 
-以 `lib/components/media-bridge` 为基础大改：WE 壁纸与自定义导入壁纸的渲染、壁纸库 + 播放-画面里的配置项、声音、省电。
+以 `packages/media-bridge`（P-F 批 1c 2026-10-16 出户）为基础大改：WE 壁纸与自定义导入壁纸的渲染、壁纸库 + 播放-画面里的配置项、声音、省电。
 **前置**：层的所有权（`LAYER_ID` / `SCRIM_ID` / iframe 的建立与退役）必须有唯一所有者，否则两个包各建层 = 撞单例 id。
 **注意**：引擎已是 npm 依赖（§9.4 定案 = 主包持有、不随子包）；`lib/webwallgl/**` 如今只剩自家模板/桥文件。
 
@@ -632,7 +632,7 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 （"原 D6 的形态（单包多行）是本次重构的**起点**、不是终态"，`docs/adr/0013-bundle-multi-component-rows.md:121-127`）。
 
 - **时机（用户口径，2026-10-16）**：账① 作**一次独立的机械提交**，**排在 P-D 之前** —— §7.4 的 P-D 要
-  "以 `lib/components/media-bridge` 为基础大改"，**先搬后改写只付一次路径成本**；反序要把那批实现与测试改两遍。
+  "以 `packages/media-bridge` 为基础大改"（该格已由 P-F 批 1c 搬出），**先搬后改写只付一次路径成本**；反序要把那批实现与测试改两遍。
   **不与 P-D 合批**（机械搬迁与行为重写混在一个提交 ⇒ `bisect` / `revert` 失能）。
 - **分批**：① 包边界 + 行名（行 `name` 改真名；机械、**零行为变化**，先行）→ ② 浏览器半边逐组件成产物
   （`about-notice` 先、`mascot-avatar` 后；`media-bridge` 今天**没有**浏览器半边 ⇒ 交给 P-D）。
@@ -924,7 +924,7 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 | D-13 | **主包被关掉时的用户可见语义**（§6.5） | ✅ **已定案（2026-10-15，用户口径）：B 明确连坐** —— 主包被关掉 = 整包被关掉，理由是大批组件在机制上依赖主包（配置模板逻辑 / `applyComponent` 门面 / §5.1 ② 的子包→主包 value import），见 §6.5 的表态块。**残余开口** ✅ **已裁决（2026-10-16）**：不自动撤子包行（`inject: ['wallpaperEngineHost']` 级联 park 已覆盖"半死状态"，自动撤行撞 §2.4 / `I8`）；"整族已停用"由主包行状态面渲染（复用 D3③）；判据归 §7.6 第 4 条整族实例 —— 见 §6.5 的 2026-10-16 裁决块 |
 | D-14 | **字体系统子插件的收口形态** | **定案（2026-10-15，用户口径 A）：目标 = 整个「字体自定义」配置类**（宿主半边 + 浏览器半边 + 外观页签字体节 + 字体键所有权）；**不必现在完成** —— 收口线 = P-B 的能力 + P-C（§6.1 / §6.3 表态）+ P-D（§6.4 预设）之后，见 §7.8 |
 | D-15 | **组件行统一后的行名** | ✅ **已定案（2026-10-16，用户口径）：组件行从未发布 ⇒ 沿用清单里已有的真名 `dsh-plugin-wallpaper-engine-<sub>` 做行 `name`，`id` 不变，零迁移**（§15.1 / §3 范围勘误） |
-| D-16 | `lib/components/visibility.js`（97 行）归属 | 待定（§15.6 P-F-2；建议留主包内核面并保持 `lib/index.js` 的再导出位置 —— 它不属于任何组件） |
+| D-16 | `visibility.js`（97 行）归属 | ✅ **已定案并落地（2026-10-16）**：移到 `lib/component-visibility.js`（顶层语义名，与 `lib/inventory.js` 同族），`lib/components/` 目录删除；`lib/index.js` 的再导出位置不变（§15.6 P-F-2） |
 | D-17 | 组件浏览器半边是否本轮搬进包 | 待定（§15.6 P-F-3；建议拆 2a `about-notice` / 2b `mascot-avatar` 两批，`media-bridge` 交 P-D） |
 | D-18 | **统一后的发布形态排期** | 待定（§15.6 P-F-4；统一 ⇒ 主包必须**精确依赖**这 3 个包 ⇒ ADR-0014 `S8.2`「发布形态尚未执行过」由"没做过"变"必须做"，§12 的发布顺序要排期） |
 | D-19 | ADR 术语二分与触发线 | 待定（§15.6 P-F-5；ADR-0014 `S1.1` 的"组件行 / 子包"二分可删、前言 `:25-28` 的 #1 问题结案、ADR-0013 触发线 `:239-248` 是否补说明） |
@@ -943,9 +943,10 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 ## 15. 组件行统一（`lib/components/<sub>/` → `packages/<pkg>/`）：计划与须知
 
 > **本节是 §7.9（P-F）的开工手册**：时机按 **A**（账① 一次独立机械提交，排在 P-D 之前）；
-> 须知是搬迁时的**硬约束**与**静默陷阱**。**批 1 / 批 2a 已开工**：`about-notice`（2026-10-16）与
-> `mascot-avatar`（2026-10-16，批 2a）已出户（见 §15.2 的落地账），只剩 `media-bridge` 待搬
-> （`media-bridge` 必须排在 P-D 之前）。
+> 须知是搬迁时的**硬约束**与**静默陷阱**。**批 1 / 批 2a / 批 1c 已开工**：`about-notice`（2026-10-16）、
+> `mascot-avatar`（2026-10-16，批 2a）与 `media-bridge`（2026-10-16，批 1c）均已出户
+> （见 §15.2 的三份落地账）⇒ **账①（包边界）在三格上全部落完**，`lib/components/` 只剩 `visibility.js`；
+> 未做的是 **账③**（组件的浏览器半边独立成产物）。
 > 本节所有路径与行号都是 2026-10-16 的实测读数；数值一律给复算命令（`docs/README.md` 写作纪律 4）。
 
 ### 15.1 前提勘误：组件行**从未发布** ⇒ 零迁移代价
@@ -964,16 +965,17 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 
 | 账 | 做什么 | 行为变化 | 顺序 |
 |---|---|---|---|
-| ① **包边界与代码归属**（**含一步接线**） | 步 0 接线：组件入口改走宿主服务面（`inject: ['webServer','wallpaperEngineHost']` + `ctx.wallpaperEngineHost.keys(id, ctx)`），主包服务面加组件所需的键/源型，主包门面以**裸包名** import 出户组件并加 `devDependencies` `file:` 条目 + 重算 lock；批 1 搬迁：`lib/components/<sub>/**`（源码 + 清单 + 图标 + locale）搬进 `packages/<pkg>/lib/**`，主包 `exports` 子路径三连与 `files` 里的 `lib/components/` 收紧 | **纯搬移部分无**（ADR-0013 D14 `:165-167`：`"归属搬移不是行为改动"`）；**接线部分是行为等价的重写**（组件不再直接 import 主包模块，改由服务面注入同一批绑定） | 先行（步 0 → 批 1） |
+| ① **包边界与代码归属**（**含一步接线**） | 步 0 接线：组件入口改走宿主服务面（`inject: ['webServer','wallpaperEngineHost']` + `ctx.wallpaperEngineHost.keys(id, ctx)`），主包服务面加组件所需的键/源型，主包门面以**裸包名** import 出户组件并加 `devDependencies` `file:` 条目 + 重算 lock；批 1 搬迁：`lib/components/<sub>/**`（源码 + 清单 + 图标 + locale）搬进 `packages/<pkg>/lib/**`，主包 `exports` 子路径三连与 `files` 里的 `lib/components/` 收紧 | **纯搬移部分无**（ADR-0013 D14 `:165-167`：`"归属搬移不是行为改动"`）；**接线部分是行为等价的重写**（组件不再直接 import 主包模块，改由服务面注入同一批绑定） | 先行（步 0 → 批 1）；**三格已全部落完**（批 1 `about-notice` / 批 2a `mascot-avatar` / 批 1c `media-bridge`，2026-10-16） |
 | ~~② 行名迁移~~ | ~~改为真名 + 保留子路径兼容~~ | **作废**（§15.1：无老用户 ⇒ 无兼容负担） | —— |
 | ③ **浏览器半边独立成产物** | 主包 `src/**` 里的组件 UI 搬进各自包：`src/**` + `client.build.json` + 产物 `lib/client.<pkg>.js` + 面板节注册（模板 = P-C 第一刀 `packages/fonts`，§7.3 落地账） | **有**：组件行变成**包级**客户端 graph row ⇒ 关行即不再下载 / 不再绘制 | 批 2（逐组件） |
 
 - ③ 的**副作用必须是知情选择**：ADR-0013 **D16 / D17**（`:192-197`）明确"不做浏览器侧关掉即不下载 /
   不做每组件一格开关"，但把浏览器半边搬进包 ⇒ 客户端 graph row 天然是**包级**的，等于**顺带拿到**这两件事的一半。
   同时它把"关一行会不会留下界面"从"不可能"变成"必须判"（§13 #14 的形态：要么自带半边，要么明说不可单独开关）。
-- 三条组件 `package.json` 的 `name` **今天已经是真包名**（`dsh-plugin-wallpaper-engine-<sub>`），但
-  **没有任何运行期消费者**（不进 `dependencies`、不被 `node_modules` 解析、不上 npm）；唯一"消费者"是
-  `test/verify-subpackage-manifests.mjs` 的命名规则判据 ⇒ 现状属**半分片**：既不是主包私有目录，也不是真包。
+- 三条组件 `package.json` 的 `name` **今天已经是真包名**（`dsh-plugin-wallpaper-engine-<sub>`）。**批 1c 收口后**
+  这句话的"半分片"部分已不成立：三格都住 `packages/<pkg>/`、都有自带 `cordis.patch.yml` 与主包 patch 的**真名行**、
+  都由根 `devDependencies` 的 `file:` 链接被 `node_modules` 解析（开发期形态，§8.1）；**仍未做**的是**发布形态**
+  （`dependencies` 精确版本 + 真发布，§12 / `D-18`）—— 所以准确说法是"**已出户的组件包，未发布**"。
 
 > **落地账 · P-F 批 1 试点（`about-notice`，2026-10-16，未提交）**
 > - **步 0 接线**：`lib/subpackage-boot.js` 取值分派扩到七型（`boot:` / `session:` / `data:` 三型为本轮新增）、
@@ -1017,21 +1019,52 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 >   （`lib/client.js` 未被 build 改动）。
 > - **仍未做**：`media-bridge`（须排在 P-D 之前）；账③（组件浏览器半边）未动。
 
+> **落地账 · P-F 批 1c（`media-bridge`，2026-10-16，未提交）**
+> - **搬迁**：`packages/media-bridge/{package.json, cordis.patch.yml, icon.png, locale/{en,zh}.json,
+>   lib/{index.js, backend.js, legacy.js, provision.js, supervisor.js, audio-tap.swift},
+>   lib/routes/now-playing.js}`；`lib/components/media-bridge/` 已删 —— **`lib/components/` 现在只剩松散的
+>   `visibility.js`（无子目录）⇒ 账①（包边界）在三格上全部落完**。
+> - **两处 `..` 级数修正（本批唯一"非逐字搬移"）**：`lib/legacy.js` 的 `TAP_SWIFT` 由 `SELF_DIR,'..','..'`
+>   改 `SELF_DIR`（`audio-tap.swift` 同批随包走：主包 `lib/audio-tap.swift` → 包内 `lib/audio-tap.swift`，
+>   根清单 `files` 里的 `"lib/audio-tap.swift"` 随之删除）；`lib/provision.js` 的 `PLUGIN_ROOT` 由
+>   `SELF_DIR,'..','..','..'` 改 `SELF_DIR,'..'`（= **本包根**：开发期 `packages/media-bridge/`、安装期
+>   `<profile>/node_modules/<pkg>/` —— 主包与子包在安装形态下是两个目录，旧级数会指到主包上）。
+> - **键表登记 `'media-bridge'`（8 键）**：`base` / `pluginName`（`const:`）、`configPath`（`data:`）、
+>   `CONTROL_JSON_MAX_BYTES`（`http:`）、`componentViewFrom` / `createComponentSession`（`session:`）、
+>   `runComponent` / `handOffTeardown`（`boot:`）—— 唯一同时要 `configPath` 与 `CONTROL_JSON_MAX_BYTES` 的格子
+>   （两者都不在 `KERNEL_STABLE_FACE` 上、也不在 `hostKernel` 返回对象里 ⇒ 只能由 `data:` / `http:` 源型供给）。
+>   路由族改经注入面（`DEPS` 增 `http`、`http.sendJson` / `http.bodyReader`），与另两格同形。
+> - **"组件行"类别退役（三格全出户后）**：`verify-route-ownership`（声明面驱动 + 出户包 `walkFiles` +
+>   每条出户包 `files` 覆盖）、`verify-route-index`（⑤ 段改声明面 + 子包循环跳过已出户组件）、
+>   `verify-subpackage-manifests`（子路径分支改"0 条 = 已统一"，负对照改用**合成夹具**继续喂
+>   `manifestViolations`）、`verify-child-kill`（扫描面加 `packages/*/lib/**`，files 地板 60→80）、
+>   `verify-scene-live`（返回媒体源候选面 + 顺带修掉一处**既有潜伏 bug**：`mediaSrcPath` 回落到自身导致
+>   `RangeError: Maximum call stack size exceeded`）、`test/tools/packages.mjs` selftest（发现层不再有
+>   `kind==='subpath'` ⇒ `subNoClient` 改从任意 kind 找；⑥ 负对照断言"改名 ⇒ 行认领整条因果链"）、
+>   `verify-guard-map`（删掉 `verify-route-ownership` 的元守卫例外 —— 它现在**直读**模块了）。
+> - **生成物重算**：`docs/ROUTE-INDEX.md`（五条媒体路由归 `packages/media-bridge/lib/routes/now-playing.js`）、
+>   `docs/GUARD-MAP.md`（模块 159 · 守卫 88 · 零覆盖 5）。
+> - **读数**：`verify` 72/72 · `docs` 6/6 · `smoke` 6/6 · `all` 85/85 · `npm run verify:static` ALL PASSED
+>   （ESLint 283 文件 / 0 规则超限 · tsc 0；`lib/client.js` 未被 build 改动）。
+>   **注**：`verify:static` 必须在宿主 `pwsh` 跑（沙箱下 ESLint 的 `spawnSync` 管道报 `EPERM`，是环境边界不是回归）。
+> - **仍未做**：账③（组件浏览器半边独立成产物：`about-notice` 35 行 → `mascot-avatar` 1542 行 →
+>   `media-bridge` 交给 P-D）；`visibility.js` 归属**已结案**（§14 `D-16`）；发布形态排期（`D-18`）。
+
 ### 15.3 时机（A）与分批
 
 | 选项 | 内容 | 判定 |
 |---|---|---|
-| **A（取）** | ① 作**独立机械提交** → P-D → ③ | §7.4 的 P-D 要"**以 `lib/components/media-bridge` 为基础大改**"：先搬后改写**只付一次路径成本**；反序要让 media-bridge 的实现与其测试改两遍 |
+| **A（取）** | ① 作**独立机械提交** → P-D → ③ | §7.4 的 P-D 要"**以 `packages/media-bridge` 为基础大改**"：先搬后改写**只付一次路径成本**；反序要让 media-bridge 的实现与其测试改两遍 |
 | B | 与 P-D 合批 | **不取**：机械搬迁与行为重写混进一个提交 ⇒ `bisect` / `revert` 失能、review 噪声吞掉机械改动 |
 | C | 排在 P-D 之后 | **不取**：二次改动（P-D 在旧路径上动刀）+ 双位置术语债继续付 |
 
 分批（每批独立提交、独立验收）：
 
 1. **批 1（账①，机械）** —— 实际按**逐组件**落（一次一格，守卫与生成物每格重定基一次）：
-   1a `about-notice`（2026-10-16，已提交 `844168ff`）、1b `mascot-avatar`（2026-10-16）、
-   1c `media-bridge`（须排在 P-D 之前）。每格 = 该组件并进 `packages/<pkg>/lib/**` + 主包 patch 该行 `name` 改真名
+   1a `about-notice`（2026-10-16，已提交 `844168ff`）、1b `mascot-avatar`（2026-10-16，已提交 `17221f1b`）、
+   1c `media-bridge`（2026-10-16，**本轮落盘待提交**）。每格 = 该组件并进 `packages/<pkg>/lib/**` + 主包 patch 该行 `name` 改真名
    + 主包 `files` / `exports` 收紧 + 判据与工具重定基（§15.5）+ 两份生成物重算 + 文档散文面同批改
-   （含本文件 §3 / §9.3 / §10.1）。
+   （含本文件 §3 / §9.3 / §10.1）。**三格落完 ⇒ 批 1 收口**（`lib/components/` 目录随后删除，`visibility.js` → `lib/component-visibility.js`）。
 2. **批 2a**：`about-notice` 浏览器半边（今天只有 `src/about-assets.js` —— 最小的试验田）。
 3. **批 2b**：`mascot-avatar` 浏览器半边（`src/avatar-import.js` / `avatar-layer.js` / `ext-avatar.js` / `panel-tabs-mascot.js`）。
 4. **`media-bridge` 的浏览器半边不单列**：它今天**没有**浏览器半边（`lib/types/index.d.ts:166` 明写
@@ -1049,7 +1082,7 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 3. **新包补齐 ADR-0014 `S2.1` 六件**（`package.json` / `cordis.patch.yml` / `icon.png` / `locale/{en,zh}.json` / `lib/` + 自产产物）；
    自带 patch 与主包 patch 里那一行**逐字一致**（`S4.2`）；清单补 `dsh.bundle.patch`；
    有浏览器半边时按 `S10.2` 补 `dsh.client` + `exports['./client']` + 包内 `client.build.json`（两向齐，缺一判红）。
-4. **`lib/components/visibility.js`（97 行）必须先拍板**：它不属于任何组件（其注释显式排除 media-bridge），
+4. **`visibility.js`（97 行）归属 —— ✅ 已拍板并落地（2026-10-16）**：它不属于任何组件（其注释显式排除 media-bridge），
    今天由 `lib/index.js` 再导出。候选：留主包内核面（如 `lib/kernel/`）并保持再导出位置，或改成"包自带可见面声明"（待 P-D）。
 5. **`test/tools/source-locator.mjs:101-104` 的 `moduleFace()` 只枚举 `lib/**` + `src/**`**（不含 `packages/`）⇒
    搬走的文件掉出 `locate()` 的符号面。今天**不红**，属静默弱点：要么扩面，要么**显式记一条理由**
@@ -1093,22 +1126,28 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 构建器入口仍是主包的 `scripts/build-client.mjs`，§10.1 #11）。
 
 **`test/tools/packages.mjs:53` 的 `FLOORS` 为什么不用改**：三项都数"包"、不数目录类型 ——
-`packages: 6`（主包不计入）搬完仍是 3+3、`rows: 7`（行数不变）、`clientArtifacts: 3`（三条今天没有 `./client`）；
+`packages: 6`（主包不计入）搬完仍是 3+3、`rows: 7`（行数不变）；
+`clientArtifacts` 已从 3 **抬到 4**（P-F 批 1c：`main+fonts+fx+parallax` 四份产物，且
+`test/verify-client-sync.mjs` 直接 import 这**同一个常量** ⇒ 两处不会再一高一低）。
 前提是搬走的目录**仍自带直接位于其下的 `package.json`**（`:219-240` 只认直接子目录）。
-另：`:605` 那条 TODO（`clientArtifacts` 实测已到 4）仍应在本次收口时一并收紧。
+
+**批 1c 实测（三格全出户 ⇒ 上表的"必红"逐条已处置）**：`verify-route-ownership` / `verify-route-index` /
+`verify-component-face` / `verify-component-visibility` / `verify-subpackage-manifests` 全部改成**声明面驱动**
+（`COMPONENT_VIEW_KEYS` 的键现算 + 双形态落点解析），`test/tools/packages.mjs` 的 selftest 与
+`verify-guard-map` 的例外表随形态变化重定基；`lib/component-visibility.js` 仍是主包文件（不在任何包内）。
 
 ### 15.6 前置决策（开工前拍板）
 
 | # | 决策 | 建议 |
 |---|---|---|
 | P-F-1 | 三个包的**包名** | 沿用清单里已有的真名（`dsh-plugin-wallpaper-engine-<sub>`）；`id` 不变（§15.1） |
-| P-F-2 | `lib/components/visibility.js` 归属 | 留主包内核面并保持再导出位置（它今天不属于任何组件）→ 落 §14 D-16 |
+| P-F-2 | `visibility.js` 归属 | ✅ **已定案并落地（2026-10-16）**：移到 `lib/component-visibility.js`（顶层语义名），`lib/components/` 目录删除，`lib/index.js` 再导出位置不变 → §14 D-16 |
 | P-F-3 | 账③ 是否本轮 | 拆 2a / 2b 两批；`media-bridge` 交 P-D → 落 §14 D-17 |
 | P-F-4 | **发布形态排期** | 统一后主包必须**精确依赖**这 3 个包 ⇒ ADR-0014 `S8.2`「发布形态尚未执行过」由"没做过"变"必须做"；按 §12 顺序（先发子包 → 主包 `dependencies` 加精确版本 + 删 `devDependencies` 的 `file:` + 重算 lock → 再发主包）。**可先只落开发期形态**（`devDependencies` + `file:packages/<pkg>`）→ 落 §14 D-18 |
 | P-F-5 | ADR 动作 | ADR-0014 `S1.1` 的"组件行 / 子包"术语二分可删（统一后只剩一种）；前言 `:25-28` 的 #1 问题结案；ADR-0013 触发线 `:239-248` 是否补"组件级 `dsh.client` 的前提已变"→ 落 §14 D-19 |
 | P-F-6 | `lib/subpackage-boot.js:236` 的文案 | 改成"开发期 `devDependencies` + `file:` / 发布期 `dependencies` 精确版本"两态口径 |
 | P-F-7 | **门面路径 `applyComponent()` 保留还是退役** | **取保留**（已按此落地）：它今天在 `lib/**` 里**没有运行期调用者**，承重面是"声明面 + 守卫/fixture"；退役要连带改写 `verify-bundle-rows` 的 ⑥/⑧、`host-route-index` 的 `c` 面推导与 `componentProbe` 语义。代价：主包必须以**裸包名** import 出户组件 ⇒ 主包 → 子包的 value import，需要在 ADR-0014 §5.2 的禁止清单里写明**例外口径**：「这是**宿主装载面**，不是跨包通道」（发布形态下正是 §12 的"主包精确依赖子包"） |
-| P-F-8 | **守卫里的"组件行"类别整体退役还是保类别重定基** | 倾向**整体退役**（统一后组件 = 普通子包，不变量改挂包名）：涉及 `test/tools/host-route-index.mjs` 的 `kind === 'subpath'`、`verify-component-face`（M9）/`verify-component-visibility`（D3）/`verify-route-ownership`（M10）的组件口径、`verify-subpackage-manifests` 的 subpath 分支（建议改成**反向断言**防漂回）。本轮为最小改动**暂保类别 + 双形态识别**（两种形态都认），退役动作留给账①收尾（三格全出户后） |
+| P-F-8 | **守卫里的"组件行"类别整体退役还是保类别重定基** | **已按"整体退役"落地（批 1c，三格全出户后）**：守卫改由 `COMPONENT_VIEW_KEYS` **声明面**驱动（"是不是组件"不再由落点目录回答），`host-route-index` 的 `kind === 'subpath'` 在本仓成为空集（预期形态）；`verify-subpackage-manifests` 的 subpath 分支改成「**0 条 = 已统一**」+ 用**合成夹具**继续喂 `manifestViolations()`（判据的牙不随用例消失）。**未删**的残留：`name/rule-subpath` 那支判据代码仍在 `test/tools/packages.mjs`（无生产用例，留给将来又按旧形态登记的情形） |
 
 ### 15.7 复算入口
 

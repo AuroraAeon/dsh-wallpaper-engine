@@ -42,22 +42,22 @@
 
 import { existsSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { createMediaBackend } from './backend.js';
-// 收 body 的**唯一缓冲实现**（累加 + 字节计闸 + 一次解码）—— 见 lib/http-body.js。
-import { bodyReader } from '../../http-body.js';
-// JSON 应答的**唯一实现**（状态码 + 两个头 + end）—— 见 lib/json-response.js。
-import { sendJson } from '../../json-response.js';
+import { createMediaBackend } from '../backend.js';
 
-/** 注入契约（P2-7A / ADR-0013 D12）：本族从 `c` 消费的**必需**键 —— 门面/组件行调用点必须逐键给到（判据 test/verify-inject-contracts.mjs 双向对账）。 */
-export const DEPS = ['disposers', 'base', 'appendDiagLine', 'configPath', 'cacheBaseDir', 'readConfig', 'serveFile', 'CONTROL_JSON_MAX_BYTES', 'log'];
+/**
+ * 注入契约（P2-7A / ADR-0013 D12）：本族从 `c` 消费的**必需**键 —— 门面/子包调用点必须逐键给到（判据 test/verify-inject-contracts.mjs 双向对账）。
+ * `http` = 收体器与 JSON 应答的**唯一实现**（`bodyReader` / `sendJson`，见主包 `lib/http-body.js`、
+ * `lib/json-response.js`）：P-F 出户后本包不许直接 import 主包叶子模块，改由调用点按需注入。
+ */
+export const DEPS = ['disposers', 'base', 'appendDiagLine', 'configPath', 'cacheBaseDir', 'readConfig', 'serveFile', 'CONTROL_JSON_MAX_BYTES', 'log', 'http'];
 
 export function registerNowPlayingRoutes(webServer, c) {
-  const { disposers, base: BASE, appendDiagLine, configPath, cacheBaseDir, readConfig, serveFile, CONTROL_JSON_MAX_BYTES, log } = c;
+  const { disposers, base: BASE, appendDiagLine, configPath, cacheBaseDir, readConfig, serveFile, CONTROL_JSON_MAX_BYTES, log, http } = c;
 
   // 3c-5. 媒体后端（Now Playing + 系统音频频谱）。首选 media-bridge 子进程
   //       （macOS MediaRemote/CoreAudio、Windows GSMTC/WASAPI、Linux MPRIS/PipeWire，
   //       三平台同一套能力）；取不到产物或起不来时由**媒体后端门面** `backend.js` 的
-  //       `createMediaBackend()` 自动回落到同目录 `lib/components/media-bridge/legacy.js`
+  //       `createMediaBackend()` 自动回落到本包 `lib/legacy.js`
   //       （macOS Swift tap + ffmpeg 路径），回落原因在 status.fallback 里。
   //       `dataDir` = config.json 的父目录（中间件产物 / 音频 tap 编译产物，属工具链）；
   //       `cacheBaseDir` = 用户可改的**缓存根**访问器（中间件 --cache-dir 与封面缓存跟它走，
@@ -152,11 +152,11 @@ export function registerNowPlayingRoutes(webServer, c) {
       const method = (req.method || 'GET').toUpperCase();
       if (method !== 'POST') { res.statusCode = 405; res.end('method not allowed'); return; }
       // 薄别名：保留调用点写法，实现收敛到 lib/json-response.js（默认带 no-store）。
-      const json = (code, o) => sendJson(res, code, o);
+      const json = (code, o) => http.sendJson(res, code, o);
       // 上限 + 收完一次性解码（不变量见 lib/routes/upload.js 文件头）：
       // 这是一条 POST，而 webserver 允许 host: 0.0.0.0 ⇒ 无上限的累加会把宿主堆无界撑大。
       let tooLarge = false;
-      const reader = bodyReader(req, {
+      const reader = http.bodyReader(req, {
         maxBytes: CONTROL_JSON_MAX_BYTES,
         onOverflow: () => { tooLarge = true; json(413, { ok: false, error: 'payload too large' }); },
       });

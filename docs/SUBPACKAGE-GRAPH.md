@@ -27,7 +27,7 @@ node test/tools/guard-targets.mjs --write                 # 重算 docs/GUARD-MA
 ```mermaid
 graph TD
   MAIN["主包 · 行 id=wallpaper-engine<br/>name='dsh-plugin-wallpaper-engine'"]
-  MAIN -->|"子路径名行 —— 组件行（ADR-0013）"| C3["id=wallpaper-engine-media-bridge<br/>name='…/media-bridge'<br/>住 lib/components/media-bridge/，随主包 files 发布"]
+  MAIN -->|"真名行 —— 已出户的组件行（P-F 批 1c，2026-10-16）"| C3["id=wallpaper-engine-media-bridge<br/>name='dsh-plugin-wallpaper-engine-media-bridge'<br/>住 packages/media-bridge/，独立清单"]
   MAIN -->|"真名行 —— 已出户的组件行（P-F，2026-10-16）"| C1["id=wallpaper-engine-about-notice<br/>name='dsh-plugin-wallpaper-engine-about-notice'<br/>住 packages/about-notice/，独立清单"]
   MAIN -->|"同上（P-F 批 2a，2026-10-16）"| C2["id=wallpaper-engine-mascot-avatar<br/>name='dsh-plugin-wallpaper-engine-mascot-avatar'<br/>住 packages/mascot-avatar/，独立清单"]
   MAIN -->|"真名行 —— 独立子包行（本规范）"| S1["id=wallpaper-engine-fx<br/>name='dsh-plugin-wallpaper-engine-fx'<br/>住 packages/fx/，独立清单 + 独立发布"]
@@ -35,11 +35,15 @@ graph TD
   MAIN -->|"同上"| S3["id=wallpaper-engine-fonts<br/>name='dsh-plugin-wallpaper-engine-fonts'"]
 ```
 
-- **组件行**：代码在主包的 `files` 里，随主包一起发布 —— 它的清单就是主包清单，没有"子包清单契约"这回事。
+- **组件行**（P-F 组件行统一之后本仓已**没有**这种形态：三格全部出户 ⇒ 主包 `files` 里不再有组件代码，
+  下面这条留给"将来又有人按旧形态登记组件"的情形）：代码在主包的 `files` 里，随主包一起发布 ——
+  它的清单就是主包清单，没有"子包清单契约"这回事。
 - **独立子包行**：真名行，代码在自己仓库目录里，**有独立清单、独立发布、独立开关**（S3–S10 管的是它）。
-- **已出户的组件行**（P-F 组件行统一：`packages/about-notice/` 批 1、`packages/mascot-avatar/` 批 2a，均 2026-10-16）：`id` 不变、`name` 改真名、
+- **已出户的组件行**（P-F 组件行统一：`packages/about-notice/` 批 1、`packages/mascot-avatar/` 批 2a、
+  `packages/media-bridge/` 批 1c，均 2026-10-16）：`id` 不变、`name` 改真名、
   代码与清单都在自己的 `packages/<pkg>/` 里 ⇒ 它**同时**是"组件行"（`lib/kernel/component-session.js` 的
-  `COMPONENT_VIEW_KEYS` 声明面）与"独立子包行"（S3–S10）。三个组件全部出户后，上面两种行合并成一种。
+  `COMPONENT_VIEW_KEYS` 声明面）与"独立子包行"（S3–S10）。**三格已全部出户** ⇒ 上面两种行在本仓已合并成一种
+  （组件是否"是组件"从此由 `COMPONENT_VIEW_KEYS` 声明面回答，不再由落点目录回答）。
 
 ## 二、宿主平面（进程内、cordis 行）
 
@@ -56,11 +60,13 @@ graph LR
   SVC -->|"只读 + 自带 webServer 面"| FT["packages/fonts 宿主半边<br/>inject ['webServer','wallpaperEngineHost']<br/>packages/fonts/lib/routes/fontsets.js · packages/fonts/lib/routes/system-fonts.js"]
   SVC -->|"只读 + 自带 webServer 面（P-F）"| AN["packages/about-notice 宿主半边<br/>inject ['webServer','wallpaperEngineHost']<br/>packages/about-notice/lib/routes/about-qr.js · github-stars.js"]
   SVC -->|"同上（P-F 批 2a）"| MA["packages/mascot-avatar 宿主半边<br/>inject ['webServer','wallpaperEngineHost']<br/>packages/mascot-avatar/lib/routes/avatar.js · mascot.js"]
+  SVC -->|"同上（P-F 批 1c）"| MB["packages/media-bridge 宿主半边<br/>inject ['webServer','wallpaperEngineHost']<br/>packages/media-bridge/lib/routes/now-playing.js"]
   FX --- N1["零主包说明符"]
   PX --- N2["零主包说明符"]
   FT --- N3["零主包说明符"]
   AN --- N4["零主包说明符"]
   MA --- N5["零主包说明符"]
+  MB --- N6["零主包说明符"]
 ```
 
 - 每个子包能拿到**哪些键**由主包 `lib/subpackage-boot.js` 的 `SUBPACKAGE_KEY_TABLE` 按 **id**（= 行 id 去掉

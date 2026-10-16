@@ -3,7 +3,7 @@
  *
  * 中间件不是 npm 依赖，也没有自己的包名可以挂 optionalDependencies（这个插件在
  * npm 上的那个名字不是本仓库发的），所以产物只能**首次使用时按需取**：解析链每一
- * 级失败就落到下一级，全失败由上层回落 legacy 实现（见 lib/components/media-bridge/backend.js）。
+ * 级失败就落到下一级，全失败由上层回落 legacy 实现（见 packages/media-bridge/lib/backend.js）。
  *
  *   1. 环境变量 `DSH_WE_MEDIA_BRIDGE`        ← 开发/自备产物（指向可执行文件）
  *   2. 插件目录旁的 `bin/<asset>`             ← 想随包分发就放这
@@ -27,8 +27,12 @@ import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SELF_DIR = dirname(fileURLToPath(import.meta.url));
-/** 插件根目录：本文件在 lib/components/media-bridge/ 下。 */
-const PLUGIN_ROOT = resolve(SELF_DIR, '..', '..', '..');
+/**
+ * 本包根目录（本文件在 `<pkg>/lib/` 下）—— 解析链第 2 步的「插件目录旁的 `bin/`」以它为基准。
+ * P-F 出户后基准从"主包根"改成"本子包根"：`bin/` 是**手放预编译产物**的开发便利位，
+ * 子包与主包在安装形态下是两个目录（`<profile>/node_modules/<pkg>/`），跟着本包才找得对。
+ */
+const PLUGIN_ROOT = resolve(SELF_DIR, '..');
 
 /** 中间件版本（与 media-bridge 的 git tag / Release 一致）。升级要连带更新哈希。 */
 export const MEDIA_BRIDGE_TAG = 'v0.1.5';
@@ -214,7 +218,7 @@ let provisionTask = null;
  *
  * @param {object} o
  * @param {string} o.dataDir 插件数据目录（产物落 `<dataDir>/bin/media-bridge/`）；**必给**。
- * @param {import('../../log.js').LogCall} [o.log] 日志被调用面（`log(msg, level?)`）；缺省空实现。
+ * @param {(text: any, level?: string) => void} [o.log] 日志被调用面（`log(msg, level?)`）；缺省空实现。
  */
 export async function provisionMediaBridge({ dataDir, log = () => {} }) {
   if (provisionTask) return provisionTask;
