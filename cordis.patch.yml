@@ -1,12 +1,19 @@
 # dsh-plugin-wallpaper-engine bundle patch.
 #
-# Applied over the dsh-web-app layer. This bundle contributes FOUR host rows
-# (the plugin that scans Wallpaper Engine and serves its media, the `about-notice`
-# component row that owns the About tab's two routes, the `mascot-avatar`
-# component row that owns the mascot image + the two session avatars, and the
-# `media-bridge` component row that owns the system media integration) and relies
-# on its `dsh.client` manifest (in package.json) to load the browser half that
-# draws the wallpaper behind the DSH GUI and adds the settings UI.
+# Applied over the dsh-web-app layer. This bundle contributes SEVEN host rows:
+#   - four owned by the main package: the plugin that scans Wallpaper Engine and
+#     serves its media, the `about-notice` component row that owns the About tab's
+#     two routes, the `mascot-avatar` component row that owns the mascot image +
+#     the two session avatars, and the `media-bridge` component row that owns the
+#     system media integration;
+#   - three owned by `packages/{fx,parallax,fonts}`: the subpackages this main
+#     package depends on (BUNDLE-SPLIT §7.1). Semantics A (§2.3) — the main package
+#     owns these rows, each `name` is the subpackage's REAL package name, and this
+#     patch is the single source of truth for the row set; a subpackage's own
+#     cordis.patch.yml only takes effect when that subpackage is installed as a
+#     standalone bundle (not the shape used here).
+# The main package relies on its `dsh.client` manifest (in package.json) to load the
+# browser half that draws the wallpaper behind the DSH GUI and adds the settings UI.
 #
 # A patch replaces the targeted row's whole `config`, so only additive
 # `insert` rows appear here (we never override an existing shipped row).

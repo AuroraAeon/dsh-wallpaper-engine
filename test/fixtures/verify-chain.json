@@ -537,6 +537,24 @@
         {
           "kind": "guard",
           "npm": null,
+          "file": "test/verify-subpackage-manifests.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/tools/packages.mjs",
+          "args": [
+            "selftest"
+          ],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
           "file": "test/tools/js-text.mjs",
           "args": [
             "selftest"
@@ -585,14 +603,6 @@
           "kind": "guard",
           "npm": null,
           "file": "test/verify-undefined-refs.mjs",
-          "args": [],
-          "tier": "soft",
-          "probe": false
-        },
-        {
-          "kind": "guard",
-          "npm": null,
-          "file": "test/verify-subpackage-manifests.mjs",
           "args": [],
           "tier": "soft",
           "probe": false
@@ -1212,6 +1222,24 @@
         {
           "kind": "guard",
           "npm": null,
+          "file": "test/verify-subpackage-manifests.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/tools/packages.mjs",
+          "args": [
+            "selftest"
+          ],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
           "file": "test/tools/js-text.mjs",
           "args": [
             "selftest"
@@ -1255,14 +1283,6 @@
           "kind": "guard",
           "npm": null,
           "file": "test/verify-undefined-refs.mjs",
-          "args": [],
-          "tier": "soft",
-          "probe": false
-        },
-        {
-          "kind": "guard",
-          "npm": null,
-          "file": "test/verify-subpackage-manifests.mjs",
           "args": [],
           "tier": "soft",
           "probe": false

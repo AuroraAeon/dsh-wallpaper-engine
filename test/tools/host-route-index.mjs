@@ -36,6 +36,9 @@ import { dirname, join, relative } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 // 剥注释：共享的字符串感知实现（同目录 js-text.mjs）。
 import { stripComments } from './js-text.mjs';
+// 包发现层（T1，同目录 packages.mjs）：行、子路径包、独立子包都由它给 —— 本文件不再自带
+// `cordis.patch.yml` 解析器，也不再自己 glob `packages/*` 的清单（同一份发现逻辑只有一处）。
+import { discoverPackages } from './packages.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -230,58 +233,65 @@ function routeModules() {
  * ⚠️ 合并的只有**路由与调用点**；`stateNames` / `applyStart` / `applyEnd` 仍只按门面算
  *    （`analyze-host-apply.mjs` 用它们框出 `apply()` 的正文 —— 那是"门面还剩多少"，别混入组件行）。
  *
- * **清单数据驱动（P2-9 / 度量 M5）**：组件行由 `cordis.patch.yml` 的**行名**（`<包名>/<子路径>`，
- * 按文件顺序）映射到 `lib/components/<子路径>/index.js`，且该文件必须在磁盘上存在 —— 两侧交叉才算一行：
+ * **清单数据驱动（P2-9 / 度量 M5，P-B 起改读发现层）**：组件行 = 发现层里 `kind === 'subpath'`
+ * 的包（`lib/components/<sub>/package.json`，宿主入口取该包清单的 `main`），且该包必须在
+ * `cordis.patch.yml` 有行、入口文件在磁盘上存在 —— 两侧交叉才算一行：
  *   · 只看磁盘 ⇒ 未登记的组件目录会被当成"运行时会注册的行"，索引说谎；
- *   · 只看 patch ⇒ 缺文件的死行也会算一行。
+ *   · 只看行 ⇒ 缺文件的死行也会算一行。
  * ⇒ **新增一个组件行不需要改本文件**（把目录建好 + patch 加一行即可）。
  */
-const PKG_MANIFEST = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
-export const PKG_MAIN = PKG_MANIFEST.main;
-/** 主包真名：子包行的行名 = `<本名>-<pkg>`（见 `subpackageModules()`）。 */
-const PKG_NAME = PKG_MANIFEST.name;
+/** 包发现层模型（T1）：行 / 子路径包 / 独立子包都从这里取。 */
+const MODEL = discoverPackages(ROOT);
 
-/** `cordis.patch.yml` 里的行名（按文件顺序；手写扫描 —— 构建/守卫链上不引 js-yaml，见 verify-package-files）。 */
+/** 主包清单：只用来取**宿主入口**（见下）。 */
+const PKG_MANIFEST = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
+/** 门面入口 = 主包清单的 `main`（字面串，`lib/index.js`）。
+ *  ⚠️ 仍直读根清单、不从发现层取：发现层 `main` 的字段形状**冻结**为没有宿主入口
+ *  （只有 `dir` / `name` / 清单与 patch 路径 / `clientArtifact` / `rows` / `row`）。主包就是发现层
+ *  自己所在的那个包，读它自己的清单拿入口不属于"单包枚举假设"（枚举假设 = 写死"本仓只有一个包"
+ *  或写死包名 / 子目录名）。出现第二个消费者时再把这个字段回收进模型（T5 收尾清单）。 */
+export const PKG_MAIN = PKG_MANIFEST.main;
+/** 主包真名：由发现层给（子包行的行名 = `<本名>-<pkg>`，见 `subpackageModules()`）。 */
+const PKG_NAME = MODEL.main.name;
+
+/** 主 `cordis.patch.yml` 里的行名（按文件顺序）—— 直接取发现层解析好的 `main.rows`
+ *  （发现层按主清单声明的 `dsh.bundle.patch` 定位 patch，手写扫描、构建/守卫链上不引 js-yaml；
+ *  本文件不再自带解析器）。
+ *
+ *  ⚠️ 出口契约是"返回行**名字符串**数组"：发现层的行模型允许 `name === null`（只有 `id:` 的项）
+ *  与空值，而旧的形态正则里这两种行根本不存在 ⇒ 必须在这里滤掉，否则下游
+ *  `rows.filter(n => n.startsWith(…))` 会因 `null` 抛异常。 */
 export function patchRowNames() {
-  const raw = readFileSync(join(ROOT, 'cordis.patch.yml'), 'utf8');
-  const out = [];
-  for (const line of raw.split('\n')) {
-    // 注释行以 `#` 起始 ⇒ 过不了 `^\s*` + 可选 `-` + `name:` 这条形态，不会被误收。
-    const m = /^\s*(?:-\s*)?name:\s*['"]?([^'"\s#]+)['"]?\s*$/.exec(line);
-    if (m) out.push(m[1]);
-  }
-  return out;
+  return MODEL.main.rows
+    .map((r) => (r ? r.name : null))
+    .filter((n) => typeof n === 'string' && n !== '');
 }
 
-/** 出户的组件行入口（数据驱动）：patch 行名 `<pkg>/<sub>` → `lib/components/<sub>/index.js`（存在才算）。 */
+/** 出户的组件行（**子路径包**）的宿主入口：取发现层的 `kind === 'subpath'` 分类 + 该包清单的
+ *  `main`（根相对 `entry`），不再从行名硬映射到 `lib/components/<sub>/index.js` —— 包住哪儿由
+ *  发现层说，本文件不写死落点。仍是两侧交叉：要有 patch 行（`row !== null`）+ 入口文件在磁盘上存在。 */
 export function componentModules() {
   const out = [];
-  for (const name of patchRowNames()) {
-    const i = name.indexOf('/');
-    if (i < 0) continue; // 裸包名行 = 门面那一行
-    const rel = 'lib/components/' + name.slice(i + 1) + '/index.js';
-    if (existsSync(join(ROOT, rel)) && !out.includes(rel)) out.push(rel);
+  for (const p of MODEL.packages) {
+    if (p.kind !== 'subpath' || p.row === null || typeof p.entry !== 'string') continue;
+    if (existsSync(join(ROOT, p.entry)) && !out.includes(p.entry)) out.push(p.entry);
   }
   return out;
 }
 
 /**
- * 子包行的宿主入口（数据驱动，P-A / BUNDLE-SPLIT §8.1）：patch 行名是**子包真名**
- * （`<主包名>-<pkg>`，裸名、不含 `/`）⇒ 在 `packages/<dir>/package.json` 里找 `name` 逐字相等的
- * 那个包，取它的 `main`（相对包目录）。
+ * 子包行（**独立子包**）的宿主入口：取发现层的 `kind === 'standalone'` 分类，不再靠
+ * `<主包名>-` 前缀去猜"这条行属于哪个子包"（行与包的对应由发现层按包目录分类给出）。
  *
- * 与组件行同款**两侧交叉**：只看磁盘 ⇒ 还没登记行（或没落主 patch）的包会被当成"运行时会注册的行"；
- * 只看 patch ⇒ 缺入口文件的死行也算一行。⇒ 新增一个子包行**不需要改本文件**。
- * 也不与组件行重叠：`componentModules()` 只认带 `/` 的子路径行（行名 = `<主包名>/<子>`）。
+ * 与组件行同款**两侧交叉**：要有 patch 行（`row !== null`）+ 入口文件在磁盘上存在 ——
+ * 只看磁盘 ⇒ 还没登记行的包会被当成"运行时会注册的行"；只看行 ⇒ 缺入口文件的死行也算一行。
+ * 也不与组件行重叠：组件行只认发现层里的 `kind === 'subpath'`。
  */
 export function subpackageModules() {
-  const rows = new Set(patchRowNames().filter((n) => n.startsWith(PKG_NAME + '-') && !n.includes('/')));
   const out = [];
-  // 清单解析走 subpackageManifests()（与守卫的双向对账同一份发现逻辑，避免两处漂移）。
-  for (const p of subpackageManifests()) {
-    if (!rows.has(p.name)) continue;
-    const rel = 'packages/' + p.dir + '/' + p.main.replace(/^\.\//, '');
-    if (existsSync(join(ROOT, rel))) out.push(rel);
+  for (const p of MODEL.packages) {
+    if (p.kind !== 'standalone' || p.row === null || typeof p.entry !== 'string') continue;
+    if (existsSync(join(ROOT, p.entry))) out.push(p.entry);
   }
   return out;
 }
@@ -308,20 +318,20 @@ export function subpackageModuleViolations(rows, packages, fileExists) {
   return bad;
 }
 
-/** `packages/*` 的清单描述（`{ dir, name, main }`，排序）—— 供 `subpackageModules()` 与守卫共用。 */
+/** 独立子包的清单描述（`{ dir, name, main }`，排序）—— 供 `subpackageModules()` 与守卫共用。
+ *  包面（哪些目录、叫什么名）由**发现层**的 `kind === 'standalone'` 给出，本文件不再 glob `packages/*`；
+ *  `dir` = 包目录名（`packages/<dir>`，守卫按它拼路径并打印）、`name` = 清单真名。
+ *
+ *  ⚠️ `main` 取清单里的**字面串**（`./lib/index.js`），不能用发现层的 `entry` 反推：`entry` 是
+ *  根相对路径，而 `verify-route-ownership.mjs` 的 `p.dir + ' → ' + p.main` 打印逐字依赖这个字面串。 */
 export function subpackageManifests() {
   const out = [];
-  const pkgs = join(ROOT, 'packages');
-  if (!existsSync(pkgs)) return out;
-  for (const p of readdirSync(pkgs).sort()) {
-    const dir = join(pkgs, p);
-    if (!statSync(dir).isDirectory()) continue;
-    const manifestPath = join(dir, 'package.json');
-    if (!existsSync(manifestPath)) continue;
+  for (const p of MODEL.packages) {
+    if (p.kind !== 'standalone') continue;
     let manifest;
-    try { manifest = JSON.parse(readFileSync(manifestPath, 'utf8')); } catch { continue; }
+    try { manifest = JSON.parse(readFileSync(join(ROOT, p.manifestPath), 'utf8')); } catch { continue; }
     if (typeof manifest.name !== 'string') continue;
-    out.push({ dir: p, name: manifest.name, main: typeof manifest.main === 'string' && manifest.main ? manifest.main : './lib/index.js' });
+    out.push({ dir: p.sub, name: manifest.name, main: typeof manifest.main === 'string' && manifest.main ? manifest.main : './lib/index.js' });
   }
   return out;
 }

@@ -30,10 +30,15 @@
  * Usage:  node scripts/build-client.mjs
  */
 
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Script } from 'node:vm';
+// 跨树 import（scripts/ → test/）是**刻意的单一事实源**：本仓有哪些包、每个包的浏览器半边产物
+// 叫什么，只能有一处枚举。scripts/ 与 test/ 都在根 package.json 的 files[] 之外（两者都是开发期
+// 专属、不进发布面），所以构建器直接读发现层既不扩大发布面，也不制造第二份会漂移的包清单。
+// 反过来把枚举复制一份才是病：新增包时两处要同时改，而漏改的那一处**不会红**（子包静默不产出）。
+import { discoverPackages } from '../test/tools/packages.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const pkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'));
@@ -270,7 +275,7 @@ const INLINE_MODULES = [
     markers: ['function renderAppearanceGlassSection(ctx) {', 'const CHILD_CN = {'],
   },
   // ── P-A 起：点击拖尾与 3D 两份「画布层 + 描述符」**已迁出主 bundle**，各自住自己的包
-  //    （packages/fx、packages/parallax），由下面的 `SUBPACKAGE_BUILDS` 各出一份产物；主包只留
+  //    （packages/fx、packages/parallax），由各包自己的 `client.build.json` 配方各出一份产物；主包只留
   //    `src/extension-registry.js` 这张收件箱（谁登记了什么只能问它）。
   //    迁出的等价性证据：两个子包产物里的 fx-layer/ext-fx/parallax-layer/ext-parallax 与迁出前
   //    逐字节相同（`git diff --no-index` 可复核），差量只有 outline 的 host 绑定与空 apply/inject。
@@ -500,48 +505,80 @@ const INLINE_MODULES = [
  * 为什么不把 packages/* 追加进 INLINE_MODULES：INLINE_MODULES 的语义是「内联进**主** bundle 的
  * prelude」，而 test/verify-module-layout.mjs（规则③）、test/tools/src-scope.mjs、
  * test/verify-glass-surfaces.mjs 等一批守卫都按这张表交叉对账 ⇒ 往里塞子包文件会同时改掉一堆
- * 不相关的判据。子包走自己的表：同样的注入/撞名/浏览器安全判据（函数参数化，判据只有一份），
+ * 不相关的判据。子包走自己的**配方**：同样的注入/撞名/浏览器安全判据（函数参数化，判据只有一份），
  * 不同的产物落点。
  *
  * 产物名 lib/client.<pkg>.js（而不是 client.js）：主产物已经是 lib/client.js，同名会在
  * 「按名字扫描产物」的守卫里撞面（包级约定 exports['./client'] 见 test/verify-package-publish.mjs:267）。
+ *
+ * **配方数据驱动 N（BUNDLE-SPLIT §7.2）**：子包清单不再写死在本文件里，而是「每个有浏览器半边的
+ * standalone 包一份 `packages/<pkg>/client.build.json`」：
+ *   { "entry": "src/client.js",         // 该包浏览器半边入口（相对包目录；缺省 src/client.js）
+ *     "artifact": "lib/client.fx.js",   // 产物落点（相对包目录，必须逐字 == exports['./client']）
+ *     "inline": [ { file, why, markers } ] }
+ * 包集合来自发现层（test/tools/packages.mjs）⇒ **新增一个子包只加"包目录 + 配方"两处数据，
+ * 本文件零改动**。配方只是构建输入，不进发布面（不在任何 package.json 的 files[] 里）。
  */
-const SUBPACKAGE_BUILDS = [
-  {
-    dir: 'packages/fx',
-    artifact: 'lib/client.fx.js',
-    inline: [
-      {
-        file: 'src/fx-layer.js',
-        why: '点击拖尾层（宿主空壳行的浏览器半边；自 src/fx-layer.js 原样迁出）',
-        markers: ["const FX_HOST_ID = 'we-fx-layer';", 'const FX_CLICK_MAX = 24;',
-          'function syncFxLayer() {'],
-      },
-      {
-        file: 'src/ext-fx.js',
-        why: '「扩展」页签 fx 模块的描述符与渲染岛（自 src/ext-fx.js 原样迁出）',
-        markers: ['function renderFxIsland(ctx) {', 'const FX_EXTENSION_MODULE = {'],
-      },
-    ],
-  },
-  {
-    dir: 'packages/parallax',
-    artifact: 'lib/client.parallax.js',
-    inline: [
-      {
-        file: 'src/parallax-layer.js',
-        why: '3D/视差层（宿主空壳行的浏览器半边；自 src/parallax-layer.js 原样迁出）',
-        markers: ['function syncParallaxLayer() {', 'function parallaxDiscoveredGroups() {',
-          'const PARALLAX_TARGET_SELECTOR'],
-      },
-      {
-        file: 'src/ext-parallax.js',
-        why: '「扩展」页签 parallax 模块的描述符与渲染岛（自 src/ext-parallax.js 原样迁出）',
-        markers: ['function renderParallaxIsland(ctx) {', 'const PARALLAX_EXTENSION_MODULE = {'],
-      },
-    ],
-  },
-];
+const RECIPE_FILE = 'client.build.json';
+const DEFAULT_SUBPACKAGE_ENTRY = 'src/client.js';
+
+/** `dir`/`entry` 一律正向斜杠：`label`/`bodyLabel` 会进产物正文，Windows 的反斜杠会**静默改产物字节**。 */
+function toPosix(rel) {
+  return rel.split('\\').join('/');
+}
+
+/**
+ * 读全部 standalone 子包的配方，并做**双向**一致性硬检查（缺配方 / 孤儿配方都判红，且点名包）。
+ *
+ * 判据（与发现层的不变量同源，这里是构建期的第二道，白拿一次交叉检查）：
+ *   · 声明了浏览器半边（清单 `exports['./client']` ⇒ 发现层给出 `clientArtifact`）⟺ 存在配方文件；
+ *   · 配方的 `artifact` 经包目录拼接后必须**逐字等于**发现层的 `clientArtifact`（防两处漂移）。
+ * 缺配方会让该包的浏览器半边**静默不产出**（页面白屏、构建却全绿），所以宁可让构建红。
+ */
+function loadSubpackageRecipes() {
+  const model = discoverPackages(root);
+  const recipes = [];
+  for (const p of model.packages) {
+    if (p.kind !== 'standalone') continue;
+    const relDir = toPosix(p.dir);
+    const recipeAbs = resolve(root, relDir, RECIPE_FILE);
+    const hasRecipe = existsSync(recipeAbs);
+    const declaresClient = typeof p.clientArtifact === 'string' && p.clientArtifact.length > 0;
+    if (declaresClient && !hasRecipe) {
+      console.error(`[build-client] ${p.name}（${relDir}）声明了浏览器半边`
+        + `（exports['./client'] ⇒ ${p.clientArtifact}）却没有构建配方 ${relDir}/${RECIPE_FILE}`
+        + '：该包的浏览器半边会静默不产出（用户页面白屏，而构建/守卫全绿）。'
+        + `请补上 ${relDir}/${RECIPE_FILE}（形状 { entry, artifact, inline:[{file,why,markers}] }，`
+        + '可照抄任一别包的同名文件）。');
+      process.exit(1);
+    }
+    if (!declaresClient && hasRecipe) {
+      console.error(`[build-client] ${p.name}（${relDir}）留着孤儿配方 ${relDir}/${RECIPE_FILE}`
+        + "，但清单没有声明浏览器半边（exports['./client']）：配方不会被消费，"
+        + "它描述的产物也没人会加载。请删掉该配方，或给清单补上 exports['./client']。");
+      process.exit(1);
+    }
+    if (!hasRecipe) continue;
+    const recipe = JSON.parse(readNormalized(recipeAbs));
+    const joined = `${relDir}/${recipe.artifact}`;
+    if (joined !== p.clientArtifact) {
+      console.error(`[build-client] ${p.name}（${relDir}）配方与清单漂移：${RECIPE_FILE} 的 artifact=`
+        + `${JSON.stringify(recipe.artifact)} ⇒ 产物 ${joined}，`
+        + `而清单 exports['./client'] ⇒ ${p.clientArtifact}。`
+        + '两者必须一致（否则构建出的产物没人加载，按产物名对账的守卫也会红）。');
+      process.exit(1);
+    }
+    recipes.push({
+      dir: relDir,
+      dirAbs: resolve(root, relDir),
+      name: p.name,
+      artifact: recipe.artifact,
+      entry: typeof recipe.entry === 'string' && recipe.entry ? recipe.entry : DEFAULT_SUBPACKAGE_ENTRY,
+      inline: recipe.inline,
+    });
+  }
+  return recipes;
+}
 
 /**
  * 读取一个构建输入、归一化成 LF，**并断言不再有孤立 CR**。
@@ -580,16 +617,12 @@ const DECL_RE = /^([ \t]*)(?:async\s+)?(?:const|let|var|function|class)\s+([A-Za
 // `assertNoShadowedScopeDecls` 都参数化了模块表与基准目录）：判据只有一份，只有模块表不同。
 const OUTPUTS = [
   { label: 'lib/client.js', target: resolve(root, 'lib', 'client.js'), inlined: INLINE_MODULES, text: buildMainBundle() },
-  ...SUBPACKAGE_BUILDS.map((entry) => {
-    const dir = resolve(root, entry.dir);
-    const subPkg = JSON.parse(readNormalized(resolve(dir, 'package.json')));
-    return {
-      label: `${entry.dir}/${entry.artifact}`,
-      target: resolve(dir, entry.artifact),
-      inlined: entry.inline,
-      text: buildSubpackageBundle(entry, subPkg),
-    };
-  }),
+  ...loadSubpackageRecipes().map((recipe) => ({
+    label: `${recipe.dir}/${recipe.artifact}`,
+    target: resolve(recipe.dirAbs, recipe.artifact),
+    inlined: recipe.inline,
+    text: buildSubpackageBundle(recipe),
+  })),
 ];
 
 for (const out of OUTPUTS) {
@@ -613,7 +646,7 @@ function indent(text) {
 }
 
 /**
- * 读取一张内联模块表（主 bundle = INLINE_MODULES，子包 = SUBPACKAGE_BUILDS[i].inline）拼成可内联的 prelude：
+ * 读取一张内联模块表（主 bundle = INLINE_MODULES，子包 = 该包 `client.build.json` 的 `inline`）拼成可内联的 prelude：
  * `baseDir` / `label` / `bodySrc` 由调用方给（主 bundle = 仓库根 / '' / 主正文；子包 = 子包目录 /
  * 'packages/<pkg>/' / 子包正文）—— 判据只有这一份，主包与子包走同一条路。
  *   · 断言每个模块**浏览器安全**（无 import/require/Node 全局）；
@@ -879,14 +912,16 @@ function buildMainBundle() {
   return assembleBundle({ id, prelude, bodySrc, bodyLabel: 'src/client.js' });
 }
 
-/** 子包 browser half：入口正文 + 本包自己的内联件表，产物落 `packages/<pkg>/lib/client.<pkg>.js`。 */
-function buildSubpackageBundle(entry, subPkg) {
-  const dir = resolve(root, entry.dir);
-  const source = readNormalized(resolve(dir, 'src', 'client.js'));
+/** 子包 browser half：入口正文（配方 `entry`，缺省 `src/client.js`）+ 本包自己的内联件表，产物落 `packages/<pkg>/lib/client.<pkg>.js`。 */
+function buildSubpackageBundle(recipe) {
+  const dir = recipe.dirAbs;
+  const entryRel = toPosix(recipe.entry);
+  const source = readNormalized(resolve(dir, entryRel));
   const { body: rawBody, codeStart: lineOffset } = stripHeader(source);
   const bodySrc = rawBody.replace(/\n+$/, '');
-  const label = `${entry.dir}/`;
-  const prelude = readInlinedPrelude(entry.inline, dir, bodySrc, label);
-  assertNoShadowedScopeDecls({ bodySrc, lineOffset, bodyFile: `${label}src/client.js`, modules: entry.inline, baseDir: dir, label });
-  return assembleBundle({ id: subPkg.name, prelude, bodySrc, hostPackage: id, bodyLabel: `${entry.dir}/src/client.js` });
+  const label = `${recipe.dir}/`;
+  const entryLabel = `${label}${entryRel}`;
+  const prelude = readInlinedPrelude(recipe.inline, dir, bodySrc, label);
+  assertNoShadowedScopeDecls({ bodySrc, lineOffset, bodyFile: entryLabel, modules: recipe.inline, baseDir: dir, label });
+  return assembleBundle({ id: recipe.name, prelude, bodySrc, hostPackage: id, bodyLabel: entryLabel });
 }

@@ -10,7 +10,9 @@
  *   A) 字面量路径      `'src/picker-model.js'` / `'../src/client.js'`
  *   B) 目录拼接        `join(root, 'src', 'quick-panel.js')`（含嵌套如 `'font','apply.js'`）
  *   C) 纯文件名        `'quick-panel.js'`（切片 / 读源码用）—— 只在 basename **唯一**时认
- *   D) 内联产物        `lib/client.js` —— 单独统计（多数行为判据是隔着产物做的）
+ *   D) 内联产物        `lib/client.js` · `packages/<pkg>/lib/client.<x>.js` —— 单独一档（多数行为
+ *      判据是隔着产物做的）。产物面**取发现层 `clientPackages`**（不写死清单），且把**整个产物
+ *      集合**从「直接读的模块」列里移出 —— 主包产物与子包产物同档。
  *   E) **前缀族读法**  `scopeFiles('src/i18n-copy')` / `scopeText('src/i18n-copy')`
  *      （`test/tools/src-scope.mjs` 的 API）—— 构建期内联族是"一族文件平铺进同一作用域"，
  *      于是"这条守卫管这一族"的自然写法就是**前缀**：路径以该前缀开头的模块全部算命中。
@@ -28,6 +30,11 @@
  * ⚠️ 判据只看**代码**（先剥注释）：模块名出现在散文里不算"管它"——
  * 否则每个头注释提到 `src/client.js` 的守卫都会被算成 client 的守卫。
  *
+ * ⚠️ 扫描面（`moduleSurface`）是**磁盘通配**（`packages/<dir>/{src,lib}`，只许长不许缩），产物面却来自
+ * **发现层**（`test/tools/packages.mjs` 的 `clientPackages`）。两者发散时（`packages/<dir>` 有
+ * `package.json` 却没被认成 standalone 包）该目录的模块会被扫进模块面、产物面却没有判据 ⇒
+ * 由 `packageDivergences()` 显式报红（退出码 1），而不是静默少一档。
+ *
  * Usage:  node test/tools/guard-targets.mjs [--json] [--map]
  *   --map   输出 docs/GUARD-MAP.md 的内容（不写盘；由 `--write` 决定写不写）
  *   --write 写入 docs/GUARD-MAP.md
@@ -40,12 +47,56 @@ import { fileURLToPath } from 'node:url';
 import { stripComments } from './js-text.mjs';
 // G) 真源定位：`locate('SYM')` 的解析要用**同一份**索引（符号 → 唯一声明文件）。
 import { index as sourceIndex, locateCallSites } from './source-locator.mjs';
+// D) 产物面的真源：包 ⇄ 浏览器半边产物的对应关系只有发现层一处（写死清单会静默脱离）。
+import { discoverPackages } from './packages.mjs';
 
 // `test/tools/` 比 `test/` 深一层 ⇒ 推仓库根退**两层**（CODE-STRUCTURE §4 第 5 条）。
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const TEST = join(ROOT, 'test');
-/** 构建产物（浏览器半边唯一可加载的形态）—— 单独一档：多数行为判据隔着它做断言。 */
-const ARTIFACT = 'lib/client.js';
+/** 主包产物（浏览器半边唯一可加载的形态）—— 产物这一档的**锚点**：`viaBundle` 只认它。 */
+const MAIN_ARTIFACT = 'lib/client.js';
+
+/** 路径统一成发现层口径（根相对 · 正斜杠 · 无 `./` 前缀）。 */
+const relOf = (s) => String(s).replace(/\\/g, '/').replace(/^\.\//, '');
+
+/**
+ * **产物面**（分母来自发现层，不是写死清单）：`clientPackages` = 主包 + 每个声明了浏览器半边
+ * （`dsh.client` / `exports['./client']`）的 standalone 子包各一份。BUNDLE-SPLIT §7.2「每包一产物」。
+ * 写死清单的失败模式：新增一份产物后它**静默脱离**本映射 —— 守卫隔着的产物换了一茬，
+ * 映射还指着老的那份，于是"改了哪个源文件该跑哪条守卫"给出错误答案。
+ */
+function artifactSurface(root = ROOT) {
+  const rels = [];
+  for (const p of discoverPackages(root).clientPackages) {
+    const rel = p.clientArtifact ? relOf(p.clientArtifact) : '';
+    if (rel && !rels.includes(rel)) rels.push(rel);
+  }
+  return rels;
+}
+
+// 解析一次缓存（`targetsOf` 的缺省参数每行都会求值 —— 别在循环里反复读盘）。
+let artifactCache = null;
+function artifactsOf(root = ROOT) {
+  if (!artifactCache) artifactCache = new Set(artifactSurface(root));
+  return artifactCache;
+}
+
+/**
+ * **发散判据**：扫描面是磁盘通配（只许长不许缩），产物面来自发现层。`packages/<dir>` 有
+ * `package.json` 却不在 `discoverPackages().packages` 里 ⇒ 该目录的模块被扫进模块面，
+ * 却没有任何"能不能被加载 / 新鲜度"判据盯着它（它的浏览器半边不会被编出来）。
+ * 返回 `{ dirs, discovered, divergent, error }`：`discovered` 为 null 表示发现层本身抛错。
+ */
+function packageDivergences(root = ROOT) {
+  const dirs = packageDirs(root);
+  let discovered;
+  try {
+    discovered = new Set(discoverPackages(root).packages.map((p) => relOf(p.dir)));
+  } catch (e) {
+    return { dirs, discovered: null, divergent: dirs, error: String((e && e.message) || e) };
+  }
+  return { dirs, discovered, divergent: dirs.filter((d) => !discovered.has('packages/' + d)), error: '' };
+}
 
 function walk(dir, out = [], base = '') {
   for (const n of readdirSync(dir)) {
@@ -173,7 +224,7 @@ function anchorTable(root = ROOT, modules = moduleSurface(root), guardTexts = []
 /** 无锚点表（合成夹具的缺省：G 类写法**零命中** —— 负对照就靠这个证明"表格外的名字不算覆盖"）。 */
 const NO_ANCHORS = { symbols: new Map(), files: new Map(), callSites: new Map() };
 
-function targetsOf(srcText, modules, helpers = familyHelpers(), anchors = NO_ANCHORS) {
+function targetsOf(srcText, modules, helpers = familyHelpers(), anchors = NO_ANCHORS, artifacts = artifactsOf()) {
   // 相对说明符的 `../` 前缀先剥掉：`'../lib/routes/system-fonts.js'` 里模块路径左邻是 `/`
   //（在下方的左边界排除类里）⇒ 直接匹配会漏（实测：verify-system-fonts 直接 import 的
   // 路由文件被判成零覆盖）。剥前缀只影响字符串开头的点斜杠段，不会把 `assets/../src/x.js`
@@ -185,22 +236,37 @@ function targetsOf(srcText, modules, helpers = familyHelpers(), anchors = NO_ANC
   //    否则判据自己的注释里写个模板 `src/x.js`，或 `assets/src/a.js` 这种更长路径，
   //    都会被当成"真的引用了这个模块"（实测踩过：本工具的调用方因此被算成管了 4 个模块，
   //    它自己的例外表反而被掩盖）。左边界排除 `[\w$.\-/]`，右边界排除 `[\w$\-]`。
-  // ⚠️ **产物 `lib/client.js` 单列**：守卫常经 `'client.js'` 常量或 URL 拼它，不走路径
-  //    字面量；而它又是"隔着产物做模块断言"那一档的落点 ⇒ 单独判并在 `targets` 里带上它。
+  // ⚠️ **产物面整集合单列**：守卫常经 `'client.js'` 常量或 URL 拼它，不走路径字面量；
+  //    而它又是"隔着产物做模块断言"那一档的落点 ⇒ 单列判并在 `targets` 里带上它。
+  //    产物**不止一份**（BUNDLE-SPLIT §7.2「每包一产物」）⇒ 这里跳过的是**产物集合**，
+  //    集合本身由发现层给出（写死一份的失败模式：新产物静默脱离本映射）。
   for (const m of modules) {
-    if (m === ARTIFACT) continue;
+    if (artifacts.has(m)) continue;
     const pat = new RegExp('(?<![\\w$.\\-/])' + esc(m) + '(?![\\w$-])');
     if (pat.test(code)) hits.add(m);
   }
-  // 产物：`lib/client.js` 常经**相对 URL / 常量 / 字符串拼接 / resolve** 引用（不是路径字面量）。
-  // 只认这几种**配方**，不做裸子串匹配 —— 否则散文/文档里提一句 `lib/client.js` 就会被算成"读它"
-  // （实测：本工具的调用方因为自己生成映射，被自己算成了产物守卫）。本轮实际出现的配方：
-  //   `new URL('../lib/client.js', import.meta.url)` · `'client.js'` 常量 · `ROOT + 'lib/client.js'`
-  //   · `resolve(ROOT, 'lib/client.js')`
-  if (/new URL\(\s*['"][^'"]*lib\/client\.js['"]/.test(code)
-    || /join\([^)]*['"]lib['"]\s*,\s*['"]client\.js['"]/.test(code)
-    || /['"][^'"]*lib\/client\.js['"]/.test(code)
-    || /['"]client\.js['"]/.test(code)) hits.add(ARTIFACT);
+  // 产物：常经**相对 URL / 常量 / 字符串拼接 / 目录分段 join / 纯文件名**引用（不是路径字面量）。
+  // 只认这几种**配方**，不做裸子串匹配 —— 否则散文/文档里提一句就会被算成"读它"
+  // （实测：本工具的调用方因为自己生成映射，被自己算成了产物守卫）。
+  // 配方**按每一份产物生成**：主包 `lib/client.js` 的四条与历史上写死的四条**逐字同形**
+  // （`new URL('../lib/client.js', …)` · `join(ROOT, 'lib', 'client.js')` · `ROOT + 'lib/client.js'`
+  //  · `'client.js'` 常量）；子包产物只是把路径分段换成它自己的（`packages/fx/lib/client.fx.js`）。
+  //  第五种（产物面**整集合**）：守卫经**发现层枚举**产物面 —— `import … from './tools/packages.mjs'`
+  //  且用了 `clientPackages` / `clientArtifact`。这类守卫目标是**整个产物面**，不给配方就会在
+  //  `targets` 里一份产物都不剩（正是本工具存在的理由：覆盖静默脱离）。
+  const viaDiscovery = /['"][^'"]*tools\/packages\.mjs['"]/.test(code)
+    && /clientPackages|clientArtifact/.test(code);
+  for (const art of artifacts) {
+    const segs = art.split('/');
+    const base = segs.pop();
+    const dirPat = segs.map((s) => "['\"]" + esc(s) + "['\"]").join('\\s*,\\s*');
+    const relPat = esc(art).replace(/\//g, '\\/');
+    if (viaDiscovery                                                                  // 经发现层枚举产物面
+      || new RegExp('new URL\\(\\s*[\'"][^\'"]*' + relPat + '[\'"]').test(code)        // new URL('../lib/client.js', import.meta.url)
+      || new RegExp('join\\([^)]*' + dirPat + '\\s*,\\s*[\'"]' + esc(base) + '[\'"]').test(code) // join(ROOT, 'lib', 'client.js')
+      || new RegExp('[\'"][^\'"]*' + relPat + '[\'"]').test(code)                     // ROOT + 'lib/client.js'
+      || new RegExp('[\'"]' + esc(base) + '[\'"]').test(code)) hits.add(art);          // 'client.js' 常量
+  }
   // B) join(..., 'packages', <pkg>, 'src'|'lib', <parts>) —— 子包面（P-A 起）。
   for (const m of code.matchAll(/join\([^)]*?['"]packages['"]\s*,\s*((?:['"][^'"]+['"]\s*,?\s*)+)\)/g)) {
     const parts = [...m[1].matchAll(/['"]([^'"]+)['"]/g)].map((x) => x[1]);
@@ -299,9 +365,10 @@ function buildMap(root = ROOT) {
   const rows = guards.map((g) => {
     const raw = texts.get(g);
     const targets = targetsOf(raw, modules, helpers, anchors);
-    // `viaBundle` 只作为**注释性**列：真源是 `targets` 里有没有 `lib/client.js`
-    // （只用 `code.includes` 会与 targets 口径漂开 —— 实测踩过一次）。
-    return { guard: g, targets, viaBundle: targets.includes('lib/client.js') };
+    // `viaBundle` 只作为**注释性**列：真源是 `targets` 里有没有**主包**产物 `lib/client.js`
+    // （只用 `code.includes` 会与 targets 口径漂开 —— 实测踩过一次）。子包产物**不算**"隔着产物"
+    // 这一列：它们自己就是产物面的一档，且历史口径就是主包产物一个。
+    return { guard: g, targets, viaBundle: targets.includes(MAIN_ARTIFACT) };
   });
   const covered = new Set(rows.flatMap((r) => r.targets));
   return {
@@ -314,6 +381,7 @@ function buildMap(root = ROOT) {
 
 /** 渲染 `docs/GUARD-MAP.md`（**生成物**，勿手改）。 */
 function render(map) {
+  const artifacts = artifactsOf(); // 产物集合（发现层）—— 「直接读的模块」列与 targetsOf 同一口径
   const out = [];
   out.push('# 守卫映射（生成物，勿手改）');
   out.push('');
@@ -329,7 +397,9 @@ function render(map) {
   out.push('| 守卫 | 直接读的模块 | 隔着产物 |');
   out.push('|---|---|:--:|');
   for (const r of map.rows) {
-    const direct = r.targets.filter((t) => t !== 'lib/client.js').map((t) => '`' + t + '`').join(' ');
+    // 「直接读的模块」列里**整份产物集合**都不出现（主包与子包产物同档，另见「隔着产物」列）——
+    // 否则产物一旦不止一份，这一列就会把子包产物当成"直接读的源文件"混进来。
+    const direct = r.targets.filter((t) => !artifacts.has(t)).map((t) => '`' + t + '`').join(' ');
     out.push(`| \`${r.guard}\` | ${direct || '—'} | ${r.viaBundle ? '✅' : ''} |`);
   }
   out.push('');
@@ -345,13 +415,26 @@ function render(map) {
   return out.join('\n');
 }
 
-export { moduleSurface, guardSurface, targetsOf, buildMap, render, familyHelpers, anchorTable };
+export {
+  moduleSurface, guardSurface, targetsOf, buildMap, render, familyHelpers, anchorTable,
+  artifactSurface, artifactsOf, packageDivergences, MAIN_ARTIFACT,
+};
 
 // 作为脚本直接跑时才输出（被 import 时不得有副作用 —— 守卫要 import 本模块）
 const invokedDirectly = Boolean(process.argv[1]) && import.meta.url === new URL('file://' + process.argv[1].replace(/\\/g, '/')).href.replace(/^file:\/\/\//, 'file:///');
 if (invokedDirectly) {
   const map = buildMap();
-  if (process.argv.includes('--json')) { console.log(JSON.stringify(map, null, 2)); process.exit(0); }
+  // 发散判据（见头注释）：扫描面 ⇄ 发现层。发散时**映射照样输出**，但退出码非 0 ——
+  // 静默少一档是这张映射最危险的失败模式（它会被读成"这些模块没人管"）。
+  const div = packageDivergences();
+  const divergent = div.divergent.length > 0 || div.discovered === null;
+  if (divergent) {
+    console.error('[guard-targets] ✗ packages/ 枚举面 ⇄ 发现层发散：'
+      + (div.discovered === null
+        ? 'discoverPackages() 抛错 — ' + div.error
+        : div.divergent.join(' ') + '（有 package.json 却没被认成 standalone 包 ⇒ 产物面没有判据）'));
+  }
+  if (process.argv.includes('--json')) { console.log(JSON.stringify(map, null, 2)); process.exit(divergent ? 1 : 0); }
   const md = render(map);
   if (process.argv.includes('--write')) {
     writeFileSync(join(ROOT, 'docs', 'GUARD-MAP.md'), md, 'utf8');
@@ -361,5 +444,8 @@ if (invokedDirectly) {
   }
   const short = (p) => p.replace(/^src\//, '').replace(/^lib\//, 'lib/');
   console.log(`\n[guard-targets] 模块 ${map.modules.length} 个 · 守卫 ${map.rows.length} 个 · 零覆盖 ${map.uncovered.length} 个`);
+  console.log(`  产物 ${artifactsOf().size} 份（发现层 clientPackages）：${[...artifactsOf()].join(' ')}`);
   if (map.uncovered.length) console.log('  零覆盖：' + map.uncovered.map(short).join(' '));
+  if (divergent) console.log('  ✗ packages/ 发散：' + (div.discovered === null ? '发现层抛错' : div.divergent.join(' ')));
+  process.exit(divergent ? 1 : 0);
 }

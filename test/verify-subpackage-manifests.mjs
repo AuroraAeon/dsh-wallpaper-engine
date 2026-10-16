@@ -46,12 +46,15 @@
  *   S3.6 `dsh.bundle.patch` === `./cordis.patch.yml` + 在盘 + `files` 覆盖清单三件
  *   S3.7 清单 LF / 无 BOM / 可 parse · S4.2 自带 patch 的 `(id, name)` 与主包行逐字相等
  *   S4.3 主包行 id === `wallpaper-engine-<pkg>` · S8.1 根 devDeps 有 `file:packages/<pkg>`、deps 无子包名
- *   S10.1 `SUBPACKAGE_KEY_TABLE` 每包一项、无多余 · S10.2 `dsh.client` ⇔ `SUBPACKAGE_BUILDS` 一项，
- *   且 `artifact` === `exports['./client']`、产物在盘
+ *   S10.1 `SUBPACKAGE_KEY_TABLE` 每包一项、无多余 · S10.2 `dsh.client` ⇔ `packages/<pkg>/client.build.json`
+ *   一项，且 `artifact` === `exports['./client']`、产物在盘 · S10.3 配方形状：`entry` 与
+ *   `inline[].file/why/markers` 齐备、`entry` / `file` 都在盘（T2 起字面量表搬进了逐包配方 JSON）
  *
- * ⚠️ 本段只读**两张声明面表的字面量**（`lib/subpackage-boot.js` 的 `SUBPACKAGE_KEY_TABLE`、
- * `scripts/build-client.mjs` 的 `SUBPACKAGE_BUILDS`），不做语义分析；两张表**读不出来就判红**
- * （静默跳过 = 登记面判据恒真）。覆盖面另有一条**地板**：枚举包目录 < 3 或主包真名行 < 3 ⇒ 判红。
+ * ⚠️ 两个真源，读法不同：`lib/subpackage-boot.js` 的 `SUBPACKAGE_KEY_TABLE` 是**源码字面量**
+ * （等长遮蔽后配对），`packages/<pkg>/client.build.json` 是**逐包配方 JSON**（T2 起取代了
+ * `scripts/build-client.mjs` 里的 `SUBPACKAGE_BUILDS` 字面量表）。**在盘但读不出来**的配方逐包点名判红
+ * （静默跳过 = 登记面判据恒真）；「某包没有配方文件」不算缺陷 —— 那件事由 S10.2 按 `dsh.client`
+ * 两向对账（host-only 子包本来就不编浏览器半边）。覆盖面另有一条**地板**：枚举包目录 < 3 或主包真名行 < 3 ⇒ 判红。
  * ⚠️ 负对照一律在**内存里**改文本/改对象再喂同一判据，**不碰磁盘**。
  *
  * Usage:  node test/verify-subpackage-manifests.mjs
@@ -59,6 +62,8 @@
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+// 发现层（task-1 冻结接口）：枚举面 ⇄ 发现层的发散判据靠它，不写死包名单。
+import { discoverPackages } from './tools/packages.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PATCH_REL = 'cordis.patch.yml';
@@ -361,8 +366,8 @@ function discoverPackageDirs() {
 
 /**
  * 把**字符串与注释等长**换成空格（引号留着）：只给结构取值用。
- * 为什么必须等长：SUBPACKAGE_BUILDS 的 why / markers 文案里就有 `{`（如 `'function syncFxLayer() {'`），
- * 不等长遮蔽会让括号配对的下标错位，取出来的 dir / artifact 就是别的条目的。
+ * 为什么必须等长：被遮蔽的源码里字符串 / 模板 / 注释也可能含 `{` `}`（`SUBPACKAGE_KEY_TABLE`
+ * 的注解文案就有），不等长遮蔽会让括号配对的下标错位，取出来的键就是别的条目的。
  */
 function maskStructure(src) {
   const s = String(src);
@@ -416,19 +421,6 @@ function literalBody(src, name, open, close) {
   return null;
 }
 
-/** 字面量体里**顶层**的 `{ … }` 块（嵌套块整段收进来；masked 配对、raw 取字面值）。 */
-function topLevelObjects(lit) {
-  const out = [];
-  let depth = 0;
-  let start = -1;
-  for (let i = 0; i < lit.masked.length; i++) {
-    const ch = lit.masked[i];
-    if (ch === '{') { if (depth === 0) start = i; depth++; }
-    else if (ch === '}') { depth--; if (depth === 0 && start >= 0) { out.push(lit.raw.slice(start, i + 1)); start = -1; } }
-  }
-  return out;
-}
-
 /** lib/subpackage-boot.js 的 SUBPACKAGE_KEY_TABLE 顶层键（读不出来 ⇒ null，由判据判红，不许静默跳过）。 */
 function keyTableOf(src) {
   const lit = literalBody(src, 'SUBPACKAGE_KEY_TABLE', '{', '}');
@@ -438,17 +430,68 @@ function keyTableOf(src) {
   return ids.length ? ids : null;
 }
 
-/** scripts/build-client.mjs 的 SUBPACKAGE_BUILDS（`{ dir, artifact }` 数组；读不出来 ⇒ null）。 */
-function buildTableOf(src) {
-  const lit = literalBody(src, 'SUBPACKAGE_BUILDS', '[', ']');
-  if (!lit) return null;
-  const entries = [];
-  for (const blk of topLevelObjects(lit)) {
-    const dir = /dir:\s*'([^']+)'/.exec(blk);
-    const artifact = /artifact:\s*'([^']+)'/.exec(blk);
-    if (dir && artifact) entries.push({ dir: dir[1], artifact: artifact[1] });
+/** 逐包构建配方文件名（`packages/<dir>/client.build.json`；T2 起是"浏览器半边怎么编"的真源）。 */
+const RECIPE_REL = 'client.build.json';
+/** 配方里每个内联源码项的必填字段（缺一 ⇒ S10.3 判红，不是"没有就跳过"）。 */
+const RECIPE_INLINE_FIELDS = ['file', 'why', 'markers'];
+
+/**
+ * 一份配方的**形状**判据（读得出来之后跑）：返回该包的问题文案（`<dir>：<文案>`）。
+ * 为什么查 `entry` / `inline[].file` 在盘：配方说"拿这份源码编出这份产物"，而文件不在盘时
+ * 红的是构建器（读文件炸在很后面），不是"配方与包对不上"这件真事。
+ */
+function recipeShapeProblems(dir, obj) {
+  const out = [];
+  const at = dir + '/' + RECIPE_REL;
+  const entry = typeof obj.entry === 'string' ? obj.entry.trim() : '';
+  if (!entry) out.push(dir + '：S10.3 ' + at + ' 没有 entry（子包浏览器入口）');
+  else if (!fileExists(dir + '/' + dropDot(entry))) out.push(dir + '：S10.3 ' + at + ' 的 entry 不在盘：' + dir + '/' + dropDot(entry));
+  if (!Array.isArray(obj.inline) || obj.inline.length === 0) {
+    out.push(dir + '：S10.3 ' + at + ' 的 inline 不是非空数组（没有内联源码就编不出浏览器半边）');
+    return out;
   }
-  return entries.length ? entries : null;
+  obj.inline.forEach((it, i) => {
+    const label = 'S10.3 ' + at + ' inline[' + i + ']';
+    if (!it || typeof it !== 'object') { out.push(dir + '：' + label + ' 不是对象'); return; }
+    for (const f of RECIPE_INLINE_FIELDS) {
+      const v = it[f];
+      const ok = f === 'markers'
+        ? Array.isArray(v) && v.length > 0 && v.every((m) => typeof m === 'string' && m.trim())
+        : typeof v === 'string' && v.trim();
+      if (!ok) out.push(dir + '：' + label + ' 缺 ' + f + '（' + JSON.stringify(v === undefined ? null : v) + '）');
+    }
+    if (typeof it.file === 'string' && it.file.trim() && !fileExists(dir + '/' + dropDot(it.file))) {
+      out.push(dir + '：' + label + ' 的 file 不在盘：' + dir + '/' + dropDot(it.file));
+    }
+  });
+  return out;
+}
+
+/**
+ * 逐包**构建配方**（`packages/<dir>/client.build.json`）→ `{ entries, problems }`。
+ * `entries` = 读得出来的 `{ dir, artifact }`（给 S10.2 三角对账；与旧字面量表同形）；
+ * `problems` = **在盘但读不出来 / 形状不对**的逐包问题（点名包与文件，不许静默跳过）；
+ * 没有任何一份读得出来 ⇒ `entries` 为 null（由覆盖面判据判红）。
+ * ⚠️ "某包没有配方文件" **不算**问题（host-only 包不编浏览器半边）；那件事由 S10.2 三角判据判。
+ */
+function buildTableOf(dirs) {
+  const entries = [];
+  const problems = [];
+  for (const dir of dirs) {
+    const rel = dir + '/' + RECIPE_REL;
+    // 没有配方文件 **不等于缺陷**：host-only 包本来就不编浏览器半边（`packages/fonts` 就是）。
+    // "声明了 dsh.client 却没有配方" 由下面 S10.2 的三角判据两向对账（只有那边知道 declaresClient）。
+    if (!fileExists(rel)) continue;
+    // 初值刻意不写：try 成功即赋值，catch 直接 continue（写 `= null` 是死赋值）。
+    let obj;
+    try { obj = JSON.parse(readFileSync(join(ROOT, rel), 'utf8')); }
+    catch (e) { problems.push(dir + '：S10.2 ' + rel + ' 解析失败：' + String((e && e.message) || e)); continue; }
+    const artifact = obj && typeof obj.artifact === 'string' ? obj.artifact.trim() : '';
+    if (!artifact) { problems.push(dir + '：S10.2 ' + rel + ' 没有 artifact（浏览器产物的落点）'); continue; }
+    entries.push({ dir, artifact });
+    problems.push(...recipeShapeProblems(dir, obj));
+  }
+  return { entries: entries.length ? entries : null, problems };
 }
 
 /**
@@ -465,7 +508,7 @@ function packagesViolations(input) {
   const out = [];
   const add = (who, msg) => { out.push(who + '：' + msg); };
   const { dirs, texts, selfPatches, rootPkg, rows, fileExists, dirExists,
-    keyTableIds: keyIds, buildEntries: builds } = input;
+    keyTableIds: keyIds, buildEntries: builds, buildProblems: buildIssues = [] } = input;
   const nameOf = (dir) => rootPkg.name + '-' + dir.slice(PACKAGES_DIR.length + 1);
   const siblingNames = new Set(dirs.map((d) => nameOf(d)));
   const rootDev = rootPkg.devDependencies || {};
@@ -481,7 +524,13 @@ function packagesViolations(input) {
     add('覆盖面', '主包 cordis.patch.yml 只派生到 ' + nameRows.length + ' 条真名行（< 3 ⇒ 本判据可能恒真）');
   }
   if (!keyIds) add('覆盖面', '读不出 lib/subpackage-boot.js 的 SUBPACKAGE_KEY_TABLE（登记面判据不许静默跳过）');
-  if (!builds) add('覆盖面', '读不出 scripts/build-client.mjs 的 SUBPACKAGE_BUILDS（登记面判据不许静默跳过）');
+  if (!builds) add('覆盖面', '读不出任何 packages/*/client.build.json 构建配方（登记面判据不许静默跳过）');
+  // 逐包配方问题（缺文件 / 解析失败 / 形状不对）**点名到包**：有问题的包不许被当成"没有浏览器半边"。
+  for (const p of buildIssues) {
+    const at = p.indexOf('：');
+    if (at > 0) add(p.slice(0, at), p.slice(at + 1));
+    else add('覆盖面', p);
+  }
 
   // 根清单的发布两形态（S8.1）与两张登记面的**多余项**（S10.1 / S10.2 的反向半边）。
   for (const [n, spec] of Object.entries(rootPkg.dependencies || {})) {
@@ -496,7 +545,7 @@ function packagesViolations(input) {
     for (const k of keyIds) if (!dirs.includes(PACKAGES_DIR + '/' + k)) add('根清单', 'S10.1 SUBPACKAGE_KEY_TABLE 多了 ' + k + '：没有 packages/' + k + '/ 对应');
   }
   if (builds) {
-    for (const b of builds) if (!dirs.includes(b.dir)) add('根清单', 'S10.2 SUBPACKAGE_BUILDS 多了 ' + b.dir + '：不在 packages/ 枚举面里');
+    for (const b of builds) if (!dirs.includes(b.dir)) add('根清单', 'S10.2 构建配方多了 ' + b.dir + '：不在 packages/ 枚举面里');
   }
 
   for (const dir of dirs) {
@@ -619,15 +668,15 @@ function packagesViolations(input) {
     if (builds) {
       const build = builds.find((b) => b.dir === dir);
       if (declaresClient) {
-        if (!build) add(dir, 'S10.2 声明了 dsh.client 却不在 SUBPACKAGE_BUILDS 里（浏览器半边不会被编出来）');
+        if (!build) add(dir, 'S10.2 声明了 dsh.client 却没有 packages/<pkg>/client.build.json 配方（浏览器半边不会被编出来）');
         else {
           if (clientTarget && dropDot(build.artifact) !== dropDot(clientTarget)) {
-            add(dir, 'S10.2 SUBPACKAGE_BUILDS artifact=' + JSON.stringify(build.artifact) + ' ≠ exports["./client"]=' + JSON.stringify(clientTarget));
+            add(dir, 'S10.2 配方 artifact=' + JSON.stringify(build.artifact) + ' ≠ exports["./client"]=' + JSON.stringify(clientTarget));
           }
           if (!fileExists(dir + '/' + dropDot(build.artifact))) add(dir, 'S10.2 构建产物不在盘：' + dir + '/' + dropDot(build.artifact));
         }
       } else if (build) {
-        add(dir, 'S10.2 没有 dsh.client 却出现在 SUBPACKAGE_BUILDS 里（会产出一份没人加载的产物）');
+        add(dir, 'S10.2 没有 dsh.client 却出现了构建配方（会产出一份没人加载的产物）');
       }
     }
   }
@@ -795,9 +844,10 @@ for (const dir of packageDirs) {
   if (fileExists(selfRel)) packageSelfPatches.set(dir, readFileSync(join(ROOT, selfRel), 'utf8'));
 }
 const bootSrc = fileExists('lib/subpackage-boot.js') ? readFileSync(join(ROOT, 'lib/subpackage-boot.js'), 'utf8') : '';
-const buildSrc = fileExists('scripts/build-client.mjs') ? readFileSync(join(ROOT, 'scripts/build-client.mjs'), 'utf8') : '';
 const keyIds = keyTableOf(bootSrc);
-const buildList = buildTableOf(buildSrc);
+// 构建登记面的真源 = **逐包配方 JSON**（T2 起；不再从 `scripts/build-client.mjs` 的源码文本里切片）。
+const recipeTable = buildTableOf(packageDirs);
+const buildList = recipeTable.entries;
 const realRows = rows.filter((r) => r.name && r.name.startsWith(rootPkg.name + '-'));
 
 /** 生产输入：负对照 = 在内存里换掉 texts / selfPatches / rows / rootPkg / 两张表，喂同一个判据。 */
@@ -811,11 +861,29 @@ const packagesInput = {
   dirExists,
   keyTableIds: keyIds,
   buildEntries: buildList,
+  buildProblems: recipeTable.problems,
 };
 
 check('派生：packages/ 目录数 ≥ 3 且主包 patch 真名行数 ≥ 3（地板；防判据恒真）',
   packageDirs.length >= 3 && realRows.length >= 3,
-  '目录 ' + packageDirs.length + ' 个 [' + packageDirs.join(' ') + '] · 真名行 ' + realRows.length + ' 条 · 键表 ' + (keyIds ? keyIds.join(' ') : '（读不出）') + ' · 构建表 ' + (buildList ? buildList.map((b) => b.dir).join(' ') : '（读不出）'));
+  '目录 ' + packageDirs.length + ' 个 [' + packageDirs.join(' ') + '] · 真名行 ' + realRows.length + ' 条 · 键表 ' + (keyIds ? keyIds.join(' ') : '（读不出）') + ' · 配方 ' + (buildList ? buildList.map((b) => b.dir).join(' ') : '（读不出）'));
+
+// 发现层对账（Ruling 1 的**硬**落点）：`packages/` 下每个目录都必须是发现层认下的包
+// （`test/tools/packages.mjs` 的 standalone 枚举面 = 带 package.json 的直接子目录）。
+// 为什么要有这条：扫描面是**磁盘通配**（只许变大不许变小），而产物面来自发现层 —— 两者一旦发散，
+// 就会静默出现"扫得到、但没人认领"的目录：它下面的模块没有产物判据，也没进覆盖面。
+const discoveredModel = (() => { try { return discoverPackages(ROOT); } catch { return null; } })();
+const discoveredDirs = new Set((discoveredModel ? discoveredModel.packages : []).map((p) => p.dir));
+const divergentDirs = packageDirs.filter((d) => !discoveredDirs.has(d));
+check('发散判据：packages/ 下每个目录都是发现层认下的包（枚举面 ⇄ discoverPackages；发散时点名）',
+  discoveredModel !== null && divergentDirs.length === 0,
+  discoveredModel === null
+    ? 'discoverPackages() 抛错 ⇒ 枚举面与发现层无法对账'
+    : (divergentDirs.length
+      ? divergentDirs.join(' ') + '：有目录却没被认成包（缺 package.json / 没进发现层）'
+      : packageDirs.length + ' 个目录全部认下 [' + packageDirs.join(' ') + ']'));
+check('negative control: 枚举面多一个没被发现的目录 ⇒ 发散判据点名（同一集合运算）',
+  [...packageDirs, 'packages/zzz-ghost'].filter((d) => !discoveredDirs.has(d)).join(' ') === 'packages/zzz-ghost');
 
 const templateProblems = manifestTemplateViolations({ dirs: packageDirs, texts: packageTexts });
 const packageProblems = [...packagesViolations(packagesInput), ...templateProblems];
@@ -933,7 +1001,7 @@ check('独立子包：登记面 / 根清单无违反（含覆盖面地板）', u
     o.exports['./client'] = './lib/index.js';
   });
   const noBuild = vOf(synthClient, { buildEntries: [] });
-  check('negative control: 声明 dsh.client 却不在 SUBPACKAGE_BUILDS 里 ⇒ 判红（S10.2）',
+  check('negative control: 声明 dsh.client 却没有构建配方 ⇒ 判红（S10.2）',
     hit(noBuild, /S10\.2/), noBuild.join(' | ') || '（没报出来）');
 
   const wrongArtifact = vOf(synthClient, { buildEntries: [{ dir, artifact: 'lib/client.wrong.js' }] });
@@ -941,7 +1009,7 @@ check('独立子包：登记面 / 根清单无违反（含覆盖面地板）', u
     hit(wrongArtifact, /S10\.2/), wrongArtifact.join(' | ') || '（没报出来）');
 
   const guestBuild = vOf(real, { buildEntries: [{ dir, artifact: 'lib/client.fx.js' }] });
-  check('negative control: 没有 dsh.client 的包出现在 SUBPACKAGE_BUILDS 里 ⇒ 判红（S10.2）',
+  check('negative control: 没有 dsh.client 的包出现了构建配方 ⇒ 判红（S10.2）',
     hit(guestBuild, /S10\.2/), guestBuild.join(' | ') || '（没报出来）');
 
   const emptyDirs = packagesViolations({ ...packagesInput, dirs: [] });
@@ -949,8 +1017,25 @@ check('独立子包：登记面 / 根清单无违反（含覆盖面地板）', u
     hit(emptyDirs, /覆盖面/), emptyDirs.join(' | ') || '（没报出来）');
 
   const noTables = packagesViolations({ ...packagesInput, keyTableIds: null, buildEntries: null });
-  check('negative control: 两张声明面表读不出来 ⇒ 判红（登记面判据不许静默跳过）',
+  check('negative control: 键表与构建配方都读不出来 ⇒ 判红（登记面判据不许静默跳过）',
     hit(noTables, /读不出/), noTables.join(' | ') || '（没报出来）');
+
+  // 新（T2 连带）：配方出问题时**点名那个包**，且不许"没配方 = 这包没有浏览器半边"。
+  const recipeBad = packagesViolations({
+    ...packagesInput,
+    buildProblems: [dir + '：S10.3 ' + dir + '/' + RECIPE_REL + ' inline[0] 缺 file（null）'],
+  });
+  check('negative control: 逐包配方问题点名到包 ⇒ 判红（S10.3）',
+    hit(recipeBad, new RegExp(dir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '：')) && hit(recipeBad, /S10\.3/),
+    recipeBad.join(' | ') || '（没报出来）');
+
+  // 新：读取层 / 形状判据本身有牙 —— 配方在盘但缺字段时必须**点名那个包**（不碰磁盘）。
+  const shapeBad = recipeShapeProblems('packages/zzz-ghost', {
+    entry: 'src/zzz-entry.js', artifact: 'lib/client.zzz.js', inline: [{ why: 'w', markers: ['m'] }],
+  });
+  check('negative control: 配方形状判据对缺字段（inline[].file）点名到包 ⇒ 判红（S10.3）',
+    shapeBad.length >= 1 && shapeBad.every((x) => x.startsWith('packages/zzz-ghost：')) && shapeBad.some((x) => /inline\[0\] 缺 file/.test(x)),
+    shapeBad.join(' | ') || '（没报出来）');
 }
 
 // ═══ 负对照：S3.8 模板一致性（同一 manifestTemplateViolations；全部在内存里改文本，不碰磁盘）═══

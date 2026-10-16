@@ -78,8 +78,9 @@ graph LR
   PB -->|"同上"| MAINB
 ```
 
-- 子包产物由 `scripts/build-client.mjs` 的 `SUBPACKAGE_BUILDS` 逐项构建并**入库**；声明面
-  （`exports['./client']` + `dsh.client`）与构建表、盘上产物三方对账（S3.4 / S10.2）。
+- 子包产物由**包内配方** `packages/<pkg>/client.build.json`（`artifact` / `entry` / `inline[]`）驱动
+  `scripts/build-client.mjs` 逐项构建（产物被 `.gitignore` 排除、**不进 git**）；声明面
+  （`exports['./client']` + `dsh.client`）与配方、盘上产物三方对账（S3.4 / S10.2）。
 - **fonts 不在这个平面上**：它是 host-only 形态（没有 `dsh.client`），浏览器半边仍住在主包 `src/**` 里。
   这是**合法**的形态，**不要**为了"看起来统一"给它补一个空的 `./client`（S3.4）。
 
@@ -113,16 +114,16 @@ graph LR
 | `lib/index.js`（= `main`，宿主半边入口） | ✓ | ✓ | ✓ | S2.2 / S6.1（有判据） |
 | 宿主半边路由族 `packages/<pkg>/lib/routes/<族>.js` | —（空壳：行为全在浏览器半边） | —（同上） | ✓ `fontsets` / `system-fonts` | S2.3（人工） |
 | 浏览器半边源码 `packages/<pkg>/src/**` | ✓ | ✓ | —（**host-only**：仍住主包 `src/**`） | S1.2 / S3.4 |
-| 构建产物 `lib/client.<pkg>.js`（入库） | ✓ | ✓ | — | S10.2（有判据） |
+| 构建产物 `lib/client.<pkg>.js`（构建产出；被 `.gitignore` 排除，**不进 git**） | ✓ | ✓ | — | S10.2（有判据） |
 | `exports['./client']` + `dsh.client` | ✓ | ✓ | —（**两者都不写**） | S3.4（有判据） |
 | 主包 patch 行（`id` / `name`） | ✓ | ✓ | ✓ | S4.1 / S4.3（有判据） |
 | 根清单 `devDependencies: file:packages/<pkg>` | ✓ | ✓ | ✓ | S8.1（有判据） |
 | 发布形态：根 `dependencies` 同号精确版 + 删 `file:` | **未执行**（三包一致） | **未执行** | **未执行** | S8.2（人工执行 + `verify-package-publish.mjs` ⑨ 钉「全有或全无」） |
 | `package-lock.json` 同一次提交重算 | ✓ | ✓ | ✓ | S8.3（有判据） |
 | `lib/subpackage-boot.js` 的 `SUBPACKAGE_KEY_TABLE` 一项（键 = id 去前缀） | ✓ `fx` | ✓ `parallax` | ✓ `fonts` | S10.1（有判据） |
-| `scripts/build-client.mjs` 的 `SUBPACKAGE_BUILDS` 一项（`artifact` = `exports['./client']` 落点） | ✓ | ✓ | —（不得出现） | S10.2（有判据） |
+| 包内配方 `packages/<pkg>/client.build.json`（`artifact` = `exports['./client']` 落点） | ✓ | ✓ | —（不得出现） | S10.2（有判据） |
 | 生成物重算 `docs/ROUTE-INDEX.md` / `docs/GUARD-MAP.md` | 复算 | 复算 | 复算 | S10.3（生成物判据） |
-| 守卫的自动发现面（`test/tools/host-route-index.mjs` 按 `packages/*` 清单枚举） | 免手改 | 免手改 | 免手改 | S10.3 |
+| 守卫的自动发现面（`test/tools/packages.mjs` 包发现层：磁盘枚举 + 根 patch 行；`host-route-index` / `guard-targets` / `verify-client-sync` 都读它） | 免手改 | 免手改 | 免手改 | S10.3 |
 | 注释与引用只指向稳定位置（`S*` / 实现文件头 / 判据名；不引 `docs/wip/`、`docs/archive/`） | ✓ 已收口 | ✓ 已收口 | ✓ 已收口 | S9.1 / S3.9（**人工**，无判据） |
 | **本文**（行树 / 图 / 边表 / 本矩阵） | 人工 | 人工 | 人工 | D4（**无判据**） |
 

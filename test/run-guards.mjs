@@ -179,6 +179,18 @@ const VERIFY_STEPS = [
   step('test/verify-subpackage-client-half.mjs'),
   step('test/verify-subpackage-purity.mjs'),
   step('test/verify-subpackage-toggle-roundtrip.mjs'),
+  // ⑤ 子包包面（P2-5；2026-10-15 收口时**由软档升 hard**）：`packages/*/package.json` 的
+  //    name/version/main/exports/peer 与自带 patch 行、根 `exports` 三连对账（组件行 + 独立子包行两段）。
+  //    按 ADR-0004 的分档判据，它守的是**发布面 / 打包面**：版本漂离主包、peer 范围与主包不逐字相等
+  //    （I6：宿主整次安装被拒 + 回滚）、`dsh.client` ⟺ `exports['./client']` 失配（C2：浏览器半边静默不加载）
+  //    —— 每一条都是"用户会撞上"的后果，不是仓库内务 ⇒ 硬档。判据面与档位依据见 adr/0014 S3。
+  step('test/verify-subpackage-manifests.mjs'),
+  // ⑥ 包发现层 `test/tools/packages.mjs` 的**自检**（P-B 基石）：上面这一批"包面"判据
+  //    （client-sync 的产物集合 / bundle-rows 的行⇄包对账 / subpackage-manifests 的清单面 /
+  //    host-route-index 一族的行·包解析）与 `scripts/build-client.mjs` 都读它 ⇒ 它自己坏了会
+  //    连带整批判据失真（与下面 js-text 同理，属"判据底座的底座"）。11 条负对照全部经同一个
+  //    `enumerateViolations`，另有 `FLOORS` 地板防"包 / 产物 / 行数静默缩水"。
+  step('test/tools/packages.mjs', ['selftest']),
   // ← 还原（旧链最末一步）：`js-text` 的**自检**（字符串感知的剥注释/作用域/函数体提取，
   // 是上面一批"文本判据"的共同底座 ⇒ 它自己坏了会连带整批判据失真）。
   step('test/tools/js-text.mjs', ['selftest']),
@@ -193,9 +205,6 @@ const DOCS_STEPS = [
   // 未定义引用普查（"用了但没 import/声明"）：先按软档出声若干轮，再有据可依地议升 hard
   // （这一类；`node --check` 与聚焦判据都照不到它）。
   step('test/verify-undefined-refs.mjs', [], 'soft'),
-  // P2-5：三份子包清单的「包面」（version 与根同号 / 入口落点 ⇄ 根 exports 三连 / peer 范围
-  // 逐字对齐 / 无 BOM·LF）。组件清单从 patch 行 + 根 exports **数据驱动**派生，不写死组件名。
-  step('test/verify-subpackage-manifests.mjs', [], 'soft'),
   step('test/verify-guard-map.mjs', [], 'soft'),
   step('test/verify-guard-chain.mjs', [], 'soft'),
 ];

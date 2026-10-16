@@ -31,6 +31,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Readable, Writable } from 'node:stream';
 // 剥注释：共享的字符串感知实现（`verify-module-layout` 的『剥注释必须字符串感知』一节钉住"不许再用朴素正则"）。
 import { stripComments, stripExportBlocks } from './tools/js-text.mjs';
+// 子包登记面的**发现层**：T2 起子包构建数据是逐包配方 JSON，本守卫不写死 packages/fx / packages/parallax。
+import { discoverPackages } from './tools/packages.mjs';
 // 刀3：样式族取文（8 个域模块 + 组装点，构建序拼接）。刀6：客户端正文族（正文 + 助手模块）。
 import { styleText, panelSources, panelText, liveText, clientText } from './tools/src-scope.mjs';
 // 单独 import `src/**` 时补上 bundle 作用域的取词层（面板渲染器直接用 weT；见该 shim 的文件头）。
@@ -50,6 +52,41 @@ const subFxFile = (f) => join(root, 'packages', 'fx', 'src', f);
 const subParallaxFile = (f) => join(root, 'packages', 'parallax', 'src', f);
 const SUB_FX_PRODUCT = join(root, 'packages', 'fx', 'lib', 'client.fx.js');
 const SUB_PARALLAX_PRODUCT = join(root, 'packages', 'parallax', 'lib', 'client.parallax.js');
+
+/** 子包构建配方（`packages/<pkg>/client.build.json`）的取文 —— 本守卫唯一的子包登记面。
+ *
+ *  T2 起 `scripts/build-client.mjs` 里**不再有** `SUBPACKAGE_BUILDS` 字面量表：前端构建数据逐包一份
+ *  配方 JSON（`artifact` / `inline[].file` 都**相对包目录**）。所以「哪两份源文件住在子包产物里」
+ *  只能从配方读 —— 继续从构建器源码文本里切片找那张表，在 T2 之后是**读空**（正面证据恒不成立）。
+ *
+ *  发现面走 `discoverPackages()`（不写死 packages/fx / packages/parallax）。子包目录里**没有**
+ *  配方文件是正常的（host-only 子包不编浏览器半边），因此只收在盘的配方；**在盘但读不出来**
+ *  逐包登记到 `broken`，调用方必须判红并点名（静默跳过 = 登记面判据恒真）。
+ */
+const subpackageRecipes = () => {
+  const dirs = [];
+  const broken = [];
+  const files = [];
+  const chunks = [];
+  for (const p of discoverPackages(root).packages) {
+    const rel = p.dir + '/client.build.json';
+    if (!existsSync(join(root, rel))) continue;
+    try {
+      const src = readFileSync(join(root, rel), 'utf8');
+      const recipe = JSON.parse(src);
+      dirs.push(p.dir);
+      chunks.push(src);
+      for (const inline of recipe.inline || []) if (inline && typeof inline.file === 'string') files.push(inline.file);
+    } catch {
+      broken.push(p.dir);
+    }
+  }
+  return { dirs, broken, files, text: chunks.join('\n') };
+};
+
+/** 配方里登记了某份源文件 —— **引号不敏感**：JSON `"file": "…"` 与旧 JS 字面量 `file: '…'` 同判。 */
+const registersFile = (text, rel) =>
+  new RegExp('["\']?file["\']?\\s*:\\s*["\']' + rel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '["\']').test(text);
 
 /** 装配共享注册表（src/extension-registry.js）并登记「扩展」页签的三项。
  *
@@ -1883,14 +1920,24 @@ const hostLib = hostLibComposed;
   // 主产物零残留是这条的重点：两份同样实现 = 两个 rAF 各画各的、指针各记一份轨迹。
   const fxProduct = readFileSync(SUB_FX_PRODUCT, 'utf8');
   const countOnce = (text, needle) => text.split(needle).length - 1;
-  // ⚠️ 判「不在 INLINE_MODULES 里」必须**切片**：build 文本里还有 SUBPACKAGE_BUILDS，它们的
-  //   file: 是**相对各包子目录**的（子包里本来就有 src/fx-layer.js）—— 拿整份文本判会恒红。
+  // ⚠️ 判「不在 INLINE_MODULES 里」必须**切片**：build 文本里还有别的 `file:` 登记（构建器的
+  //   INLINE_MODULES 之外，子包配方是同名文件住在子目录）—— 拿整份文本判会恒红。
   const inlineText = build.slice(build.indexOf('const INLINE_MODULES = ['), build.indexOf('\n];', build.indexOf('const INLINE_MODULES = [')));
-  const subBuildText = build.slice(build.indexOf('const SUBPACKAGE_BUILDS = ['));
+  const subRecipes = subpackageRecipes();
+  // 登记面判据：子包配方必须真的读到（读空 = T2 前的旧写法在 T2 之后的事故模式）。
+  check('子包构建配方在盘且读得出来（登记面判据不许静默跳过 · 逐包 client.build.json）',
+    subRecipes.broken.length === 0 && subRecipes.dirs.length >= 2,
+    subRecipes.broken.length
+      ? '读不出：' + subRecipes.broken.join(' ')
+      : '读到 ' + subRecipes.dirs.length + ' 份：' + subRecipes.dirs.join(' '));
+  check('negative control: 配方登记面判据引号不敏感且有牙（JSON 双引号 / 旧 JS 单引号同判；没登记的模块名判红）',
+    registersFile('{ "file": "src/fx-layer.js" }', 'src/fx-layer.js')
+    && registersFile("{ file: 'src/fx-layer.js' }", 'src/fx-layer.js')
+    && !registersFile('{ "file": "src/fx-layer.js" }', 'src/nope.js'));
   check('fx-layer.js / ext-fx.js 已搬出主 bundle（零残留 · 只住在 packages/fx/lib/client.fx.js）',
     !/file:\s*'src\/fx-layer\.js'/.test(inlineText) && !/file:\s*'src\/ext-fx\.js'/.test(inlineText)
-    // 正面证据：两处必须**出现在子包构建表**里（否则子包产物从哪来）。
-    && /file:\s*'src\/fx-layer\.js'/.test(subBuildText) && /file:\s*'src\/ext-fx\.js'/.test(subBuildText)
+    // 正面证据：两处必须**登记在子包配方**里（否则子包产物从哪来）。配方是 JSON ⇒ 引号不敏感同判。
+    && registersFile(subRecipes.text, 'src/fx-layer.js') && registersFile(subRecipes.text, 'src/ext-fx.js')
     && !bundle.includes('function syncFxLayer()') && !bundle.includes('function renderFxIsland(')
     && countOnce(fxProduct, 'function syncFxLayer()') === 1
     && countOnce(fxProduct, 'function disposeFxLayer()') === 1
@@ -1908,7 +1955,8 @@ const hostLib = hostLibComposed;
   const parallaxProduct = readFileSync(SUB_PARALLAX_PRODUCT, 'utf8');
   check('parallax-layer.js / ext-parallax.js 已搬出主 bundle（零残留 · 只住在 packages/parallax/lib/client.parallax.js）',
     !/file:\s*'src\/parallax-layer\.js'/.test(inlineText) && !/file:\s*'src\/ext-parallax\.js'/.test(inlineText)
-    && /file:\s*'src\/parallax-layer\.js'/.test(subBuildText) && /file:\s*'src\/ext-parallax\.js'/.test(subBuildText)
+    // 正面证据同上：登记在子包配方里（引号不敏感）。
+    && registersFile(subRecipes.text, 'src/parallax-layer.js') && registersFile(subRecipes.text, 'src/ext-parallax.js')
     && !bundle.includes('function syncParallaxLayer()') && !bundle.includes('function renderParallaxIsland(')
     && countOnce(parallaxProduct, 'function syncParallaxLayer()') === 1
     && countOnce(parallaxProduct, 'function disposeParallaxLayer()') === 1

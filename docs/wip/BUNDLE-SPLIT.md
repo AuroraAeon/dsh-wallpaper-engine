@@ -1,7 +1,7 @@
 # 插件包重构手册 —— 多包拆分（主包 + 核心子插件 + 边缘子插件）
 
 > **哈希说明（这条线被重写过两次，旧哈希多半已不在现行 `main` 上）**：本文件里的短哈希是**当时那条线上的**历史哈希。
-> **现行线 = `main` @ `31b06847`**：拆包那笔 squash `6385b62e`（父 = 上游 merge `a86923b7`）只是它的**祖先**，
+> **现行线 = `main` @ `ddfe63de`**（2026-10-15 收口时复算）：拆包那笔 squash `6385b62e`（父 = 上游 merge `a86923b7`）只是它的**祖先**，
 > 其后还有追版本与多次上游 merge 若干笔 ⇒ **文中把 `6385b62e` 当"现行尖端"读的地方，一律以此行为准**
 > （该哈希现在只用于指 §13.1 那次审查的对象）。本文件自身在本机工作树里可能另有未提交改动。
 > 追版本第二期那一笔（108 笔压缩，父 = `c43a936`）以 tag `catchup-2nd` 标注，但**该 tag 只被
@@ -18,8 +18,10 @@
 > **写作纪律**（[`docs/README.md`](../README.md) §写作纪律）：不抄会漂的数值；证据锚点用**符号名 / 文件路径 / 复算命令**；
 > 行号必漂，一律不写。**状态**：进行中（住 `docs/wip/`，收口与归档见 §7.5 的 P-E）。
 
-**基线**：现行 `main` 相对 `origin/main` **behind 0**（复算：`git rev-list --left-right --count origin/main...HEAD`）；
-当前形态 = **单包 + 4 个插件行**（`dsh-plugin-wallpaper-engine`，即 `cordis.patch.yml` 的四条 `insert`）。
+**基线**：现行 `main` 相对 `origin/main` **behind 0**（复算：`git rev-list --left-right --count origin/main...HEAD`）。
+**拆包起点** = **单包 + 4 个插件行**（`dsh-plugin-wallpaper-engine`，即 `cordis.patch.yml` 的那四条 `insert`）；
+**现行形态**（2026-10-15 收口）= **主包 + 3 个已拆出的子包**（`packages/{fx,parallax,fonts}`）⇒ patch 共**七条** `insert`
+（4 条主行/组件行 + 3 条子包行；见 §7.1 的实况块与 §7.8）。
 **目标形态** = **主包 + N 个子插件包**（版本一致、一次安装落地、代码各自成包、第三方代码除外）。
 
 ---
@@ -78,6 +80,10 @@
   **2026-10-14 用户拍板：就地改写 ADR-0013 的 D6 与 D8 正文、D17 只改理由**（不新开 ADR）。修订理由**只有一条**：
   **降复杂度与解耦**（用户口径：独立发布不必要；版本一致更方便管理）。**"关掉即不下载"仍是非目标（D16）**，
   **每组件一格客户端开关仍不做**（理由改为"子包粒度 ≠ 组件行粒度"，见 ADR-0013 D17）。
+- **子包契约另有正本**：`packages/<pkg>/` 的包面 / 行与接线 / 依赖方向 / 生命周期 / 开关与重启 / 发布形态的
+  **规范条款**见 [`adr/0014`](../adr/0014-subpackage-contract.md)（S1–S10，**normative**）；每个包 × 每个登记点的
+  现状矩阵见 [`docs/SUBPACKAGE-GRAPH.md`](../SUBPACKAGE-GRAPH.md)（**人工维护快照**，无判据）。
+  与本文重复的规则一律**以 ADR-0014 为准**（本文只写"怎么做"）；它的边界 = **不设**任何针对 markdown 的机器判据（ADR-0007）。
 
 ---
 
@@ -368,17 +374,18 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 
 ### 7.0 起步态（已达成，作为基线）
 
-单包 + 4 行；D3 的界面级开关语义已落地（状态面 `/inventory.components`、可见面声明 `lib/components/visibility.js`、
+单包 + 4 行（**这是拆包起点**；现行形态 = 7 行，见文件头「基线」）；D3 的界面级开关语义已落地（状态面 `/inventory.components`、可见面声明 `lib/components/visibility.js`、
 判据 `test/verify-component-visibility.mjs`）；守卫链 `node test/run-guards.mjs all` **全绿**
 （步数与地板以 `test/run-guards.mjs` 与 `test/verify-package-files.mjs` 的 `CHAIN_FLOOR` 为准，本文不抄数）。
 **度量口径见本文件末的附录 E；历史进度与追版本日志见 `CHANGELOG.md` 与 git 历史。**
 
-> **"不用重启"这条已经在本行成立、但没有判据守它**：现行 4 行（`wallpaper-engine` + 三个既有组件行）
+> **"不用重启"这条在起点的 4 行上已经成立**：那 4 行（`wallpaper-engine` + 三个既有组件行）
 > 在 profile 的 `patchReload: live` 下可**逐行热切**（`R4`；行开关的覆盖项形态见附录 D）。
-> ⇒ 本轮重构对这条目标的**真实增量是"从 4 行到 N 行、且每行都还能这样切"**，不是"把热切做出来"；
-> 而 §7.6 缺的第 4 条判据（开关往返 / 停用零残留）现在**零覆盖** —— 那是"能不能切"与"切了干不干净"的分界。
+> ⇒ 本轮重构对这条目标的**真实增量是"从 4 行到 N 行、且每行都还能这样切"**，不是"把热切做出来"。
+> ✅ **已收口（2026-10-15）**：当时**零覆盖**的第 4 条判据（开关往返 / 停用零残留）已落成
+> `test/verify-subpackage-toggle-roundtrip.mjs` 并挂**硬档**（连同 §7.6 的另三条 + 包面判据，见 §7.6）。
 
-### 7.1 P-A 试点：三个小子包（**建议从这里开始**）
+### 7.1 P-A 试点：三个小子包（**✅ 已落地 2026-10-15 · 落盘 `3842584e`**）
 
 **目标**：把"多包 + 一次装 + 启动自检 + 跨包服务"这条链走通，**不动 `selection` / 设置面板**。
 
@@ -388,7 +395,9 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 | 3D 效果 | `src/parallax-layer.js`、`src/ext-parallax.js`（`PARALLAX_EXTENSION_MODULE`） | 同上 |
 | 字体系统 | 宿主侧 `lib/routes/{fontsets,system-fonts}.js`（**P-A 实际只搬了这一半**）；浏览器半边 `src/font/**`、`src/fontset-store.js`、`src/fontset-editor.js`、`src/system-fonts.js` + 外观页签字体节 ⇒ 落点见 **§7.8** | 宿主实现（已落）+ 浏览器半边（待落）+ 一条行 |
 
-**动作**：① 建三包，落点 = **同仓 `packages/<pkg>/`**（§8.1，2026-10-14 定案）；② 主包 `dependencies` 精确依赖三者；
+**动作**：① 建三包，落点 = **同仓 `packages/<pkg>/`**（§8.1，2026-10-14 定案）；② 主包按**未发布期的开发形态**接线 =
+`devDependencies` + `file:packages/<pkg>` 三条（**不是** `dependencies`：把未发布的包写进 `dependencies` 会让 `npm ci`
+当场 404；发布期形态 = 发布后改成精确版本，见 §12 与 §10.1 #14）；
 ③ 主包 patch 里 `insert` 三行；④ 加启动自检与"行在 patch 里"的判据（§7.6）；
 ⑤ 把 `extensionModules()` 从**静态数组**改成"读注册表"（**首个跨包贡献点**，通道 = **Cordis Service**：子包 `inject: ['wallpaperEngineHost']`，见 §6.2 / §5.1 ①）。
 **判据**：三包能被**逐行单独停用／恢复**，且界面/路由各自消失（复用 D3 的可见面判据 + §7.6 第 4 条的往返判据）。
@@ -398,7 +407,7 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 且行 `name` 走**真实包名**或子路径两种形态都行（§2.4 的粒度事实）。主包不装子包时**大声报错**。
 
 > **P-A 实况（2026-10-15 落盘，与上表第 3 行的差额）**：`packages/fonts` 实际只交付**宿主半边**
-> （`lib/index.js` 120 行 + `lib/routes/fontsets.js` 415 + `lib/routes/system-fonts.js` 520）：
+> （`lib/index.js` 120 行 + `lib/routes/fontsets.js` 415 + `lib/routes/system-fonts.js` 530）：
 > **没有** `src/`、**没有** `dsh.client`、`exports` 里**没有** `'./client'`。
 > 裁决理由：§7.1 自身写着"不动设置面板"，而字体配置面（外观页签字体节 + `selection` 驱动的浏览器通道）
 > 就在设置面板里 ⇒ 声明 `dsh.client` 却没有 `exports['./client']` 会按 `C2` 抛错。
@@ -416,10 +425,26 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
   字体浏览器半边依赖的 `selection`（字体一族 5 个文件引用，`fontset-store` 53 次）/ `weT` /
   `apiFetch`·`apiJson` / `applyEffects` / `hostFailureReason` / `createThemeLayer` 今天全在主包 ——
   注入键集按这份清单设计，别等搬的时候才发现缺键。
-- **按包出产物不许写死两处**：`scripts/build-client.mjs` 的 `SUBPACKAGE_BUILDS`（:509-544）今天只有
-  `packages/fx` / `packages/parallax` 两项；字体包届时只加一条（包级 `src/client.js` + 包内 inline 表
-  ⇒ `lib/client.fonts.js`）⇒ 配方要写成"数据驱动 N 项"，不是再加一个分支。
+- **按包出产物不许写死两处**：构建**配方住在包内**（`packages/<pkg>/client.build.json`：`artifact` /
+  `entry` / `inline[]`），构建器按目录发现、循环处理 ⇒ 新包只加一个配方文件、**不加分支**；
+  字体包届时只加一条（包级 `src/client.js` + 包内 inline 表 ⇒ `lib/client.fonts.js`）。
 - **纪律判据**：`external` / `inject` 的使用面、"无跨包 value import"。
+
+> **落地账（2026-10-15，未提交）**——P-B 主体已落盘；**服务面不在此列**（§5.1 ① 已定，首个客户是 §7.8 层 1）：
+> ① **包发现层** = `test/tools/packages.mjs`（新增）。真源 = 磁盘枚举（`packages/*`、`lib/components/*`）
+> + 根 `cordis.patch.yml` 的行，**不写死名单**；导出 `discoverPackages` / `enumerateViolations`
+> （**纯函数**：生产路径与全部负对照共用同一份判据，防"负对照自己实现了一遍判据"）/ `FLOORS` 地板
+> （包数 / 产物数 / 行数，防静默缩水）；自带 `selftest`（11 条负对照）并**挂硬链**（`VERIFY_STEPS`）。
+> ② **构建配方数据驱动** = `packages/<pkg>/client.build.json` 取代构建器里写死的 `SUBPACKAGE_BUILDS` 表；
+> 产物**逐字节不变**，且"配方读不出 ⇒ 判红并点名该包"的牙保留。
+> ③ **守卫参数化** = `verify-client-sync` 覆盖发现层的**全部**产物（含产物面地板与"每份产物差一字节都判红"
+> 的负对照）；`test/tools/guard-targets.mjs` 的产物面改取发现层（`walk` **仍走磁盘通配、只增不减**，
+> 另加"`packages/` 下每个目录都必须是登记在册的子包"的发散判据，硬牙落在 `verify-subpackage-manifests`）；
+> `test/tools/host-route-index.mjs` 的包 / 行 / 路由面改读发现层，`docs/ROUTE-INDEX.md` **逐字节不变**。
+> ④ `verify-subpackage-manifests` / `verify-scene-live` 原先从**构建器源码文本**里切那张写死的表，
+> 现改读包内配方。
+> **仍未落地**：三份生成物与 `scripts/prepare.mjs` 的口径（§10.1 #10 / #11，已表态）· `#1` 的其余面
+> （`verify-bundle-rows` 仍有意脱链）· 子包独立发布形态（§12）。
 
 ### 7.3 P-C UI 子插件
 
@@ -439,7 +464,15 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 
 文档（`CODE-STRUCTURE` / `HOW-IT-WORKS` / 三份 README / `CONTRIBUTING` / CHANGELOG 四段式）、生成物重算、本文件归档。
 
-### 7.6 **新增判据（四条，现在零覆盖）**
+### 7.6 **新增判据（四条 + 一条包面判据）**
+
+> **✅ 已收口（2026-10-15）**：下面五条**全部落盘并挂硬档**（`test/run-guards.mjs` 的 `VERIFY_STEPS`），
+> 每条自带负对照与真源码变异测试。链成员 / 档位 / 步数以 `test/fixtures/verify-chain.json` 与
+> `test/verify-package-files.mjs` 的 `CHAIN_FLOOR` 为准（本文不抄数）：
+> ① `test/verify-subpackage-boot.mjs` · ② `test/verify-subpackage-client-half.mjs` · ③ `test/verify-subpackage-purity.mjs` ·
+> ④ `test/verify-subpackage-toggle-roundtrip.mjs` · ⑤ `test/verify-subpackage-manifests.mjs`（**包面**：`packages/*/package.json`
+> 与自带 patch 行、根 `exports` 三连对账；2026-10-15 **由 `docs` 软档组升 hard** —— 依据 ADR-0004 的分档判据与
+> [`adr/0014`](../adr/0014-subpackage-contract.md) S3 的档位说明）。
 
 1. **启动自检（宿主）**：主包 `apply` 里主动 resolve 每个子包与其行，失败**大声报错**
    （因为行级失败是静默的，I5）。
@@ -451,7 +484,7 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
    收口（§7.8）后本条必须对字体包**真的生效**（正 / 负对照都要）。
 3. **跨包纯度判据**：子包之间**没有** value import（in-box 靠构建期 gate，我们得自己写）；
    `external` / `inject` 的使用面要与声明一致。
-4. **开关往返判据（新增；§7.0 那条"已成立但零覆盖"的补丁）**：对**每一行**做
+4. **开关往返判据（新增；§7.0 那条"已成立、当时无判据"的补丁，✅ 2026-10-15 已落成 = 本节开头的 ④）**：对**每一行**做
    **关 → 开 → 再关**，每一步都要满足 ① 该行路由整族在场/缺席与声明一致（D3①）；
    ② 可见面按状态面渲染（复用 `verify-component-visibility` 的双向对账）；
    ③ **停用后零残留**：无模块级定时器 / 无人挂 `window` / 客户端无遗留 `style[data-plugin=…]` 与 DOM 节点
@@ -468,10 +501,10 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 外观页签的字体节 + 字体键的所有权（§1.1 的「已可自成一系」按此读）。**不必现在完成**：
 落点挂在 P-B 的能力与 P-C / P-D 的表态之后，它**不阻塞** P-B 开工。
 
-**P-A 实际交付（基线，已落盘）**：`packages/fonts` = 宿主半边 1055 行
-（`lib/index.js` 120 + `lib/routes/fontsets.js` 415 + `lib/routes/system-fonts.js` 520），
+**P-A 实际交付（基线，已落盘）**：`packages/fonts` = 宿主半边 1065 行
+（`lib/index.js` 120 + `lib/routes/fontsets.js` 415 + `lib/routes/system-fonts.js` 530），
 无 `src/`、无 `dsh.client`、`exports` 无 `'./client'`，`dsh` 只有 `bundle.patch`。
-**覆盖率的诚实读法**：按「整个字体自定义」计 ≈ 1055 / ~3700 ≈ **28%**，且搬走的是**没有界面的那一半**。
+**覆盖率的诚实读法**：按「整个字体自定义」计 ≈ 1065 / ~3700 ≈ **29%**，且搬走的是**没有界面的那一半**。
 
 **缺口四块（量化基线）**：
 
@@ -485,7 +518,8 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 **收口分三层（每层都有硬前置，别提前动）**：
 
 1. **层 1 · 能力与面板节（P-B 提供能力，P-C 动手）**
-   - P-B 侧：`SUBPACKAGE_BUILDS`（`scripts/build-client.mjs:509`）改成"数据驱动 N 项"（§7.2）；
+   - P-B 侧：✅ **已落（2026-10-15）** —— 构建配方改住**包内** `packages/<pkg>/client.build.json`，
+     构建器按目录发现、循环处理（"数据驱动 N 项"，§7.2）；
      注入键集按字体半边**真实依赖**设计（`selection` / `weT` / `apiFetch`·`apiJson` / `applyEffects` /
      `hostFailureReason` / `createThemeLayer`）；~~补**仓库根 self-link**（§8.1 追加条）~~
      —— ✅ **已作废（2026-10-15，跨包改走 ① Service）**：子包宿主半边不再裸名 import 主包，
@@ -572,11 +606,11 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 >    `pnpm install` 之后要重建（写成一条可重跑的脚本，别手点）。
 > ⇒ **P-A 的"三行都在场"现在可以当成已成立**（前提：先按第 5 条建 junction）。
 >
-> **追加（2026-10-15，P-A 落盘时的实测缺口）**：`scripts/dev-link-subpackages.mjs` 只建**子包真名**的 junction；
+> ~~**追加（2026-10-15，P-A 落盘时的实测缺口）**：`scripts/dev-link-subpackages.mjs` 只建**子包真名**的 junction；
 > 子包体内若以**裸名**引用主包（`dsh-plugin-wallpaper-engine`），Node 的**包内自引用**并不因此可用 ——
 > 仍需要一条**仓库根 self-link**（`node_modules/dsh-plugin-wallpaper-engine` → 仓库根）。这条今天没建 ⇒
 > `packages/fonts` 的宿主入口**在仓内不能直接跑**（`packages/fonts/lib/index.js:33` 自报同一件事）。
-> 归属：P-B（§7.8 层 1 的第三件前置）。
+> 归属：P-B（§7.8 层 1 的第三件前置）。~~ ⇒ **✅ 已作废，被紧邻的下一条取代**（同一天，通道改走 ① Cordis Service）。
 >
 > **追加（2026-10-15，已消除）**：跨包通道改走 ① **Cordis Service**（§5.1）后，子包宿主半边**零主包说明符**
 > （`test/verify-subpackage-purity.mjs` 的 `ROOT_SPEC_ALLOW` 已收紧为零）⇒ 这条 self-link 边不存在了：
@@ -666,18 +700,18 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 
 | # | 文件 / 判据 | 现假设 | 要改成 |
 |---|---|---|---|
-| 1 | `test/tools/host-route-index.mjs` | `PKG_MAIN` = 本包 `main`；**单份** patch；`<pkg>/<sub>` → `lib/components/<sub>/index.js` | **包清单 → 每包的 main + patch + 行**；**全部下游守卫的根，改它要最后验收** |
+| 1 | `test/tools/host-route-index.mjs` | `PKG_MAIN` = 本包 `main`；**单份** patch；`<pkg>/<sub>` → `lib/components/<sub>/index.js` | **包清单 → 每包的 main + patch + 行**；**全部下游守卫的根，改它要最后验收** —— ✅ **已落（2026-10-15，未提交）**：包 / 行 / 路由面改读**包发现层** `test/tools/packages.mjs`，生成的 `docs/ROUTE-INDEX.md` 逐字节不变 |
 | 2 | `test/verify-bundle-rows.mjs` ⚠️ **不在守卫链上**（有意脱链，两条理由都在该守卫自己的注释里：① 它 import 宿主 peer 包 `@deepseek-ai/cordis`，而 CI 是 `npm ci --omit=peer`；② `verify-package-files` 的 P5 明令链上脚本不许有裸包依赖） | 仓库根**恰好一份** patch；恰好一行裸包名；其余行 `startsWith(BARE + '/')` | 按包枚举；行命名空间断言按包重写；组件的"图标与包根字节相同"对独立包不成立。**改它时 CI 不会拦 ⇒ 每阶段必须手动跑 `node test/verify-bundle-rows.mjs`** |
 | 3 | `test/verify-inject-contracts.mjs` | 扫描面按磁盘枚举派生；三条哨兵地板 = 模块数 / 声明键数 / 调用点数（**具体数字以该文件为准，本文不抄**） | 扫描面按包派生；三条哨兵按新结构重算（**最容易假绿的一处**） |
 | 4 | `test/verify-component-face.mjs` | 组件目录固定在 `lib/components/`；内核分级面已**读真源现算**（`KERNEL_STABLE_FACE` / `lib/kernel/*`），数字不写死 | 目录集合按包；若走 §5.1 ①（Service）则分级面复算口径同步 |
 | 5 | `test/verify-route-ownership.mjs` | `lib/components/<sub>/index.js` 硬路径；地板 `>=2` | 行→入口的解析改成"读各包 `exports`/`files`" |
 | 6 | `test/verify-package-files.mjs` / `verify-package-publish.mjs` | **单份** `files` / `main` / `scripts`；链步地板 = `CHAIN_FLOOR`（`verify` / `docs` / `smoke` / `all` 四组，数字以该文件为准）；入口清单写死 | 参数化成"每包跑一次"或拆两套；地板表按包组重算 |
 | 7 | `test/verify-retired-lines.mjs` | 扫描面地板按**顶层目录**计数（`lib`/`src`/`test`/`scripts`） | 新顶层目录要登记 |
-| 8 | `test/tools/guard-targets.mjs` | `walk(src)+walk(lib)`；`ARTIFACT='lib/client.js'` | 按包；产物 N 个 |
+| 8 | `test/tools/guard-targets.mjs` | `walk(src)+walk(lib)`；`ARTIFACT='lib/client.js'` | ✅ **已改（2026-10-15，未提交）**：产物面 = 发现层 `clientPackages`（N 份，非主包产物不再靠四条字面量规则各认一次）；`walk` **保持磁盘通配**（守卫的面只许涨、不许随包清单缩）＋"`packages/` 下每个目录都必须是登记在册的子包"发散判据 |
 | 9 | `test/verify-module-layout.mjs` | 共享内核白名单**只许一项** | 若走 §5.1 出路 ② 要放宽并写理由 |
-| 10 | 三份生成物（`ROUTE-INDEX` / `GUARD-MAP` / `TOKEN-CONTRACT`） | 逐字节对账、单份 | 决定"每包一份还是仓库一份" |
-| 11 | `scripts/prepare.mjs`（`prepack`） | 源码与产物同包根、只有一份 | 按包循环或只挂主包 |
-| 12 | 读 `package.json` 的 `test/` + `scripts/` 文件（复算：`Select-String -Path test\*.mjs,scripts\*.mjs -Pattern package\.json`） | 单包 | 同 #1（先做"包发现"层） |
+| 10 | 三份生成物（`ROUTE-INDEX` / `GUARD-MAP` / `TOKEN-CONTRACT`） | 逐字节对账、单份 | **已决（2026-10-15）：仓库一份**，不按包拆分。理由：这三份是**全仓视图**（全部路由 / 全部守卫×全部模块 / 全部 token），单份才谈得上逐字节对账；按包拆会把"跨包重复登记或漏登记"正好放进无人对账的缝里。子包的面已经通过**行 ⇄ 包 ⇄ 产物**进单份生成物（发现层已是它们的输入，见 #1 / #8） |
+| 11 | `scripts/prepare.mjs`（`prepack`） | 源码与产物同包根、只有一份 | **已决（2026-10-15）：只挂主包**。理由：构建入口仍是主包的 `scripts/build-client.mjs`（配方虽住在包内，构建器只有一个）；子包 `files[]` **不含 `src/`** ⇒ 子包发布面里没有源码，`prepack` 无活可干。**前置**：子包独立发布时（§12）必须在打包前先跑一次主包构建，把 `packages/<pkg>/lib/client.<pkg>.js` 产出到盘上 —— 该条留到发布阶段收口 |
+| 12 | 读 `package.json` 的 `test/` + `scripts/` 文件（复算：`Select-String -Path test\*.mjs,scripts\*.mjs -Pattern package\.json`） | 单包 | 同 #1（先做"包发现"层）—— ✅ **包发现层已落（2026-10-15，未提交）**：`test/tools/packages.mjs`；下游读 `package.json` 的判据（#1 / #8 / #10）按它取包面 |
 | 13 | `test/verify-settings-schema-exports.mjs` 的**扫描面自检**（`gitViewDiff` + `allowedExtra`） | 只豁免**一个**产物 `lib/client.js` ⇒ P-A 的两个子包产物（`packages/<pkg>/lib/client.<pkg>.js`，被 `.gitignore` 排除）一律按"脏面"判红 | ✅ **已修（2026-10-15）**：豁免名单改成**从各包 `package.json` 的 `exports['./client']` 现算**，并加"逐条来自包清单（含 `dsh.client`）"自检 + "同族但不在名单里的产物名仍判红"负对照 |
 | 14 | 根清单 `dependencies`（P-A 把三条子包依赖写进清单、**没动** `package-lock.json`） | 「清单改了 lock 必须同步」才是**能装**的声明 —— `npm ci` 把清单当理想树去 registry 解析；未发布的包锁不出来 | ✅ **已修（2026-10-15）**：① 子包未发布期间**不写进 `dependencies`**，改用 `devDependencies` + `file:packages/<pkg>` 开发期链接（`npm ci` **不 omit dev** ⇒ 干净检出装出链接；dev 不进发布清单 ⇒ 用户侧看不到 `file:` 规格；发布形态仍按 §12 第 1 条）；② `test/verify-package-publish.mjs` 新增 ⑧「根清单 ⇄ `package-lock.json` 同步」判据（含覆盖面自检 + 五种漂移负对照）—— 实测把 `3842584e` 的清单放回去，⑧ 立刻红并点出三条 `锁里缺 …@1.3.3` |
 | 15 | 三条子包依赖从清单删掉后，**运行期**的启动自检在干净检出里红（`lib/subpackage-boot.js:226`「子包启动自检失败：3 个子包行解析不到」），CI `verify` 第 7 步（`test/verify-scene.mjs`）短路 | dev 期子包必须**装得进 `node_modules`**：`devDependencies` + `file:packages/<pkg>`（见 #14） |
@@ -685,14 +719,14 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 
 ### 10.2 顺序纪律
 
-1. **先落"包发现"层**（枚举本仓有哪些包：读各包 `package.json` 的 `dsh.bundle` / `dsh.client`）；
+1. **先落"包发现"层**（枚举本仓有哪些包：读各包 `package.json` 的 `dsh.bundle` / `dsh.client`）——✅ **已落（2026-10-15，未提交）**：`test/tools/packages.mjs`（真源 = 磁盘 + 根 patch 行、不写死名单；带 `FLOORS` 地板与 11 条负对照，自检挂硬链）；
 2. 再改 **#1**（数据驱动的根）；
 3. 然后逐个改下游守卫，**每改一个都要证明"牙还在"**（负对照 + 变异测试）；
 4. 生成物用 `--write` 重算，禁手改；
 5. **靠 `git ls-files` 对账的自检必须在 git 可用的环境里跑过一次**：DSH 沙箱禁子进程时 `repo-face.mjs` 报**具名 SKIP**
    （`fatal:EPERM`）⇒ 本机全绿**不等于** CI 全绿。实测代价：P-A 落地后本机 82/82 绿，提权后第 63 步立刻红
    （CI `verify.yml` 先 `npm run build` 再 `npm run verify` ⇒ 产物一定在场），即 §10.1 #13 那一处。
-6. **改根清单必须同一次提交重算锁文件**：`dependencies` / `devDependencies` / `peerDependencies` 任何一格与 `package-lock.json` 根条目漂移，`npm ci` 就会拿清单去 registry 解析 ⇒ 未发布的包当场 404（P-A 实测：`3842584e` 本机 82/82 全绿、CI 的 install 步两条腿同时红）。判据在 `test/verify-package-publish.mjs` ⑧。子包未发布期间**不写进 `dependencies`**，改用 `devDependencies` + `file:packages/<pkg>`（§10.1 #14），主包自链 `file:.`（§10.1 #16）。
+6. **改根清单必须同一次提交重算锁文件**：`dependencies` / `devDependencies` / `peerDependencies` 任何一格与 `package-lock.json` 根条目漂移，`npm ci` 就会拿清单去 registry 解析 ⇒ 未发布的包当场 404（P-A 实测：`3842584e` 本机 82/82 全绿、CI 的 install 步两条腿同时红）。判据在 `test/verify-package-publish.mjs` ⑧。子包未发布期间**不写进 `dependencies`**，改用 `devDependencies` + `file:packages/<pkg>`（§10.1 #14）；主包自链 `file:.` **已删**（§10.1 #16 / §8.1 的 2026-10-15 追加）。
 7. **彩排副本必须建在仓库树之外**：Node 解析 `node_modules` 是**逐级向上**的 ⇒ 副本若嵌在仓库里（如 `.integration-notes/scratch/`），会命中仓库自己的 `node_modules`（含 `scripts/dev-link-subpackages.mjs` 建的链接）⇒ verify **假绿**。实测代价：第一轮彩排 `npm ci`/`build`/`verify`/`smoke` 全 0，把同一份内容 `git archive` 到 `%TEMP%` 后立刻逐字复现 CI 的 `✗ [7/67]`。
 
 ---
@@ -759,7 +793,7 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 
 | # | 未完成项 | 位置 | 为什么留到现在 |
 |---|---|---|---|
-| R-1 | **注册记账缺口**：`disposers.push(webServer.register({…}))` 是**一个表达式** ⇒ `register()` 抛错时 `push` 未执行，那条**已进宿主路由表**的路由没有任何 disposer 记录它，之后谁调 `teardown()` 都撤不掉（下次启用撞 `duplicate … route`）。组件层的 `try/catch` 只兜住"后续族抛错"，兜不住"本族这一条抛错" | 22 个族共 42 处（`git grep -c "disposers.push(webServer.register" -- lib`） | 试过用叶子模块 `registerRoute(webServer, row)` 统一包一层，但有的族**完全不写 import**（`lib/routes/media-bytes.js`、`lib/routes/inventory.js`）⇒ 要么改 22 处 `c` 契约、要么撞"解构须在函数体首部"的判据；收益/风险比不划算，已完整回退 |
+| R-1 | **注册记账缺口**：`disposers.push(webServer.register({…}))` 是**一个表达式** ⇒ `register()` 抛错时 `push` 未执行，那条**已进宿主路由表**的路由没有任何 disposer 记录它，之后谁调 `teardown()` 都撤不掉（下次启用撞 `duplicate … route`）。组件层的 `try/catch` 只兜住"后续族抛错"，兜不住"本族这一条抛错" | 20 个文件共 40 处（复算：`git grep -c "disposers.push(webServer.register" -- lib \| wc -l` = 20 文件；把 `-c` 换成 `-h` 再 `wc -l` = 40 处） | 试过用叶子模块 `registerRoute(webServer, row)` 统一包一层，但有的族**完全不写 import**（`lib/routes/media-bytes.js`、`lib/routes/inventory.js`）⇒ 要么改 20 处 `c` 契约、要么撞"解构须在函数体首部"的判据；收益/风险比不划算，已完整回退 |
 | R-2 | `components` 字段把组件 `apply` 抛错**原文**回给客户端（可能含绝对路径） | `lib/routes/diag.js`、`lib/routes/inventory.js`（经 `lib/host-boot.js` 的 `markComponentFailed`） | 本提交新增的唯一暴露面，属低危信息暴露 |
 | R-3 | 提交信息声称"跨包只走 Cordis 服务，**禁模块级单例与直接 import**"与实现不符：组件入口直取 `../../host-boot.js`、`../../kernel/*`、`../../http-body.js`、`../../json-response.js`，并复用模块级 `hostKernel` 单例与三本模块级可变账本 | `lib/components/*/index.js` | 与 §5.1 的决策（先走叶子 import）**一致**、与 §5.2 禁止清单和提交信息**冲突** ⇒ 是口径问题，需要一次表态（改实现还是改口径） |
 | R-4 | 链的顺序/档位只在**软档** `verify-guard-chain` 钉，而 CI 该步 `continue-on-error` ⇒ 交换前两步时硬档全绿 | `test/run-guards.mjs`、`.github/workflows/verify.yml` | §10.2 顺序纪律目前靠注释与软档，不靠硬档 |
@@ -769,7 +803,10 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 | R-8 | 三条[既有]暴露面（**早于本提交**，未被本提交放大）：① `GET /cache-dir/browse?path=<任意绝对路径>` 无目录围栏、无参时回 `homedir()`；② `/api/local-assets` 注册在 harness `/api` 命名空间内，因"最长 prefix 胜"绕过 harness 的 `isTrustedApiRequest`+BrowserAuth，并回 WE 安装绝对路径；③ 围栏 403 把请求路径**原文反射**进 body 且无 `Content-Type`/`nosniff` | `lib/routes/cache-dir.js`、`lib/routes/we-assets.js`、`lib/routes/scene-serve.js`、`lib/serve.js` | 不属于"拆包引入的回归"，但建议单独立项（①②的处置优先级高于③） |
 | R-9 | 升级回归已修但**判据面**仍薄：旧版 faststart 副本的第二清扫根靠 `test/verify-mp4-vfs.mjs` 的 G 节（真跑 `createHostSession`）钉住；同类"从内核对象解构出 `undefined`"的形态**没有通用判据**（`verify-undefined-refs` 只认 node 内置/宿主 API 名） | `lib/kernel/host-session.js`、`test/verify-undefined-refs.mjs` | G 节只覆盖这一条接线；通用形态需要另一个判据（"内核键面 ↔ 解构面双向对账"） |
 
-> **复算入口**：`node test/run-guards.mjs all`（现为 78/78）·`node test/verify-inject-contracts.mjs`·
+> **2026-10-15 复核：本节九条均未消解** —— 本轮落的是 P-B 基础设施（包发现层 / 构建配方 / 守卫参数化），
+> 与 R-1…R-9 **不同族**；R-1 的两处实测数字已按复算命令更正（见上表）。
+>
+> **复算入口**：`node test/run-guards.mjs all`（步数见 `test/verify-package-files.mjs` 的 `CHAIN_FLOOR`，本文不抄数）·`node test/verify-inject-contracts.mjs`·
 > `node test/verify-route-ownership.mjs`·`node test/verify-mp4-vfs.mjs`（G 节）·`node test/verify-types.mjs`（P6b）。
 > **注意**：R-1 与 R-8 的复现需要真跑（前者构造一次 `register()` 抛错，后者构造一条带 `..`/盘符的请求），
 > 不能只看 `git grep` 就下结论。

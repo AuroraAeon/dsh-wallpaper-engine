@@ -112,6 +112,12 @@
 
 ### S3 清单契约
 
+**档位（2026-10-15 收口）**：本节全部机器判据挂**硬档**，在 `test/run-guards.mjs` 的 `VERIFY_STEPS` 里。
+按 [ADR-0004](./0004-two-tier-guard-verification.md) 的分档判据（"失败时用户会不会看到错的行为"），清单面
+是**发布面 / 打包面**：版本漂离主包、peer 范围与主包不逐字相等（I6：宿主整次安装被拒 + 回滚）、
+`dsh.client` ⟺ `exports['./client']` 失配（C2：浏览器半边静默不加载）**都是用户侧后果**。
+此前它挂在 `docs` 软档组里，包面回归不会让 `npm run verify` 变红 —— 那是分档错位，不是有意豁免。
+
 - **S3.1 [机器判：verify-subpackage-manifests]** `name` === 主包 `name` + `-` + 目录名，且 ≠ 主包名
   （否则 Node 的最近清单解析会把主包劫持到子目录）。
 - **S3.2 [机器判：同上]** `version` === 主包 `version`（**同号**；宿主不校验包组版本一致，
@@ -211,9 +217,10 @@
 
 - **S10.1 [机器判：verify-subpackage-manifests]** 每个子包在 `lib/subpackage-boot.js` 的
   `SUBPACKAGE_KEY_TABLE` 里恰好一项（键 = 子包 id），无多余项。
-- **S10.2 [机器判：同上]** 有 `dsh.client` 的包必须在 `scripts/build-client.mjs` 的
-  `SUBPACKAGE_BUILDS` 里有一项，且 `artifact` === 该包 `exports['./client']` 目标、产物在盘；
-  没有 `dsh.client` 的包**不得**出现在该表。
+- **S10.2 [机器判：同上]** 有 `dsh.client` 的包必须有一份**包内构建配方**
+  `packages/<pkg>/client.build.json`，且其 `artifact` === 该包 `exports['./client']` 目标、产物在盘；
+  没有 `dsh.client` 的包**不得**有该配方。（2026-10-15：配方原先是 `scripts/build-client.mjs` 里写死的
+  `SUBPACKAGE_BUILDS` 表，改成包内文件后"新增一个包要不要动构建器"这个问题消失 —— 判据口径不变。）
 - **S10.3 [人工]** 其余登记点：自带 `cordis.patch.yml`、`icon.png`、`locale/{en,zh}.json`、
   主包 patch 行、主包清单（S8.1/S8.2 两态）、`package-lock.json`、`lib/routes/`、
   守卫的**数据驱动发现面**（无需手改：`test/tools/host-route-index.mjs` 按 `packages/*` 清单枚举）、
@@ -222,7 +229,7 @@
   以及**人工更新** `docs/SUBPACKAGE-GRAPH.md`（D4）。
 
 - **判据的覆盖面地板（防恒真）**：`verify-subpackage-manifests.mjs` 在任一次枚举结果为空或明显不足时判红 ——
-  `packages/` 目录、主包 patch 的真名行、两张声明面表（`SUBPACKAGE_KEY_TABLE` / `SUBPACKAGE_BUILDS`）
+  `packages/` 目录、主包 patch 的真名行、`SUBPACKAGE_KEY_TABLE` 与**各包配方** `client.build.json`
   读不出来都算 —— **不许**静默跳过：恒真的判据比缺失的判据更坏（它会谎报“已覆盖”）。
 
 ## 现状偏差（待统一，按 S 编号）

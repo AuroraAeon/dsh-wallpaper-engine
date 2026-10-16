@@ -336,7 +336,12 @@ async function main() {
     // smoke 5→6、all 29→77（再 77→78，随 docs 那条）。
     //  再：verify 63→67 / all 78→82 —— 新增四条子包判据（subpackage-boot / -purity / -client-half /
     // -toggle-roundtrip，见 run-guards.mjs 的 VERIFY_STEPS 清单）。收紧后"删一步即红"由下面的负对照钉住。
-    const CHAIN_FLOOR = { verify: 67, docs: 8, smoke: 6, all: 82 };
+    //  再：docs 8→7 / verify 67→68 —— `verify-subpackage-manifests`（子包包面）由软档升 hard
+    // （ADR-0004：清单面属发布面 / 打包面，用户侧后果见 adr/0014 S3 的档位说明）；all 不变。
+    //  再：verify 68→69 / all 82→83 —— 新增 `test/tools/packages.mjs selftest`（包发现层自检：
+    // 上面一批包面判据与 `scripts/build-client.mjs` 都读它，属"判据底座的底座"；档位依据同
+    // `js-text` selftest —— 它坏了会让一整批判据静默失真）。
+    const CHAIN_FLOOR = { verify: 69, docs: 7, smoke: 6, all: 83 };
     /** 地板表与 GROUPS 的对齐体检：键名必须与**组名**逐一对齐（纯函数 ⇒ 负对照可直接喂）。 */
     const floorGaps = (groups, floors) => groups.map(([, g]) => g).filter((g) => !Number.isInteger(floors[g]));
     const problems = floorGaps(GROUPS, CHAIN_FLOOR).map((g) => '地板表缺组 ' + g
