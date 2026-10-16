@@ -1303,7 +1303,7 @@ console.log('\n⑨ W5：各面的锚点门控覆盖率（防"关掉后还剩一�
     // 标题栏：与左栏同族的"乙类"面，门是 body[data-we-titlebar-glass]
     // （开关），另加 html[data-windows-titlebar]（壳层形态锚，只出现在 Windows Electron）。
     // ⚠️ member 必须是**这一面自己的选择器形态**（顶栏那个 CSS 模块哈希类名的子串
-    //    `div[class*="pI_x6G_frame"]`，见 src/styles.js:1177），**不能**写成门控属性本身 ——
+    //    `div[class*="pI_x6G_frame"]`，见 src/styles-sidebar.js 的标题栏 `::before` 规则），**不能**写成门控属性本身 ——
     //    两者写成同一条正则时，"这条规则丢了门控"会让它同时不再是 member ⇒ ungated 恒空、
     //    该面的 W5 判据**不可能红**（正是这条要防的失效模式：锚点外新增一条同面规则）。
     { id: 'titlebar-override', member: /pI_x6G_frame/, anchor: /data-we-titlebar-glass/, done: true },

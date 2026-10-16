@@ -73,7 +73,8 @@
   外部说明符是 `require("<主包真名>")`。
 
 禁止边一律写进判据，不靠人记：子包 → 主包的任何 **value import**（含相对路径进主包目录）、
-子包 → 子包、主包 → 子包实现文件（主包只能经**行名**加载子包）、子包 → 共享内核的第二次持有。
+子包 → 子包、主包 → 子包实现文件（主包只能经**行名**加载子包 —— 这条**按行名**的 value import
+是**宿主装载面**，不是跨包通道，受控例外见 S5.3）、子包 → 共享内核的第二次持有。
 
 ### D3 —— 判据只加在代码与磁盘上
 
@@ -173,6 +174,12 @@
   构建期发出的 `require("<主包真名>")`；源码面（`src/**`）不许写 `require`/`import`。
 - **S5.3 [机器判：verify-subpackage-purity.mjs]** 禁止边：子包 → 子包、子包 → 主包任何 value import、
   子包 → 共享内核的第二次持有（共享内核只许主包一份）。
+  - **受控例外（宿主装载面，2026-10-16 P-F 三格出户起）**：主包门面按**行名（裸包名）** value import
+    出户组件（`lib/index.js` 的 `import { applyImpl as … } from 'dsh-plugin-wallpaper-engine-<pkg>'`）
+    **不属**跨包通道 —— 它是门面按组件名加载实现的**宿主装载面**；跨包通道只有
+    `ctx.wallpaperEngineHost`（S5.1 / S5.2）。该边规格两态承接：开发期 = 根 `devDependencies` 的
+    `file:packages/<pkg>`（S8.1），发布期 = 主包 `dependencies` 的**同号精确版**（S8.2）。
+    依赖图 `docs/SUBPACKAGE-GRAPH.md` 的登记点"边 5"据此标为**已落例外**（不是禁止边）。
 - **S5.4 [机器判：verify-subpackage-boot.mjs / verify-inject-contracts.mjs]** 服务面形状固定：
   服务名 `wallpaperEngineHost`，值 = `createSubpackageHost()` 的**冻结六键**
   `ids / keyNames / keys / handOff / schema / http`；键集与该包在
@@ -244,7 +251,7 @@
 | 条款 | 现状 | 目标 | 是否阻塞 |
 |---|---|---|---|
 | S3.8 | ✅ **已消除**（2026-10-15）：三份清单落在同一模板上，`files` 统一为单行且在 `dsh` 块之后 | —— | —— |
-| S3.9 / S9.1 | `packages/**` **已收口**（2026-10-15：10 处带文件名 + 60 处裸章节号/决策号，改引本 ADR 的 `S*` 或 `ADR-0013 D*`；没有对应条款的**删引用保原意**）。**剩余引用面**：`lib/**` 7 处 / 6 文件、`src/**` 3 处、`scripts/**` 5 处 / 2 文件、`test/**` 15 处 / 13 文件（复算：`git grep -nE 'docs/wip|BUNDLE-SPLIT' -- test`）、活 md（`docs/ARCHITECTURE-SPLIT.md:63/:127/:182`、`docs/adr/0013-bundle-multi-component-rows.md:16/:22/:96/:210`）、根 `cordis.patch.yml:48`。全仓惯例形的 `mNNNNN` 消息引用与阶段号（`P2-7A` 等，`lib/**` 21 处 + `packages/**` 2 处）**不计入**本条款；2026-10-15 用户裁决 = 阶段号**暂保持现状**，不逐个改 | 剩余面按同一规则改引 `S*`（或删引用保原意）；`docs/wip/` 归档前必须完成 | 不阻塞，但 wip 归档前必须改 |
+| S3.9 / S9.1 | `packages/**` **已收口**（2026-10-15：改引本 ADR 的 `S*` 或 `ADR-0013 D*`；没有对应条款的**删引用保原意**）。**剩余引用面**（复算：`git grep -nE 'docs/wip\|BUNDLE-SPLIT' -- lib src scripts test cordis.patch.yml`；活 md 用同一模式加 `-- docs` —— 只数条数、不抄行号，行号必漂）。全仓惯例形的 `mNNNNN` 消息引用与阶段号（`P2-7A` 等）**不计入**本条款；2026-10-15 用户裁决 = 阶段号**暂保持现状**，不逐个改 | 剩余面按同一规则改引 `S*`（或删引用保原意）；`docs/wip/` 归档前必须完成 | 不阻塞，但 wip 归档前必须改 |
 | S3.4 | ✅ **已收口（2026-10-16，P-C 第一刀）**：字体包不再是 host-only —— 它现在有浏览器半边（`src/client.js` + 外观页签字体节 + 字体集编辑器，产物 `lib/client.fonts.js`）⇒ 声明 `dsh.client` 且 `exports['./client']` 两向齐。host-only **形态本身仍然合法**（本条只描述现状；"不许用空 `./client` 假装统一"的口径不变） | —— | —— |
 | S8.2 | 发布形态**尚未执行过**（三包都在开发期形态）；执行者 = 发布者的人工步骤（本仓不设发布脚本） | 人工执行 + 离线门只钉**形态自洽**（`verify-package-publish.mjs` ⑨：全有或全无，混态判红） | 已定（人工门） |
 

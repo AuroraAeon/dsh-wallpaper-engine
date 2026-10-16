@@ -2236,7 +2236,7 @@ check('host injects the engine shim into web HTML', /data-we-shim="host"/.test(s
 // ── 网页壁纸的**帧级夺焦围栏**（lib/we-focus-guard.js）────────────────────────────
 // 现象：播某些网页类壁纸时，DSH 的输入框 / 下拉选择框 / 左下角账号菜单每点一次就丢焦点 ——
 // 与点击位置无关、与组件类型有关（只有"必须持有键盘焦点才正常"的控件看得出来）。
-// 机制：宿主 window 捕获相把每次真实 mousedown 注入渲染页（src/live-layer.js:1178-1238，且只在
+// 机制：宿主 window 捕获相把每次真实 mousedown 注入渲染页（src/live-layer-pointer.js 的 `ensureLivePointer()`，且只在
 // `selection.sceneLiveActive` 时发 ⇒ 暂停即停）→ 严格沙箱下经 web-shim 的 op 通道 → shim 用
 // elementFromPoint + dispatchEvent 在壁纸文档里合成 pointer/mouse（isTrusted === false）→ 作者在
 // 捕获相 mousedown 里调 window.focus() 争键盘 ⇒ DSH 的焦点被搬进壁纸帧。
@@ -5365,7 +5365,7 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
       // ⚠️ 四个区域距离必须**显式补齐**：`cleared` 那一步换掉的对象只剩 `parallaxEnabled`
       // ⇒ `parallaxSettings()` 的四条 `weClampTo(...)` 全部落到各自的**兜底常数**
       // （`PARALLAX_GROUP_CHAT` 1.2 / `COMPOSER` 1.8 / `SIDEBAR` 1.6 / `BUBBLE` 1.4，见
-      // `src/parallax-layer.js:172-175` 与 `:317-324`）—— 那样"会话基准"就不是 1.0 档、
+      // `packages/parallax/src/parallax-layer.js` 的这四枚常数与 `parallaxSettings()` 里那四条 `weClampTo(...)`）—— 那样"会话基准"就不是 1.0 档、
       // "输入卡片"也不是 1.5 档，下面所有分档断言全部对着错的档位（踩过：composer 读成 1.8 档
       // = −29，而判据在等 1.5 档 = −24）。
       globalThis.selection.parallaxUiChatDepth = 1;
@@ -5393,7 +5393,7 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
       //    不成立，删掉不改变任何可达形态 ⇒ 那个方向由源码结构那条判据钉。）
       //    ⚠️ 位移落在哪一层：`mkGroup` 给的出口已经是 `display: contents`（照宿主 ANCHOR_STYLE），
       //    所以 `parallaxGroupBox()` 会走过出口、把记录与位移都落在**父盒子上**
-      //    （`src/parallax-layer.js:589-614`）⇒ 读数一律读 `.box` 的 `translate`，出口那份 props
+      //    （`packages/parallax/src/parallax-layer.js` 的 `parallaxGroupBox()`）⇒ 读数一律读 `.box` 的 `translate`，出口那份 props
       //    永远没有 translate（老腿里"出口无 translate"那条断言因此是恒真的，改读盒子才有牙）。
       const composerAttr = mkGroup({ 'data-composer-card': '' });
       docGroups.push(composerAttr.outlet);
@@ -5532,7 +5532,7 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
     // 三号模块的岛：注册表项形状 + 「关着只画总开关、开着才画 3 个参数」这条可见行为。
     // 与另两个模块同一张注册表 ⇒ id 必须唯一（'parallax'），title/desc 取的就是译文。
     // 单独 import 时 `PARALLAX_PLUGIN_DEFAULT` / `PARALLAX_GROUP_DEPTH_MIN` / `PARALLAX_GROUP_DEPTH_MAX`
-    // 在**构建期**是同一作用域的兄弟模块符号（src/parallax-layer.js 里那三枚）⇒ 按内联规则补替身。
+    // 在**构建期**是同一作用域的兄弟模块符号（packages/parallax/src/parallax-layer.js 里那三枚）⇒ 按内联规则补替身。
     // 缺省值有导出、直接取层本尊；钳制范围那一对层**不导出** ⇒ 从层源码里现读（`const NAME = N;`，
     // 顺手把"面板回显的范围就是层那一对常量"钉住），值都是现取的、这里不抄数。
     const PREV_PLUGIN_DEFAULT = globalThis.PARALLAX_PLUGIN_DEFAULT;

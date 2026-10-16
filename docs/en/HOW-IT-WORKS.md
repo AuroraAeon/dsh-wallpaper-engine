@@ -69,7 +69,7 @@ with the document.
 
 ### Scene rendering: how it works
 
-Scenes are rendered live by the bundled **WebWallGL engine** (vendored under `lib/webwallgl/`; it parses
+Scenes are rendered live by the bundled **WebWallGL engine** (the engine itself comes from the npm dependency `webwallgl`; `lib/webwallgl/` holds only this repo's adapter page — see above; it parses
 `scene.pkg` / loose `scene.json` itself and replays the object tree, textures, particles and shaders,
 preferring the GPU and falling back to software): in WebGL2 it renders every image layer in real time
 (shader effects such as waterwaves / waterripple translated from HLSL and executed on the GPU), puppet

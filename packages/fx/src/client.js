@@ -1,7 +1,7 @@
 /**
  * packages/fx/src/client.js —— 「点击效果与拖尾效果」子包的**浏览器半边入口**（拆包草案，task-3）。
  *
- * 构建期形状（与主 bundle 同一套，见 scripts/build-client.mjs:541-565 / stripHeader:792）：
+ * 构建期形状（与主 bundle 同一套，见 scripts/build-client.mjs:541-565 / stripHeader:850）：
  *   · 本文件 = 入口（对应主 bundle 的 src/client.js）。构建期只取**首个块注释之后**的正文；
  *   · 包内 INLINE_MODULES（src/fx-layer.js、src/ext-fx.js）被内联到正文**之前**，与正文同一个
  *     factory 作用域 ⇒ 那两份里的裸名（selection / weT / React …）由本文件的 prelude 与构建期
@@ -59,14 +59,17 @@ const {
 
 /* ===== 贡献（主 bundle 的 extensionModules() 改成读注册表，本包是首个贡献点）===== */
 
-// ① 「扩展」页签的二号模块描述符。主包 src/panel-tabs.js:261 今天写死
-//    `return [AVATAR_EXTENSION_MODULE, FX_EXTENSION_MODULE, PARALLAX_EXTENSION_MODULE];`
-//    改成读注册表后，这一行就是它的来源。id='fx' 是**页签内**的模块 id（resetGroup 同为 'fx'），
-//    与包名无关，保持零迁移。
+// ① 「扩展」页签的二号模块描述符（order 2）。主包 src/panel-tabs.js:274-276 自 P-A 起不再硬编码清单
+//    （原文为 `return [AVATAR_EXTENSION_MODULE, FX_EXTENSION_MODULE, PARALLAX_EXTENSION_MODULE];`，
+//    见 3842584e 前 :261；此处引文保留为"已删除历史"标注）；页签改为 extensionModules() →
+//    weExtensionModules() 只问注册表（src/extension-registry.js:89-97），本行登记即它的来源。
+//    id='fx' 是**页签内**的模块 id（resetGroup 同为 'fx'），与包名无关，保持零迁移。
 registerExtensionModule('fx', FX_EXTENSION_MODULE);
 
-// ② 行为层的生命周期。主包 src/client.js 今天对这几个裸名有 3 处直接引用，拆包后必须走注册表：
+// ② 行为层的生命周期。P-A（3842584e）之前主包 src/client.js 曾有 3 处裸名直接引用：
 //      5365 `const unsubFx = subscribe(syncFxLayer);` · 5492 `syncFxLayer();` · 5536 `disposeFxLayer();`
+//    P-A 起这些引用已删除，改由注册表转发：本行 registerLayerHooks 登记后，主包 :5383 attachLayer
+//    里 `subscribe(hooks.sync)`、:5512 挂载对时 `hooks.sync()`、:5559 拆卸时 `hooks.dispose()` 逐层调用。
 //    sync 由主包在 sel 变化 / 订阅回调里调用，dispose 由主包在行停用时调用（主包侧替本包起停 rAF
 //    的"内容驱动"节奏不变）。本包不自建订阅、不自起定时器（ADR-0014 S6.3）。
 registerLayerHooks('fx', { sync: syncFxLayer, dispose: disposeFxLayer });

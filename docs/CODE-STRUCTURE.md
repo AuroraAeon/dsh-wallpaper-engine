@@ -41,7 +41,7 @@
 | | **随包发布** | **不发布（开发面）** |
 |---|---|---|
 | **浏览器进程** | `lib/client.js` —— **生成物，全仓唯一一个** | `src/**` —— 浏览器侧的**唯一真源** |
-| **宿主进程**（Node / Electron main） | `lib/index.js` ＋ 它 import 的 `lib/**` 模块 ＋ `lib/webwallgl/`（第三方副本；`lib/vendor/` 是**约定**允许的另一个落点，当前为空——最后一份自带副本已随其唯一消费者退役） ＋ `lib/types/` | **`test/`（守门：`verify-*` + `*-smoke` + `e2e-*`）· `test/tools/`（诊断/分析/生成工具）** · `scripts/`（只有 `build-client` / `prepare`，构建与发布期用）· `docs/` ＋ 本机未跟踪的研究 / 取证目录（由忽略规则覆盖，**不入库、也不被入库文档引用**） |
+| **宿主进程**（Node / Electron main） | `lib/index.js` ＋ 它 import 的 `lib/**` 模块 ＋ `lib/webwallgl/`（本仓渲染页适配层：`index.html` + `renderer.js` + `occlusion-bridge.js`；引擎本体走 npm 依赖 `webwallgl`，运行期由 `/scene-live/engine/` 从 `node_modules` 直出；`lib/vendor/` 是**约定**允许的另一个落点，当前为空——最后一份自带副本已随其唯一消费者退役） ＋ `lib/types/` | **`test/`（守门：`verify-*` + `*-smoke` + `e2e-*`）· `test/tools/`（诊断/分析/生成工具）** · `scripts/`（只有 `build-client` / `prepare`，构建与发布期用）· `docs/` ＋ 本机未跟踪的研究 / 取证目录（由忽略规则覆盖，**不入库、也不被入库文档引用**） |
 
 ### 1.1 一份代码，两个半边（两种运行形态）
 
@@ -68,7 +68,7 @@ graph TB
         ROUTES["lib/routes/*<br/>按职责分族的路由注册"]
         MEDIA["lib/media/*<br/>媒体桥与按需运行时"]
         SCAN["扫描链<br/>Steam → libraryfolders.vdf → 壁纸枚举"]
-        WEB["lib/webwallgl/*<br/>vendored 渲染页（按文本注入）"]
+        WEB["lib/webwallgl/*<br/>本仓适配页（按文本注入）"]
         STORE["~/.dsh-wallpaper-engine/<br/>config.json · 缓存 · 上传"]
     end
 

@@ -351,7 +351,11 @@ async function main() {
     //  再：verify 71→72 / all 84→85 —— 新增 `test/verify-ci-steps.mjs`（R-7：CI 步骤表自身无判据时，
     // 删掉 `verify:static` / `verify:bridge` 步不会让任何判据变红；硬档依据 = 后果是"一整类门禁静默
     // 从 PR 上消失"，同 ⑧ 的发布面口径）。
-    const CHAIN_FLOOR = { verify: 72, docs: 6, smoke: 6, all: 85 };
+    //  再：verify 72→73 / all 85→86 —— 新增 `test/verify-eol.mjs`（D-G1：`.gitattributes:9` 的
+    // `* text=auto eol=lf` 契约此前**零判据**，实害已发生过一次整轮改动被 CRLF 污染；硬档依据 =
+    // 后果是"`test/**` 里按行锚定的字面替换负对照假红、整条 verify 链在 Windows 上短路"，同 ⑧ 的
+    // 发布面口径 —— 它坏的时候没有任何一条别的判据会红）。
+    const CHAIN_FLOOR = { verify: 73, docs: 6, smoke: 6, all: 86 };
     /** 地板表与 GROUPS 的对齐体检：键名必须与**组名**逐一对齐（纯函数 ⇒ 负对照可直接喂）。 */
     const floorGaps = (groups, floors) => groups.map(([, g]) => g).filter((g) => !Number.isInteger(floors[g]));
     const problems = floorGaps(GROUPS, CHAIN_FLOOR).map((g) => '地板表缺组 ' + g

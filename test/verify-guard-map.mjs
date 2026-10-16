@@ -113,6 +113,8 @@ const NO_MODULE_TARGET_WHY = {
   // 不再是"零模块目标"的元守卫 ⇒ 原例外条目已被元守卫表判为"登记了却已有目标，该删"。
   'verify-bridge-ci.mjs': '管的是 **CI 桥接面**（工作流/脚本接线，不读源模块）',
   'verify-undefined-refs.mjs': '管的是**未定义引用**（"用了但没 import/声明"的非全局内置名），扫 lib/src/scripts 全树按 AST 判，目标不是某个模块',
+  // D-G1 收口（2026-10-16）：行尾契约是**字节级**的，判的是"整棵入库树"，不指向某个模块。
+  'verify-eol.mjs': '管的是**行尾契约**（`.gitattributes` 的 `* text=auto eol=lf`）：扫 `git ls-files` 的全部入库文件，判"文本文件字节里零 `0x0D`"，目标是"整棵入库树必须是 LF"，不针对某个模块',
 };
 
 const map = buildMap(ROOT);

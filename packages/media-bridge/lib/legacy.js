@@ -10,7 +10,7 @@
  * 两路数据源：
  *
  *   1. 音频频谱（64 段）：macOS 走随包分发的 CoreAudio Process Tap 小工具
- *      （lib/audio-tap.swift，首次使用用 swiftc -O 编译并缓存；采集的是**系统输出**
+ *      （packages/media-bridge/lib/audio-tap.swift，首次使用用 swiftc -O 编译并缓存；采集的是**系统输出**
  *      的 loopback，不是麦克风）；Linux/Windows 走 ffmpeg + monitor/虚拟设备。
  *      统一输出 64 段（0-255），由宿主 /audio-spectrum 提供。
  *   2. Now Playing（歌名/歌手/专辑/播放态/进度/封面）：macOS 用 media-control

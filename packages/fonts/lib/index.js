@@ -17,7 +17,7 @@
  *    `fontsets/<id>.json`；本包裹走的只是**渲染器与描述符** ⇒ 本包**不持键、不持久化、
  *    不注册 `settings.section`**，读值一律经主包构造的渲染 ctx（或本文件声明的 `host` 面）。
  *
- * 两条加载路径共用这一个实现（与 lib/components/about-notice/index.js 同形）：
+ * 两条加载路径共用这一个实现（与 packages/about-notice/lib/index.js 同形）：
  *   ① 宿主按 patch 行（cordis.patch.yml）当独立 plugin 加载 ⇒ `apply(ctx, config)`（拆出后**唯一**
  *      的加载路径：主包门面已不再有字体路由的调用点）。
  *   ② 两条路由族自己的 `registerXxxRoutes(webServer, c)` 也可以被别的调用点直接驱动 —— `c` 由本文件拼齐。
@@ -31,7 +31,7 @@
  *   · `host.keyNames('fonts')` —— 声明面（守卫读的那份；本文件拿它当 REQUIRED_KEYS 的对账面）。
  *   · `host.handOff(ctx, dispose)` —— 与 lib/host-boot.js 同名函数同义：`export function apply`
  *     是**函数声明**（有 prototype）⇒ cordis 走 `new apply(ctx)`、**返回值被丢弃** ⇒ 只 `return dispose`
- *     不够，必须同时交 `ctx.effect`（同 lib/index.js:412-420 的教训）。
+ *     不够，必须同时交 `ctx.effect`（同 lib/index.js 的 `apply()` 末尾 fiber disposer 教训 / lib/host-boot.js 的 `handOffTeardown`）。
  *   · `host.schema` / `host.http` —— 共享内核的纯符号与 JSON 应答 / 读体的两个纯函数面；
  *     两条路由族不再静态 import 主包，由本文件显式传给它们的 register（见 routes/*.js 文件头）。
  *
@@ -90,7 +90,7 @@ export function apply(ctx, _config) {
       disposers,
       schema: host.schema,
       http: host.http,
-      // 落盘缓存路径与主包同式（lib/index.js:383）：pluginDataDir()/system-fonts.json。
+      // 落盘缓存路径与主包同式（本文件 :94；出户前 = 主包 lib/index.js:383）：pluginDataDir()/system-fonts.json。
       cachePath: () => join(keys.pluginDataDir(), 'system-fonts.json'),
     });
   } catch (error) {

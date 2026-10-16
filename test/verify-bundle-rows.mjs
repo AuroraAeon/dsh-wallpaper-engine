@@ -46,8 +46,10 @@
  *      `moduleScopeOf` 提前折叠（对状态机/复位零区分度）；`lib/host-boot.js` 的内核单例必须
  *      **在模块求值期构造**（模块作用域文本里 `createHostKernel(` 恰好 1 次，懒化/外包/重复构造都红）。
  *
- * ⚠️ **不 import js-yaml**：本文件在 `verify` 链上，而"链上脚本零裸包 import"是硬判据
- * （`test/verify-package-files.mjs` P5；CI 不跑 npm ci），js-yaml 只是 `overrides` 里的 lock 残留。
+ * ⚠️ **不 import js-yaml**：本文件**有意留在链外**（不在 `test/run-guards.mjs` 的链上；豁免理由见
+ * `test/tools/guard-chain.mjs` 的 `OFF_CHAIN_WHY`），而"链上脚本零裸包 import"是链上的硬判据
+ * （`test/verify-package-files.mjs` P5；CI 不跑 npm ci）—— P5 只扫链上脚本顶层源码，本文件**不在**
+ * 它的扫描面内；即便如此仍保持与链上同口径的零裸包形态。js-yaml 只是 `overrides` 里的 lock 残留。
  * 两份 patch 都是简单列表 ⇒ 行级解析足够，且比引入解析器更可控。
  *
  * Usage:  node test/verify-bundle-rows.mjs

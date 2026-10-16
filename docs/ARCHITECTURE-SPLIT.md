@@ -61,8 +61,9 @@ graph LR
 
 **行的开关语义 = A 语义**：宿主行级。停用某个组件行 ⇒ 该组件的宿主路由**整族不注册**；
 浏览器半边仍随整包加载，可见面由宿主行状态派生、双向对账（[`HOW-IT-WORKS.md`](./HOW-IT-WORKS.md)
-与 `lib/component-visibility.js`）。**当前**不做成多包、也**不**做每组件一格客户端开关
-（[`adr/0013`](./adr/0013-bundle-multi-component-rows.md) 的非目标）；⚠️ **目标形态已于 2026-10-14 改为
+与 `lib/component-visibility.js`）。**当前**组件行三格已按 `adr/0013` D6/D8 的「多包」终态出户到
+`packages/<组件>/`（开发期 `file:` 链接解析，发布形态未落地），但**不**做每组件一格客户端开关
+（[`adr/0013`](./adr/0013-bundle-multi-component-rows.md) D17 的非目标）；⚠️ **目标形态已于 2026-10-14 改为
 「多包」**（该 ADR 的 D6/D8 就地改写，实施计划见 [`wip/BUNDLE-SPLIT.md`](./wip/BUNDLE-SPLIT.md)）——
 本条描述的是**本分支的现状**，不是终态。
 
@@ -114,7 +115,7 @@ graph LR
 
 | 维度 | 上游：单包单行 | 本分支：主包 + 组件行 + 内核化 |
 |---|---|---|
-| `cordis.patch.yml` | 1 行（裸包名） | 多行：裸包名 + `<裸包名>/<子路径>`；行可单独 disable |
+| `cordis.patch.yml` | 1 行（裸包名） | 多行：全部用**真包名**（`dsh-plugin-wallpaper-engine` + 各子包真名 `dsh-plugin-wallpaper-engine-<pkg>`）；`<裸包名>/<子路径>` 形态已于 2026-10-16（P-F 三格出户）退役；行可单独 disable |
 | 关掉一行会怎样 | 关掉整包 | 只丢该组件的宿主路由族 + 它的浏览器可见面；其余行的路由不动 |
 | 门面体量 | 门面即宿主 | 门面 = 装配 + 协议聚合（现算见 §1） |
 | 依赖注入 | 门面内自由引用 | 每个路由族带**显式 `DEPS` 声明**，与调用点实参**双向对账**（`verify-inject-contracts`） |
@@ -141,9 +142,10 @@ graph LR
 4. **补三个键集对账**：族的 `DEPS` ↔ 族自身消费面 ↔ 调用点实参。
    漏一个键的形态是"不抛错、不判红，只是闸门不再工作"（真机踩过三次，`GPU_FRAME_AREA_TOL` / `WEBWALLGL_PKG_DIR`）。
    判据：`node test/verify-inject-contracts.mjs`。
-5. **补行级登记**：`cordis.patch.yml` 一行 + `package.json` 的 `exports` 三连（入口 / 清单 / locale）
-   + `files` 覆盖组件目录四类文件（入口 / 清单 / 图标 / locale）。
-   判据：`node test/verify-bundle-rows.mjs`、`node test/verify-route-ownership.mjs`、`test/verify-package-files.mjs` P1。
+5. **补行级登记**：根 `cordis.patch.yml` 加一行（`name` 用组件的**真包名**）；**新建 `packages/<pkg>/`**，
+   登记写在该组件包**自己的 `package.json`** 里——`exports` 三连（`./lib/index.js` 入口 / `./package.json`
+   清单 / `./locale/*.json` locale）+ `files` 覆盖本包四类文件（入口 / 清单 / 图标 `icon.png` / locale）。
+   判据：`node test/verify-bundle-rows.mjs`、`node test/verify-route-ownership.mjs`、`test/verify-package-files.mjs` P1（三份守卫的「归属清单」按上句的落点解析）。
 6. **生成物与产物**：动了路由 ⇒ `node test/tools/host-route-index.mjs --write`（`docs/ROUTE-INDEX.md`
    是生成物，别手改）；动了守卫⇒模块映射 ⇒ `node test/tools/guard-targets.mjs --write`；
    动了共享内核 / 浏览器半边 ⇒ `npm run build`（`lib/client.js` 是产物，不入库）。

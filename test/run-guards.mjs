@@ -103,6 +103,13 @@ const npmStep = (script) => ({ file: null, npm: script, args: [], tier: 'hard', 
  * 并把 `test/verify-package-files.mjs` 的 `CHAIN_FLOOR` 收紧到实测值（那里有"删一步即红"的负对照）。
  */
 const VERIFY_STEPS = [
+  // ⓪ **行尾契约**（D-G1，2026-10-16 收口）：`.gitattributes:9` 的 `* text=auto eol=lf` 此前
+  //    **零判据** —— 而它坏了不会报错，只会让下面一大批"按行锚定的字面替换"负对照**假红**
+  //    （本仓真踩过：一次整轮改动被 CRLF 污染，靠人眼在 `git diff` 里找 `^M` 才发现；Windows 上
+  //    `core.autocrlf=true` 会把文本文件检出成 CRLF）。它是**字节级前提**，故放链首：破了就不该
+  //    继续往下跑（链的短路特性在这里是特性，不是缺陷）。判据 = `git ls-files` 全部入库文件减去
+  //    `.gitattributes` 的 `binary` 白名单与含 NUL 者，逐一验零 `0x0D`；含纯函数负对照。
+  step('test/verify-eol.mjs'),
   step('test/verify-client-sync.mjs'),
   step('test/verify-client.mjs'),
   // ⚠️ D3 可见面判据必须留在链上：它不在链里时，一次取上游 panel-tabs.js 就能把 D3 gate 丢掉
@@ -190,7 +197,8 @@ const VERIFY_STEPS = [
   //    真缺陷是 `handOffTeardown(ctx, dispose)` 原本排在 `apply()` 最后一行 —— 中途抛错（最现实：
   //    上次装载残留撞 `duplicate … route`）那一行永不执行 ⇒ `ctx.effect` 从未登记 ⇒ fiber 不回滚、
   //    前序各族已注册路由全部残留。判据 = 源码序 + 行为（真 lib/index.js × 正序 mock 宿主，
-  //    残留 31 → 0、注册面 32 条两臂同序逐字节相等），另有 6 条负对照与 4 条覆盖面地板。
+  //    残留 31 → 0、注册面 32 条两臂同序逐字节相等），另有 6 条负对照（NC1–NC5 带牙 + 1 条前提②负对照）
+  //    与 4 条覆盖面地板。
   //    真 cordis 往返仍未跑（`@deepseek-ai/cordis` 是 peer，本轮口径 `npm ci --omit=peer`）⇒
   //    fiber 回滚语义是**源码推读**，守卫只在文件头如实标注，不升级为"已验证"。
   step('test/verify-host-teardown.mjs'),

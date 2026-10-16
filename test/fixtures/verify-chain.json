@@ -7,6 +7,14 @@
         {
           "kind": "guard",
           "npm": null,
+          "file": "test/verify-eol.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
           "file": "test/verify-client-sync.mjs",
           "args": [],
           "tier": "hard",
@@ -701,6 +709,14 @@
           "kind": "npm",
           "npm": "build",
           "file": null,
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-eol.mjs",
           "args": [],
           "tier": "hard",
           "probe": false

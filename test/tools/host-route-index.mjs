@@ -234,7 +234,7 @@ function routeModules() {
  *    （`analyze-host-apply.mjs` 用它们框出 `apply()` 的正文 —— 那是"门面还剩多少"，别混入组件行）。
  *
  * **清单数据驱动（P2-9 / 度量 M5，P-B 起改读发现层）**：组件行 = 发现层里 `kind === 'subpath'`
- * 的包（`lib/components/<sub>/package.json`，宿主入口取该包清单的 `main`），且该包必须在
+ * 的包（`lib/components/<sub>/package.json` —— P-F 批 1c（2026-10-16）三格出户后该目录已删除，此行只为历史兼容、命中数恒为 0；宿主入口取该包清单的 `main`），且该包必须在
  * `cordis.patch.yml` 有行、入口文件在磁盘上存在 —— 两侧交叉才算一行：
  *   · 只看磁盘 ⇒ 未登记的组件目录会被当成"运行时会注册的行"，索引说谎；
  *   · 只看行 ⇒ 缺文件的死行也会算一行。

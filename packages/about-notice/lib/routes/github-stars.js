@@ -1,5 +1,5 @@
 /**
- * components/about-notice/github-stars.js — **仓库 star 数**的唯一一条路由：`GET <BASE>/star-count`
+ * packages/about-notice/lib/routes/github-stars.js — **仓库 star 数**的唯一一条路由：`GET <BASE>/star-count`
  * （「关于」页签那行「⭐ 当前 N star」的数据源）。
  *
  * 为什么单独成文件：**这是本插件唯一一条出站请求**（其余部分全是本机数据）。"什么时候可以

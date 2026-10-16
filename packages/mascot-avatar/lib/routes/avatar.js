@@ -1,5 +1,5 @@
 /**
- * components/mascot-avatar/avatar.js — **会话头像族**路由：导入（POST）/ 查看（GET、HEAD）/ 清除（DELETE）两张头像图。
+ * packages/mascot-avatar/lib/routes/avatar.js — **会话头像族**路由：导入（POST）/ 查看（GET、HEAD）/ 清除（DELETE）两张头像图。
  *
  * 为什么值得独立成文件：这三条是**唯一**会动头像目录的一组，而它们共用同一套
  * "谁是合法的一方 / 文件名长什么样 / 换图怎么清兄弟"的规则 —— 收在一处才能一次读完。

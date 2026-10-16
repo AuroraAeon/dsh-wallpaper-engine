@@ -15,7 +15,7 @@
  *   export function parseRows(patchText)    → [{ id, name }]，按文件顺序。
  *   export function discoverPackages(root=ROOT) → 模型（见下）。
  *   export function enumerateViolations(model, io) → string[]（**纯函数**，io 注入）。
- *   export const FLOORS = { packages: 6, clientArtifacts: 3, rows: 7 }
+ *   export const FLOORS = { packages: 6, clientArtifacts: 4, rows: 7 }
  *   CLI: `node test/tools/packages.mjs selftest`（退出码 0/1，逐条打印 ✓/✗）、
  *        可选 `--json`（打印模型）、无参（打印摘要，有违规则退出码 1）。
  *

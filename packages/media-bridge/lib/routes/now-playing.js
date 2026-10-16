@@ -1,5 +1,5 @@
 /**
- * components/media-bridge/now-playing.js — **媒体状态族**路由：媒体后端健康探针（`/media-status`）、
+ * packages/media-bridge/lib/routes/now-playing.js — **媒体状态族**路由：媒体后端健康探针（`/media-status`）、
  * 系统音频频谱（`/audio-spectrum`）、当前曲目信息（`/now-playing`）、封面字节
  * （`/now-playing/artwork`）与反向控制（`/media-control`）。
  *

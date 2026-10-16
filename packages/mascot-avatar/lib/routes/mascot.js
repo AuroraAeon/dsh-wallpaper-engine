@@ -1,5 +1,5 @@
 /**
- * components/mascot-avatar/mascot.js — **自定义吉祥物立绘族**路由：导入（POST）/ 查看（GET、HEAD）/ 清除（DELETE）。
+ * packages/mascot-avatar/lib/routes/mascot.js — **自定义吉祥物立绘族**路由：导入（POST）/ 查看（GET、HEAD）/ 清除（DELETE）。
  *
  * 为什么独立成族（而不是复用头像那族的第三个 side）：头像按"一方一张"（`user` / `ai`），
  * 立绘**只有一张**且语义完全不同（它不是会话里的脸，而是主页面那只吉祥物的替身）——

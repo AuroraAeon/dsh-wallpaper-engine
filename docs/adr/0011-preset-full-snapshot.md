@@ -64,7 +64,7 @@
    面板侧只有一行「名字 + 保存 / 取消」（`renderGlassPresetsBlock` 的 `saveRow`）。
    ⇒ D4 的资产勾选必须**新增**这一步，且要能表达"不勾会怎样"。
 
-10. **本仓有成熟的"对话框 + 勾选"先例可照抄。** `src/fontset-editor.js` 的
+10. **本仓有成熟的"对话框 + 勾选"先例可照抄。** `packages/fonts/src/fontset-editor.js` 的
     `<input type="file">` 隐藏 + 按钮触发（`accept` 只做提示，真正的门是 `$schema`），
     以及 `renderConfirmRow` 的两步确认行 —— 都不使用原生模态（本仓纪律：
     `verify-presets` ④ 断言预设 UI 无 `window.confirm`）。D4 / D7 的对话框必须沿用这条形态。

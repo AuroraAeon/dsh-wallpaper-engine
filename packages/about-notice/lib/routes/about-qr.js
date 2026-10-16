@@ -1,5 +1,5 @@
 /**
- * components/about-notice/about-qr.js — 「关于」页签那两张联系方式二维码 + 「更新公告」配图的**静态资源路由**：
+ * packages/about-notice/lib/routes/about-qr.js — 「关于」页签那两张联系方式二维码 + 「更新公告」配图的**静态资源路由**：
  * `GET/HEAD <BASE>/about-qr/<文件名>`（`lib/about/` 下的 PNG/JPEG，白名单里没有的一律 404）。
  * 公告配图（`update-notice.jpg`）与二维码同走这一族：同为随包静态图、同为"会换"的图
  * （群号换了就得换码、公告配图随版本换图），URL 段沿用 `/about-qr/` 前缀 —— 本文件头注释

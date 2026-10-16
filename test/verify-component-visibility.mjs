@@ -29,6 +29,13 @@
  *   ⑤ **浏览器侧不得出现第二份"组件名 → UI"清单**（D3② 明文禁止）：`src/**` 里组件名的字符串
  *      字面量**只许**出现在 gate 调用的第二个实参位置；出现第二处（哪怕是另一张映射表 / 另一个
  *      消费点）即判红。负对照：合成一张映射表必须被抓到，只放 gate 调用则放行。
+ *   ⑥ **覆盖面包线棘轮（D-G2）**：`SCOPE ∪ OUT_OF_SCOPE` 必须**恰好**等于「组件行宇宙」——
+ *      分母由三份真源交叉而来（`cordis.patch.yml` 的组件行 · `COMPONENT_VIEW_KEYS` 的键 ·
+ *      发现层 `test/tools/packages.mjs` 里认领到行的包），**不写死任何包名**。漏登记（新增一个
+ *      组件行却两边都不提）与幽灵登记（拿登记表当万能筐）都判红；`OUT_OF_SCOPE` 的每一项还必须
+ *      在会话声明面里有键（**豁免不得过期**）。为什么不用发现层的"包自带浏览器产物"过滤
+ *      「带浏览器半边」：三格组件的浏览器半边住在**主 bundle**（各自没有产物）⇒ 那个口径今日是
+ *      空集、判据会真空为真（假绿）。理由与分桶见 `registryCoverage()`。
  *
  * ── 为什么 `media-bridge` 显式排除（有意写成棘轮）────────────────────────────────
  *   本轮范围只有 `about-notice` 与 `mascot-avatar` 两行：用户口径是"`media-bridge` 是壁纸子插件
@@ -51,6 +58,8 @@ import { stripComments, functionBodyOf } from './tools/js-text.mjs';
 // 真源定位：三个落点（可见面声明 / 状态面路由 / 负对照的注入点文件）都不写死路径 ——
 // 实现搬家时判据跟着符号走；0 处 / 多处声明即红（缺锚即红，不回落到默认值）。
 import { locate, locateFile, moduleFace } from './tools/source-locator.mjs';
+// 发现层（D-G2 覆盖面棘轮的分母之一）：行 ⇄ 包的**磁盘现实**，包名 / 目录名一律从磁盘取。
+import { discoverPackages } from './tools/packages.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BARE = 'dsh-plugin-wallpaper-engine';
@@ -122,6 +131,57 @@ function componentRowsFromPatch(text) {
     if (m[3] === BARE + '-' + sub && !out.includes(sub)) out.push(sub);
   }
   return out.sort();
+}
+
+/**
+ * D-G2 覆盖面包线棘轮（纯函数；生产扫描与全部负对照共用这一份实现）。
+ *
+ * **缺口**：`SCOPE` / `OUT_OF_SCOPE` 是**手写**的登记表 —— 新增一个组件行（宿主半边出户到
+ * `packages/<组件>/`、浏览器半边仍在主 bundle 里）却两边都不提时，本文件原先**一条判据都不会红**：
+ * 判据 ①②⑤ 的分母全部来自声明表本身，声明表不含它 ⇒ 恒真。
+ *
+ * **分母**（「组件行宇宙」）由三份真源交叉，**不写死任何包名**：
+ *   · 行面：`cordis.patch.yml` 里承载组件宿主半边的行（`componentRowsFromPatch`）；
+ *   · 会话声明面：`lib/kernel/component-session.js` 的 `COMPONENT_VIEW_KEYS` 键（组件清单真源）；
+ *   · 包面：发现层 `discoverPackages()` 里**认领到 patch 行**的包（行 ⇄ 包的磁盘现实）。
+ *
+ * **为什么不用发现层的"包自带浏览器产物"过滤「带浏览器半边」**：三格组件的浏览器半边住在
+ * **主 bundle**（它们自己不产产物）⇒ 那个口径今日交集是空集，判据会对空集真空为真（正是 D-G2
+ * 要防的假绿）。所以分母取**组件行**（比「带浏览器半边」更宽：漏登记一定被抓到），而"带浏览器
+ * 半边"的含量由既有判据面表达 —— `SCOPE` 项必须真被 gate（判据 ①）、豁免项必须显式记账（②）。
+ *
+ * 返回**分桶**（不是一句话）：负对照因此可以只钉一个桶，不必依赖"总条数变化"这种易受连带影响的读数。
+ *   `floors`      分母塌陷（行面 / 会话面 / 包面为空，或宇宙为空）⇒ 判据真空为真，必须先红
+ *   `dup`         登记表内部重复（同一名字既进 SCOPE 又进 OUT_OF_SCOPE，或列了两次）
+ *   `notOnDisk`   会话面与行面认得它，但发现层找不到认领该行的包 ⇒ 组件行不许停在"宣言"上
+ *   `universe`    分母本身（组件行宇宙）
+ *   `missing`     漏登记：宇宙里但登记表里没有（D-G2 的正题）
+ *   `ghost`       幽灵登记：登记表里但不在宇宙里（不许拿登记表当万能筐）
+ *   `staleExempt` 豁免过期：`OUT_OF_SCOPE` 项在会话声明面里已经没有键
+ */
+function registryCoverage({ patchRows, viewKeys, discovered, scope, outOfScope }) {
+  const rows = Array.isArray(patchRows) ? patchRows : [];
+  const keys = Array.isArray(viewKeys) ? viewKeys : [];
+  const disk = Array.isArray(discovered) ? discovered : [];
+  const outScope = Array.isArray(outOfScope) ? outOfScope : [];
+  const reg = (Array.isArray(scope) ? scope : []).concat(outScope);
+  const floors = [];
+  if (!rows.length) floors.push('patch 行面为空 ⇒ 组件行宇宙失真（解析失败 / 真源搬家）');
+  if (!keys.length) floors.push('会话声明面 COMPONENT_VIEW_KEYS 为空 ⇒ 组件行宇宙为空');
+  if (!disk.length) floors.push('发现层的包面为空 ⇒ 行 ⇄ 包 对账真空为真');
+  const componentRows = rows.filter((n) => keys.includes(n));
+  const notOnDisk = componentRows.filter((n) => !disk.includes(n));
+  const universe = componentRows.filter((n) => disk.includes(n));
+  if (!floors.length && !universe.length) floors.push('组件行宇宙为空 ⇒ 漏登记判据真空为真');
+  return {
+    floors,
+    dup: reg.filter((n, i) => reg.indexOf(n) !== i),
+    notOnDisk,
+    universe,
+    missing: universe.filter((n) => !reg.includes(n)),
+    ghost: reg.filter((n) => !universe.includes(n)),
+    staleExempt: outScope.filter((n) => !keys.includes(n)),
+  };
 }
 
 /** 引号字符串的收尾位置（认 `\` 转义）；未闭合返回 -1。 */
@@ -451,6 +511,25 @@ const patchRows = componentRowsFromPatch(read(PATCH_REL));
 /** `source-locator` 的枚举真源：扫描面窄化（只扫固定文件 / 漏一个子目录）会被下面点名。 */
 const SRC_FACE = moduleFace().filter((rel) => rel.startsWith('src/'));
 
+// ── D-G2 覆盖面棘轮的三份真源（会话声明面 + 行面 + 发现层包面）──────────────────────
+/** 组件清单真源（宿主侧）：组件名 → 内核视图键集。`registryCoverage()` 的分母之一。 */
+const VIEW_KEYS_REL = anchorRel(locate('COMPONENT_VIEW_KEYS'));
+const viewKeysMod = VIEW_KEYS_REL ? await import(pathToFileURL(join(ROOT, VIEW_KEYS_REL)).href) : {};
+const VIEW_KEYS = viewKeysMod.COMPONENT_VIEW_KEYS;
+const VIEW_KEYS_NAMES = VIEW_KEYS && typeof VIEW_KEYS === 'object' && !Array.isArray(VIEW_KEYS)
+  ? Object.keys(VIEW_KEYS) : [];
+/**
+ * 发现层：包名 / 目录名一律从**磁盘**取（不写死）。`row` 非 null = 这个包在 patch 上认领到了行；
+ * 组件行 = `<裸包名>-<组件>` 形态（主包行 `wallpaper-engine` 与子包行 fx / parallax / fonts 都不匹配）。
+ */
+const pkgModel = discoverPackages(ROOT);
+const DISCOVERED_ROWS = (Array.isArray(pkgModel && pkgModel.packages) ? pkgModel.packages : [])
+  .filter((p) => p && p.row && typeof p.row.name === 'string' && p.row.name.startsWith(BARE + '-'))
+  .map((p) => p.row.name.slice(BARE.length + 1));
+const cover = registryCoverage({
+  patchRows, viewKeys: VIEW_KEYS_NAMES, discovered: DISCOVERED_ROWS, scope: SCOPE, outOfScope: OUT_OF_SCOPE,
+});
+
 const audit = auditVisibility(DECL, GATE, sources);
 const kinds = (r) => r.violations.map((v) => v.kind);
 const violated = (kind) => kinds(audit).includes(kind);
@@ -479,6 +558,87 @@ check('本轮范围棘轮：声明面的键集恰为 [' + SCOPE.join(', ') + ']�
 check('声明的每个组件名都在 patch 的组件行里（声明不许指向不存在的行）',
   Object.keys(DECL).every((k) => patchRows.includes(k)),
   Object.keys(DECL).join(' ') + ' ⊆ ' + patchRows.join(' '));
+// ── D-G2 覆盖面包线棘轮（判据缺口：手写登记表漏一格时原先一条判据都不会红）──────────────
+// 分母 = 行面 ∩ 会话声明面 ∩ 发现层包面，三份真源都不写死名字（见 `registryCoverage()`）。
+console.log('    · D-G2 组件行宇宙 = [' + cover.universe.join(' ') + '] · 登记表 = ['
+  + SCOPE.concat(OUT_OF_SCOPE).join(' ') + '] · 发现层认领的行 = [' + DISCOVERED_ROWS.join(' ') + ']');
+check('D-G2 ① 覆盖面棘轮：组件行都在 SCOPE ∪ OUT_OF_SCOPE 里显式记账（漏登记即红）',
+  cover.floors.length === 0 && cover.missing.length === 0,
+  cover.floors.concat(cover.missing.map((n) => n + ' 是组件行却在 SCOPE / OUT_OF_SCOPE 里都没有（D-G2：漏登记）')).join('；')
+    || '宇宙 ' + cover.universe.length + ' 个：' + cover.universe.join(' '));
+check('D-G2 ② 豁免不得过期：`OUT_OF_SCOPE` 的每一项在 `' + VIEW_KEYS_REL + '` 的 COMPONENT_VIEW_KEYS 里都有键',
+  cover.staleExempt.length === 0,
+  cover.staleExempt.map((n) => n + ' 已不在 COMPONENT_VIEW_KEYS 里（要么补键，要么从 OUT_OF_SCOPE 摘掉）').join('；')
+    || '[' + OUT_OF_SCOPE.join(' ') + '] ⊆ [' + VIEW_KEYS_NAMES.join(' ') + ']');
+check('D-G2 ③ 反向：登记表不含非组件行（发现层认领的行 / COMPONENT_VIEW_KEYS 键 至少一项对不上即红）',
+  cover.ghost.length === 0,
+  cover.ghost.map((n) => n + ' 登记了但不在组件行宇宙里（不许拿登记表当万能筐）').join('；')
+    || '登记表与宇宙两侧相等');
+check('D-G2 ④ 会话面与行面认得、发现层找不到认领该行的包 ⇒ 判红（组件行不许停在"宣言"上）',
+  cover.notOnDisk.length === 0,
+  cover.notOnDisk.map((n) => n + ' 在 ' + PATCH_REL + ' 与 COMPONENT_VIEW_KEYS 里有，但发现层的包面里没有认领该行的包').join('；')
+    || '三份真源两侧对得上');
+check('D-G2 ⑤ 登记表内部无重复（同一个组件不许既进 SCOPE 又进 OUT_OF_SCOPE，也不许列两次）',
+  cover.dup.length === 0,
+  cover.dup.length ? '重复登记：' + [...new Set(cover.dup)].join(' ') : '无重复');
+
+{
+  // D-G2 的负对照：全部走**同一份** `registryCoverage()`，每条只造一个缺陷，并且钉**分桶**
+  // （不是"总条数变了"这种易受连带影响的读数）。**合成基准与磁盘上的登记表解耦**（`synth`）：
+  // 若拿真实 `SCOPE` / `OUT_OF_SCOPE` 当基准，登记表一旦被改坏，这些负对照会跟着"真空变绿"、
+  // 牙就掉了。临时反例只存在于**内存输入**里，不落盘。
+  const buckets = ['floors', 'dup', 'notOnDisk', 'missing', 'ghost', 'staleExempt'];
+  const clean = (r) => buckets.every((k) => r[k].length === 0);
+  const synth = { patchRows: ['__alpha', '__beta', '__gamma'], viewKeys: ['__alpha', '__beta', '__gamma'],
+    discovered: ['__alpha', '__beta', '__gamma'], scope: ['__alpha', '__beta'], outOfScope: ['__gamma'] };
+  const probe = '__we_component_probe__';
+  // 正对照 1：真实输入必须干净 ⇒ 棘轮可满足、不是恒红。
+  check('positive control（D-G2）：真实输入 ⇒ 六个桶全空（判据可满足、不是恒红）',
+    clean(cover) && sameKeys(cover.universe, SCOPE.concat(OUT_OF_SCOPE)),
+    '宇宙 = [' + cover.universe.join(' ') + '] · 登记 = [' + SCOPE.concat(OUT_OF_SCOPE).join(' ') + ']');
+  // 正对照 2：合成第 4 个组件行（行面 / 会话面 / 包面三处都加）并登记进 OUT_OF_SCOPE ⇒ 仍干净。
+  // 这条证的是"棘轮随新组件一起走"，不是"只认今天这几格"；没有它，漏登记负对照可能是别的原因红的。
+  const added = registryCoverage(Object.assign({}, synth, {
+    patchRows: synth.patchRows.concat(probe), viewKeys: synth.viewKeys.concat(probe),
+    discovered: synth.discovered.concat(probe), outOfScope: synth.outOfScope.concat(probe),
+  }));
+  check('positive control（D-G2 新增组件已登记）：合成第 4 个组件行并登记 ⇒ 六个桶仍全空',
+    clean(added) && added.universe.includes(probe), '宇宙 = [' + added.universe.join(' ') + ']');
+  // 临时反例 1（漏登记）：三处真源都有这个组件行，登记表不动。
+  const leaked = registryCoverage(Object.assign({}, synth, {
+    patchRows: synth.patchRows.concat(probe), viewKeys: synth.viewKeys.concat(probe),
+    discovered: synth.discovered.concat(probe),
+  }));
+  check('negative control（D-G2 漏登记）：合成一个组件行而 SCOPE / OUT_OF_SCOPE 都不提 ⇒ `missing` 桶判红',
+    leaked.missing.length === 1 && leaked.missing[0] === probe, 'missing = [' + leaked.missing.join(' ') + ']');
+  // 临时反例 2（豁免过期）：会话声明面抽掉 __gamma 的键，OUT_OF_SCOPE 不动。
+  const stale = registryCoverage(Object.assign({}, synth, {
+    viewKeys: synth.viewKeys.filter((k) => k !== '__gamma'),
+  }));
+  check('negative control（D-G2 ② 豁免过期）：会话面抽掉 __gamma 的键、`OUT_OF_SCOPE` 不动 ⇒ `staleExempt` 判红',
+    stale.staleExempt.includes('__gamma'), 'staleExempt = [' + stale.staleExempt.join(' ') + ']');
+  // 临时反例 3（幽灵登记）：有包、有行，但会话声明面里没有它的键。
+  const ghost = registryCoverage(Object.assign({}, synth, { outOfScope: synth.outOfScope.concat('__ghost') }));
+  check('negative control（D-G2 ③ 幽灵登记）：把 `__ghost` 塞进 OUT_OF_SCOPE（有行 / 有包，但会话面无键）⇒ `ghost` 判红',
+    ghost.ghost.includes('__ghost'), 'ghost = [' + ghost.ghost.join(' ') + ']');
+  // 临时反例 4（登记表内部重复）：同一个组件既进 SCOPE 又进 OUT_OF_SCOPE。
+  const dup = registryCoverage(Object.assign({}, synth, { outOfScope: synth.outOfScope.concat('__alpha') }));
+  check('negative control（D-G2 ⑤ 重复登记）：`__alpha` 既进 SCOPE 又进 OUT_OF_SCOPE ⇒ `dup` 桶判红',
+    dup.dup.includes('__alpha'), 'dup = [' + dup.dup.join(' ') + ']');
+  // 临时反例 5（真空为真地板）：行面 / 会话面 / 包面各塌陷一次。
+  const noRows = registryCoverage(Object.assign({}, synth, { patchRows: [] }));
+  const noKeys = registryCoverage(Object.assign({}, synth, { viewKeys: [] }));
+  const noDisk = registryCoverage(Object.assign({}, synth, { discovered: [] }));
+  check('negative control（D-G2 地板）：行面 / 会话面 / 包面任一为空 ⇒ `floors` 桶判红（判据不许真空为真）',
+    noRows.floors.length > 0 && noKeys.floors.length > 0 && noDisk.floors.length > 0,
+    '行面：' + noRows.floors.join(' ') + ' · 会话面：' + noKeys.floors.join(' ') + ' · 包面：' + noDisk.floors.join(' '));
+  // 临时反例 6（判据 ④）：行面 / 会话面都认得 __beta，但发现层的包面缺它。
+  const offDisk = registryCoverage(Object.assign({}, synth, {
+    discovered: synth.discovered.filter((d) => d !== '__beta'),
+  }));
+  check('negative control（D-G2 ④）：发现层包面抽掉 __beta ⇒ `notOnDisk` 桶判红',
+    offDisk.notOnDisk.includes('__beta'), 'notOnDisk = [' + offDisk.notOnDisk.join(' ') + ']');
+}
 check('gate 判据落点在扫描面内且符号存在',
   Boolean(sources.get(GATE.file)) && audit.stats.defs === 1,
   GATE.file + ' · `function ' + GATE.symbol + '(` 出现 ' + audit.stats.defs + ' 次');

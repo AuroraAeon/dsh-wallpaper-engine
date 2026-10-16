@@ -1595,13 +1595,13 @@ section('④b 行为判据：删除令牌链 + broken 行禁用与可删 + 勾�
       ] };
     },
     swatchRow: (label) => ({ type: 'swatch', label }),
-    // ⚠️ glass-panel.js 在 bundle 里与 src/client.js（`ROPE_FORMS` 定义在 `src/client.js:4892`）和
-    //   lib/settings-schema.js（`ROPE_FORM_VALUES` 定义在 `lib/settings-schema.js:32`）**同处一个
-    //   作用域**（build 把各 src 文件顺序拼成一个 lib/client.js；`src/panel-tabs.js:1090` 的
+    // ⚠️ glass-panel.js 在 bundle 里与 src/client.js（`ROPE_FORMS` 定义在 `src/client.js`）和
+    //   lib/settings-schema.js（`ROPE_FORM_VALUES` 定义在 `lib/settings-schema.js`）**同处一个
+    //   作用域**（build 把各 src 文件顺序拼成一个 lib/client.js；`src/glass-panel.js` 的
     //   `ROPE_FORMS[k].label` 早就是同一形态的既有用法）。单独 eval 时这两个模块作用域符号必须由
     //   台架按**真实形状**补上，否则渲染第一步就 ReferenceError —— 判据根本跑不到（本仓最忌的
     //   "台架自己造字段"：这里只补作用域，不替代任何被判定为真的字段）。
-    //   值域**从真源读**（本文件已在 `:71` 把 `lib/settings-schema.js` 取成 `schema`）—— 手抄一份必然
+    //   值域**从真源读**（本文件已把 `lib/settings-schema.js` 取成 `schema`）—— 手抄一份必然
     //   漂移：并入 #180 时形态从 3 只涨到 12 只（同日晚「小女仆」除名 ⇒ 现为 10 只），于是"一组 4 键"那条判据自己先聋了。
     //   显示名照 `src/client.js` 的 `ROPE_FORMS` 抄（那边是 `weT("Deepseek_Pro")` 的取值路径，还挂着 img
     //   的 data URL，无法内联）；下面紧跟着一条判据钉住"标签表的键集 == 真源值域"，两边不许打架。

@@ -56,7 +56,7 @@ HTML 里注入 WE API shim（运行期从 `webwallgl` 包的 `webwallgl.mjs` 中
 
 ### 场景渲染：怎么工作的
 
-场景由**内置的 WebWallGL 引擎**实时渲染（vendored 在 `lib/webwallgl/`；它自己解析 `scene.pkg` / 松散
+场景由**内置的 WebWallGL 引擎**实时渲染（引擎本体走 npm 依赖 `webwallgl`，`lib/webwallgl/` 只放本仓的渲染页适配层，见上文；它自己解析 `scene.pkg` / 松散
 `scene.json`、重放对象树 / 纹理 / 粒子 / shader，并优先走 GPU、无 GPU 时熔断回软渲染）：
 在 WebGL2 里解析对象树，实时渲染全部 image 层（waterwaves / waterripple 等 shader 效果按 HLSL 转译后
 在 GPU 执行）、puppet 骨骼模型、粒子系统与文本对象，并执行场景自带的 SceneScript —— 鼠标移动会驱动
@@ -137,7 +137,7 @@ HTML 里注入 WE API shim（运行期从 `webwallgl` 包的 `webwallgl.mjs` 中
   持久化白名单里（唯一真源是 `lib/settings-schema.js`，客户端与宿主共用同一份 kind 消毒）。
 - **谁负责什么**：宿主 `packages/fonts/lib/routes/fontsets.js` 一个 `prefix` 注册挂七个端点（列表 / 读 / 写 / 删 /
   激活 / 导入 / 导出）；客户端 `src/fontset-store.js` 是**另一条**通道（与设置平行：真源不同、键集不同、
-  失败语义也不同 —— 字体集读不出来必须**整套不采用**）；`src/fontset-editor.js` 是纯渲染面板。
+  失败语义也不同 —— 字体集读不出来必须**整套不采用**）；`packages/fonts/src/fontset-editor.js` 是纯渲染面板。
 - **切换只有一条写原语**：`POST …/activate` 改指针，改完客户端**必须把它那份值读回来采用**（只挪指针
   界面不会变）。"使用中"的判据是**值仍与采纳时一致**，指针另作能力判定（活动集不可删）。
 - **导入导出**：导出走宿主响应头 + 普通链接（桌面端 = 系统「另存为」），导入前按文件里的 `$schema`
