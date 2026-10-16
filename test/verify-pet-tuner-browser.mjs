@@ -451,7 +451,7 @@ try {
   for (const call of pending.values()) clearTimeout(call.timeout);
   if (socket) socket.close();
   if (browser.exitCode === null) {
-    const exited = new Promise(resolve => browser.once('exit', resolve));
+    const exited = new Promise(resolve => { browser.once('exit', resolve); });
     browser.kill();
     await exited;
   }

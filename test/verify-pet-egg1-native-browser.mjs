@@ -27,7 +27,7 @@ const assets={};
 for(const name of ['通用-右侧螃蟹步-dshwe','通用-左侧螃蟹步-dshwe','彩蛋-侧边栏-半身转向踢腿-dshwe','彩蛋-侧边栏-被弹飞-dshwe','彩蛋-侧边栏-落地-dshwe'])assets[name]=readFileSync(new URL('../packages/pet-link/assets/webm/'+name+'.webm',import.meta.url)).toString('base64');
 const profile=mkdtempSync(join(tmpdir(),'pet-egg1-native-'));
 const browser=spawn(process.env.PET_TEST_BROWSER||'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',['--headless=new','--disable-gpu','--disable-background-timer-throttling','--disable-renderer-backgrounding','--disable-backgrounding-occluded-windows','--disable-features=CalculateNativeWinOcclusion,IntensiveWakeUpThrottling','--window-size='+process.env.PET_TEST_VIEWPORT.replace('x',','),'--no-first-run','--remote-debugging-port=0','--user-data-dir='+profile,'about:blank'],{stdio:'ignore'});
-let socket,id=0,launchError;const pending=new Map();browser.on('error',e=>launchError=e);
+let socket,id=0,launchError;const pending=new Map();browser.on('error',e=>{launchError=e;});
 function send(method,params={}){return new Promise((resolve,reject)=>{const key=++id,timer=setTimeout(()=>{pending.delete(key);reject(Error('CDP timeout: '+method));},10000);pending.set(key,{resolve,reject,timer});socket.send(JSON.stringify({id:key,method,params}));});}
 async function evaluate(expression){const r=await send('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true});assert.ok(!r.exceptionDetails,JSON.stringify(r.exceptionDetails));return r.result.value;}
 try{
@@ -35,7 +35,7 @@ try{
   while(!port&&Date.now()<launchDeadline){if(launchError)throw launchError;try{port=Number(readFileSync(join(profile,'DevToolsActivePort'),'utf8').split('\n')[0]);}catch(e){if(!['ENOENT','EBUSY'].includes(e.code))throw e;}if(!port)await delay(100);}
   assert.ok(port,'Edge 未能开启调试端口');const pages=await(await fetch('http://127.0.0.1:'+port+'/json/list')).json();socket=new WebSocket(pages.find(p=>p.type==='page').webSocketDebuggerUrl);
   await new Promise((resolve,reject)=>{socket.onopen=resolve;socket.onerror=reject;});
-  socket.onmessage=({data})=>{const r=JSON.parse(data);if(r.method==='Runtime.exceptionThrown')console.error('BROWSER '+JSON.stringify(r.params));const p=pending.get(r.id);if(!p)return;pending.delete(r.id);clearTimeout(p.timer);r.error?p.reject(Error(JSON.stringify(r.error))):p.resolve(r.result);};
+  socket.onmessage=({data})=>{const r=JSON.parse(data);if(r.method==='Runtime.exceptionThrown')console.error('BROWSER '+JSON.stringify(r.params));const p=pending.get(r.id);if(!p)return;pending.delete(r.id);clearTimeout(p.timer);if(r.error)p.reject(Error(JSON.stringify(r.error)));else p.resolve(r.result);};
   await send('Page.enable');await send('Runtime.enable');await send('Page.bringToFront');await send('Emulation.setFocusEmulationEnabled',{enabled:true});
   const artDir=new URL('../.artifacts/pet-tuner/',import.meta.url);mkdirSync(artDir,{recursive:true});
   for(const [width,height] of [process.env.PET_TEST_VIEWPORT.split('x').map(Number)]){
@@ -85,4 +85,4 @@ try{
     await evaluate(`__egg.module.dispose();for(const u of Object.values(__egg.env.blobUrlRef.current))if(u)URL.revokeObjectURL(u);`);
     console.log('PASS 原片脚尖贴边、首次碰撞原生后上抛飞、缩回再展开、实际落定与连续回程 '+width+'x'+height+'，物理帧 '+flight.length);
   }
-}finally{for(const p of pending.values())clearTimeout(p.timer);if(socket)socket.close();if(browser.exitCode===null){const exited=new Promise(r=>browser.once('exit',r));browser.kill();await exited;}}
+}finally{for(const p of pending.values())clearTimeout(p.timer);if(socket)socket.close();if(browser.exitCode===null){const exited=new Promise(r=>{browser.once('exit',r);});browser.kill();await exited;}}

@@ -351,7 +351,8 @@ async function main() {
     //  再：verify 71→72 / all 84→85 —— 新增 `test/verify-ci-steps.mjs`（R-7：CI 步骤表自身无判据时，
     // 删掉 `verify:static` / `verify:bridge` 步不会让任何判据变红；硬档依据 = 后果是"一整类门禁静默
     // 从 PR 上消失"，同 ⑧ 的发布面口径）。
-    const CHAIN_FLOOR = { verify: 72, docs: 6, smoke: 6, all: 85 };
+    // 可选桌宠联动增加十二组离线回归：verify 72→84，all 85→97。
+    const CHAIN_FLOOR = { verify: 84, docs: 6, smoke: 6, all: 97 };
     /** 地板表与 GROUPS 的对齐体检：键名必须与**组名**逐一对齐（纯函数 ⇒ 负对照可直接喂）。 */
     const floorGaps = (groups, floors) => groups.map(([, g]) => g).filter((g) => !Number.isInteger(floors[g]));
     const problems = floorGaps(GROUPS, CHAIN_FLOOR).map((g) => '地板表缺组 ' + g

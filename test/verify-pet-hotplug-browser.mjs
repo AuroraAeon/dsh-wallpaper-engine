@@ -157,5 +157,5 @@ try {
 } finally {
   for (const p of pending.values()) clearTimeout(p.timer);
   if (socket) socket.close();
-  if (browser.exitCode === null) { const exited = new Promise(resolve => browser.once('exit', resolve)); browser.kill(); await exited; }
+  if (browser.exitCode === null) { const exited = new Promise(resolve => { browser.once('exit', resolve); }); browser.kill(); await exited; }
 }

@@ -5,10 +5,10 @@ import {readFileSync} from 'node:fs';
 const tuner=readFileSync(new URL('../packages/pet-link/src/pet-link-tuner.js',import.meta.url),'utf8');
 const pet=readFileSync(new URL('../packages/pet-link/src/pet-link.js',import.meta.url),'utf8');
 function load(options={}) {
-  let now=0,serial=0,nativeId=0,flightEnd=0,cancelled=false,base={left:500,top:100},locked=false;
+  let now=0,serial=0,nativeId=0,flightEnd=0,base={left:500,top:100},locked=false;
   const tasks=new Map(),events=[];const record=(type,data)=>events.push({type,data,at:now});
   const schedule=(fn,ms)=>{const id=++serial;tasks.set(id,{fn,at:now+ms});return id;};
-  let edge=1400,target=1400,from=1400,started=0,duration=1;
+  let target=1400,from=1400,started=0,duration=1;
   const liveEdge=()=>from+(target-from)*Math.min(1,(now-started)/duration);
   const sidebar={edgeX:liveEdge,rebound(open,ms){from=liveEdge();target=open?1100:1400;started=now;duration=ms;record(open?'open':'close');},
     open(){this.rebound(true,240);},close(){this.rebound(false,180);},commit(){record('restore');},isOpen:()=>target<1400};

@@ -25,7 +25,6 @@ async function scenario(options = {}) {
   let hold = null;
   let done = false;
   let error = null;
-  let mod;
   const edge = () => {
     if (options.missing) return null;
     if (options.throwEdge) throw new Error('edge unavailable');
@@ -60,14 +59,14 @@ async function scenario(options = {}) {
       animations.push(entry);
       const ms = body.name.includes('蓄力') ? (options.braceAckMs || 0)
         : body.name.includes('后拉接') ? (options.pullAckMs || 0) : (options.ackMs || 0);
-      return new Promise(resolve => schedule(() => {
+      return new Promise(resolve => { schedule(() => {
         entry.ackAt = now;
         resolve(!options.failWalk || !body.name.includes('螃蟹步'));
-      }, ms));
+      }, ms); });
     },
   };
   // 编排场景保留真实点播队列、慢开与位移；原跟随场景仅隔离网络点播和去回程。
-  mod = new Function(...Object.keys(env), tuner + '\n' + pet + `
+  const mod = new Function(...Object.keys(env), tuner + '\n' + pet + `
     petLinkPost = post;
     petLinkProbe = async () => true;
     if (!realWalk) {
@@ -94,7 +93,8 @@ async function scenario(options = {}) {
   mod.run().then(() => { done = true; }, err => { error = err; done = true; });
   await flush();
   let cancelled = false;
-  for (let count = 0; !done && count < 20000; count++) {
+  for (let count = 0; count < 20000; count++) {
+    if (done) break;
     let next = null;
     for (const [id, task] of timers) if (!next || task.at < next.task.at) next = { id, task };
     assert.ok(next, '排播必须可以继续推进');

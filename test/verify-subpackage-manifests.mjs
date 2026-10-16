@@ -1001,7 +1001,7 @@ for (const dir of packageDirs.filter(dir => JSON.parse(packageTexts.get(dir)).ex
     const missing = raw.replace(', ' + JSON.stringify(required), '');
     check('negative control: 安装器包缺少 ' + required + ' 必须判红', missing !== raw && violations(missing).length > 0);
   }
-  const disguised = raw.replace(/^    "\.\/install":.*\n/m, '');
+  const disguised = raw.replace(/^ {4}"\.\/install":.*\n/m, '');
   check('negative control: 没有显式安装入口不能冒充安装器形态', disguised !== raw && violations(disguised).length > 0);
 }
 const templateProblems = manifestTemplateViolations({ dirs: packageDirs, texts: packageTexts });

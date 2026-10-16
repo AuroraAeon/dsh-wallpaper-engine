@@ -18,7 +18,6 @@ function load(sharedWindow, noTimers = false) {
   const document = { querySelector: selector => selector === '.dsh-pet-root' ? root : null,
     querySelectorAll: () => [], addEventListener(type, fn) { listeners.set(fn, type); }, removeEventListener(type, fn) { listeners.delete(fn); } };
   const schedule = (fn, ms, repeat = false) => { const id = ++nextId; timers.set(id, { fn, at: now + Math.max(1, ms), ms, repeat }); return id; };
-  let api;
   const env = { window, document, location: { origin: 'http://test' }, performance: { now: () => now }, Date: { now: () => now },
     getComputedStyle: () => ({ display: 'block', visibility: 'visible', opacity: '1' }), AbortController, fetch() {},
     apiUrl: path => '/wallpaper' + path, weT: s => s, wallSidebarToggle: () => { toggle++; return nativeResult; },
@@ -37,7 +36,7 @@ function load(sharedWindow, noTimers = false) {
   if (noTimers) { env.setTimeout = undefined; env.clearTimeout = undefined; }
   const capability = () => ({ protocol: 1, generation: 'a', enabled: true, linkEnabled: true, available: true,
     ttlMs: 1500, target: 'main', petBase: '/dsh-pet-7340', names: Object.values(api.names) });
-  api = new Function('env', 'with(env){' + tuner + '\n' + pet + `
+  const api = new Function('env', 'with(env){' + tuner + '\n' + pet + `
     return { ...petLink, state:petLinkState, names:PET_ANIM, probe:petLinkProbe,
       eligible:()=>typeof petLinkEligible==='function' && petLinkEligible(),
       slow:petLinkSlowOpen, rebound:petLinkEggRebound,

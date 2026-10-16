@@ -21,7 +21,7 @@ const profile=mkdtempSync(join(tmpdir(),'pet-phase-verify-'));
 const browser=spawn(process.env.PET_TEST_BROWSER||'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',['--headless=new','--disable-gpu','--no-first-run','--remote-debugging-port=0','--user-data-dir='+profile,'about:blank'],{stdio:'ignore'});
 let socket,id=0,launchError;
 const pending=new Map();
-browser.on('error',err=>launchError=err);
+browser.on('error',err=>{launchError=err;});
 function send(method,params={}) { return new Promise((resolve,reject)=>{const key=++id;const timer=setTimeout(()=>{pending.delete(key);reject(Error('CDP timeout: '+method));},10000);pending.set(key,{resolve,reject,timer});socket.send(JSON.stringify({id:key,method,params}));}); }
 async function evaluate(expression) {const r=await send('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true});assert.ok(!r.exceptionDetails,JSON.stringify(r.exceptionDetails));return r.result.value;}
 try {
@@ -31,7 +31,7 @@ try {
   const pages=await(await fetch('http://127.0.0.1:'+port+'/json/list')).json();
   socket=new WebSocket(pages.find(p=>p.type==='page').webSocketDebuggerUrl);
   await new Promise((resolve,reject)=>{socket.onopen=resolve;socket.onerror=reject;});
-  socket.onmessage=({data})=>{const r=JSON.parse(data),p=pending.get(r.id);if(!p)return;pending.delete(r.id);clearTimeout(p.timer);r.error?p.reject(Error(JSON.stringify(r.error))):p.resolve(r.result);};
+  socket.onmessage=({data})=>{const r=JSON.parse(data),p=pending.get(r.id);if(!p)return;pending.delete(r.id);clearTimeout(p.timer);if(r.error)p.reject(Error(JSON.stringify(r.error)));else p.resolve(r.result);};
   await send('Page.enable');
   const artDir=new URL('../.artifacts/pet-tuner/',import.meta.url);mkdirSync(artDir,{recursive:true});
   for(const [width,height,side]of [[1366,900,'左'],[360,640,'右']]) {
@@ -81,5 +81,5 @@ try {
   }
 } finally {
   for(const p of pending.values())clearTimeout(p.timer);if(socket)socket.close();
-  if(browser.exitCode===null){const exited=new Promise(r=>browser.once('exit',r));browser.kill();await exited;}
+  if(browser.exitCode===null){const exited=new Promise(r=>{browser.once('exit',r);});browser.kill();await exited;}
 }
