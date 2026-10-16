@@ -14,14 +14,24 @@
  *        · `assertSubpackagesResolvable(rows, resolve)` → 全部可解析时正常返回；**任一失败必须抛 Error**，
  *          消息里逐条带上失败的 `name` 与行 `id`
  *      且 `lib/index.js` 的 `apply` 体里必须**调用**它（文本兜底）。
+ *   ②b **宿主腿**（2026-10-16 三行 `failed to import` 的加固）：还必须导出
+ *       `assertSubpackagesResolvableInHost(rows, { mainName, env, resolveInRoot })` —— 仓库腿的解析根是
+ *       **本仓** `node_modules`，而宿主按裸包名从 `<profile>/cordis.yml` 旁解析（§8.1 spike）⇒
+ *       少了这条腿时"仓库里在、profile 侧缺链接"恒过。本判据钉四件事：
+ *         a) 发现口径：只有"目录 + `package.json` + `node_modules/<主包名>`"三者齐备的 profile 才算装载根；
+ *         b) 声音条件：缺子包必须抛 Error，消息带**包名 + 行 id + profile 名**；探不到根 ⇒ 静默返回 `[]`
+ *            （CI / 没装过 DSH 的机器上不许判红）；`DSH_WE_SKIP_HOST_CHECK=1` 是唯一旁路；
+ *         c) 默认解析根：不注入解析器时落脚处必须是该 profile 的 `cordis.yml` 旁（真 fs 正/负两态）；
+ *         d) `lib/index.js` 的 `apply` 体里两条腿都接线，且都在 `provide` 之后。
  *   ③ 负对照：a) `subpackageSpecifiers` 的合成 patch 文本（注释行 / 裸行自身 / 子路径行 / 净新增行）；
  *      b) `assertSubpackagesResolvable` 的"静默版"实现（把 throw 去掉）必须被本判据判红；
- *      c) `lib/index.js` 的合成源码（apply 体里没有调用）必须被判红。
+ *      c) `lib/index.js` 的合成源码（apply 体里没有调用）必须被判红；
+ *      d) 宿主腿的真源码变异体（把 `throw new` 抹掉）必须被判红（判据有牙）。
  *
  * 挂链：`test/run-guards.mjs` 的 VERIFY_STEPS（hard）。缺 packages/ 或缺契约模块时**判红**，
  * 不放宽 —— 这正是"未落判据/未挂契约"要被看见的地方。
  */
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { functionBodyOf, stripComments } from './tools/js-text.mjs';
@@ -377,6 +387,143 @@ if (mod && typeof mod.subpackageSpecifiers === 'function' && typeof mod.assertSu
   check('负对照：真源码变异（\`throw new\` 被抹掉 = 自检静默）⇒ 本判据判红（证明判据有牙）',
     mutBad.length > 0, JSON.stringify(mutBad));
 }
+
+// ── ②b 宿主腿（§7.6① 的**第二条腿**；2026-10-16 三行 `failed to import` 的加固）──────────
+// 仓库腿（②）的解析根是**本仓** `node_modules`；宿主却按裸包名从 `<profile>/cordis.yml` 旁解析
+// 行名（§8.1 spike：本版 `boot()` 只传 4 实参 ⇒ `bareModuleBaseUrl` 恒 undefined）⇒ 少了这条腿时
+// "仓库里在、profile 侧缺链接"**恒过**：三行在宿主里 failed to import，主包却报自检通过。
+// 判据全部落在合成 `$DSH_HOME`（`.test-cache/subpackage-boot-host/`）里，不碰真机 profile。
+const HOST_LEG_ISO = join(ROOT, '.test-cache', 'subpackage-boot-host');
+
+/** 造一个 profile 目录（可选 manifest / 可选 `node_modules/<主包名>`）。 */
+function makeHostProfile(home, name, opts) {
+  const o = opts || {};
+  const dir = join(home, 'profiles', name);
+  mkdirSync(join(dir, 'node_modules'), { recursive: true });
+  if (o.manifest !== false) writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'probe-profile-' + name, private: true }) + '\n');
+  if (o.installsMain) mkdirSync(join(dir, 'node_modules', rootName), { recursive: true });
+  return dir;
+}
+
+/** 宿主腿判据核心（真模块 / 源码变异体共用）：返回违反项数组。 */
+function hostLegViolations(mod2, ctx) {
+  const bad = [];
+  if (typeof mod2.assertSubpackagesResolvableInHost !== 'function') return ['assertSubpackagesResolvableInHost 不是函数'];
+  const call = (env, resolveInRoot, rows) => {
+    const opts = { mainName: ctx.mainName, env };
+    if (typeof resolveInRoot === 'function') opts.resolveInRoot = resolveInRoot;
+    return mod2.assertSubpackagesResolvableInHost(rows || ctx.rows, opts);
+  };
+  // a) 探不到根 ⇒ 静默退化（CI / 没装过 DSH 的机器上不许判红）
+  try {
+    const ret = call({ DSH_HOME: join(ctx.iso, 'no-such-home') }, () => null);
+    if (!Array.isArray(ret) || ret.length !== 0) bad.push('探不到 DSH_HOME 时返回值不是空数组：' + JSON.stringify(ret));
+  } catch (e) { bad.push('探不到 DSH_HOME 时抛错（应静默退化）：' + e.message); }
+  // b) 发现口径 + 正腿：只有"装载根"被检查，非装载目录一次都不问
+  const asked = [];
+  let roots = null;
+  try { roots = call({ DSH_HOME: ctx.home }, (root) => { asked.push(root.name); return '/node_modules/' + root.name; }); }
+  catch (e) { bad.push('全可解析时抛错：' + e.message); }
+  if (!Array.isArray(roots)) bad.push('返回的不是数组：' + JSON.stringify(roots));
+  else {
+    const names = roots.map((r) => r.name).sort();
+    if (JSON.stringify(names) !== JSON.stringify([ctx.loader])) {
+      bad.push('被检查的 profile 集合 ' + JSON.stringify(names) + ' ≠ ' + JSON.stringify([ctx.loader])
+        + '（没有 package.json / 没装本主包的目录都必须被排除）');
+    }
+    for (const r of roots) if (typeof r.dir !== 'string' || r.dir === '') bad.push('roots 元素缺 dir：' + JSON.stringify(r));
+  }
+  const strays = [...new Set(asked)].filter((n) => n !== ctx.loader);
+  if (strays.length > 0) bad.push('向非装载 profile 问了行名：' + JSON.stringify(strays));
+  // c) 声音条件：缺子包必须抛，且消息要能指认"哪个 profile 的哪一行"
+  try {
+    call({ DSH_HOME: ctx.home }, (root, name) => (name === ctx.missing.name ? null : '/node_modules/' + root.name));
+    bad.push('有行解析不到时**没有抛错**（静默通过 = 宿主腿失效）');
+  } catch (e) {
+    if (!(e instanceof Error)) bad.push('解析失败时抛的不是 Error：' + String(e));
+    else {
+      for (const piece of [ctx.missing.name, ctx.missing.id, ctx.loader]) {
+        if (!e.message.includes(piece)) bad.push('抛错消息里缺 ' + JSON.stringify(piece) + '：' + e.message);
+      }
+    }
+  }
+  // d) 唯一旁路：开关之下连"装载根"都不看（所以注入一个会抛的解析器来证明它没被调用）
+  try {
+    const ret = call({ DSH_HOME: ctx.home, DSH_WE_SKIP_HOST_CHECK: '1' }, () => { throw new Error('旁路开关下不应调用解析器'); });
+    if (!Array.isArray(ret) || ret.length !== 0) bad.push('旁路开关下返回值不是空数组：' + JSON.stringify(ret));
+  } catch (e) { bad.push('旁路开关 DSH_WE_SKIP_HOST_CHECK=1 下仍抛错：' + e.message); }
+  return bad;
+}
+
+const hostLegRows = [
+  { id: 'wallpaper-engine-__probe_ok', name: rootName + '-__probe_ok' },
+  { id: 'wallpaper-engine-__probe_missing', name: rootName + '-__probe_missing' },
+];
+const hostCtx = {
+  iso: HOST_LEG_ISO, home: join(HOST_LEG_ISO, 'home'), loader: 'alpha',
+  mainName: rootName, rows: hostLegRows, missing: hostLegRows[1],
+};
+rmSync(HOST_LEG_ISO, { recursive: true, force: true });
+makeHostProfile(hostCtx.home, 'alpha', { installsMain: true });   // 装载根
+makeHostProfile(hostCtx.home, 'beta', {});                        // 有 manifest、没装本主包
+mkdirSync(join(hostCtx.home, 'profiles', 'gamma'), { recursive: true }); // 目录但没 manifest
+check('宿主腿：发现口径（只有"目录 + package.json + node_modules/<主包名>"算装载根）+ 缺行抛 Error（消息带包名/行 id/profile 名）+ 探不到静默 + 唯一旁路开关',
+  mod ? hostLegViolations(mod, hostCtx).length === 0 : false,
+  mod ? JSON.stringify(hostLegViolations(mod, hostCtx)) : '契约模块没有加载成功');
+
+// b2) 默认解析根（不注入解析器）：落脚处必须是该 profile 的 `cordis.yml` 旁 ⇒
+//     合成 profile 里**真装**的包可解析、没装的包必抛。这一对同时证明默认腿在查 profile 而不是本仓。
+const realHome = join(HOST_LEG_ISO, 'home-real');
+const realLoader = 'delta';
+const installedName = rootName + '-__host_probe_installed';
+const realProfileDir = makeHostProfile(realHome, realLoader, { installsMain: true });
+mkdirSync(join(realProfileDir, 'node_modules', installedName), { recursive: true });
+writeFileSync(join(realProfileDir, 'node_modules', installedName, 'package.json'),
+  JSON.stringify({ name: installedName, version: '0.0.0', main: 'index.js' }) + '\n');
+writeFileSync(join(realProfileDir, 'node_modules', installedName, 'index.js'), 'export default 1;\n');
+let realPos = null, realPosErr = null;
+try {
+  realPos = mod.assertSubpackagesResolvableInHost([{ id: 'probe-installed', name: installedName }],
+    { mainName: rootName, env: { DSH_HOME: realHome } });
+} catch (e) { realPosErr = e; }
+check('宿主腿默认解析根（不注入）：合成 profile 里真装的子包必须解析成功，且该 profile 被记录',
+  realPosErr === null && Array.isArray(realPos) && realPos.length === 1 && realPos[0].name === realLoader,
+  realPosErr ? realPosErr.message : JSON.stringify(realPos));
+let realNegErr = null;
+const notInstalledName = rootName + '-__host_probe_absent';
+try {
+  mod.assertSubpackagesResolvableInHost([{ id: 'probe-absent', name: notInstalledName }],
+    { mainName: rootName, env: { DSH_HOME: realHome } });
+} catch (e) { realNegErr = e; }
+check('宿主腿默认解析根（不注入）：合成 profile 里**没装**的子包必须抛错（证明默认落脚处不是本仓）',
+  realNegErr instanceof Error && realNegErr.message.includes(notInstalledName),
+  realNegErr ? realNegErr.message : '没有抛错');
+
+// c2) 真接线：apply 体里两条腿都在，且都在 provide 之后
+const facadeHostRe = /assertSubpackagesResolvableInHost\s*\(/;
+const facadeHostImported = /import\s*\{[^}]*\bassertSubpackagesResolvableInHost\b[^}]*\}\s*from\s*['"]\.\/subpackage-boot\.js['"]/.test(stripComments(facadeSrc));
+check('lib/index.js 的 apply 体里也调用了 assertSubpackagesResolvableInHost(...)（宿主腿真接线，import 自 ./subpackage-boot.js）',
+  facadeBody !== null && facadeHostRe.test(facadeBody) && facadeHostImported,
+  facadeBody === null ? '定位不到 apply 体' : ('apply 体里没有宿主腿=' + !facadeHostRe.test(facadeBody) + ' / 没有具名引入=' + !facadeHostImported));
+const hostLegAt = facadeBody === null ? -1 : facadeBody.search(facadeHostRe);
+check('两条自检腿都在 provide 之后（服务面先于任何自检）',
+  provideAt >= 0 && assertAt >= 0 && hostLegAt >= 0 && provideAt < assertAt && provideAt < hostLegAt,
+  'provide@' + provideAt + ' · 仓库腿@' + assertAt + ' · 宿主腿@' + hostLegAt);
+const synthFacade4 = 'export function apply(ctx) { provideSubpackageHost(ctx); assertSubpackagesResolvable([], () => null); return () => {}; }\n';
+const synthBody4 = functionBodyOf(stripComments(synthFacade4), APPLY_HEADER);
+check('负对照：合成 apply 体（只有仓库腿、没有宿主腿）⇒ 宿主腿接线判据判红',
+  !(synthBody4 !== null && facadeHostRe.test(synthBody4)), '合成体=' + JSON.stringify(synthBody4));
+
+// d2) 有牙：真源码变异（宿主腿的 `throw new` 被抹掉 = 只报警不出声）⇒ 判据必须变红
+if (mod) {
+  const hostMutSrc = absolutize(read(CONTRACT_REL), 'lib').replace(/throw\s+new\s+/g, '/*mut*/ void 0; // ');
+  let hostMutant = null, hostMutErr = null;
+  try { hostMutant = await importSource(hostMutSrc, 'lib', 'host-leg-mutant'); } catch (e) { hostMutErr = e; }
+  const hostMutBad = hostMutant ? hostLegViolations(hostMutant, hostCtx) : ['变异体加载失败：' + (hostMutErr && hostMutErr.message)];
+  check('负对照：真源码变异（宿主腿的 throw 被抹掉 = 自检不出声）⇒ 宿主腿判据判红（证明判据有牙）',
+    hostMutBad.length > 0, JSON.stringify(hostMutBad));
+}
+rmSync(HOST_LEG_ISO, { recursive: true, force: true });
 
 if (failed) { console.log('SUBPACKAGE BOOT CHECKS FAILED — ' + failed + ' failed'); process.exit(1); }
 console.log('ALL SUBPACKAGE BOOT CHECKS PASSED');

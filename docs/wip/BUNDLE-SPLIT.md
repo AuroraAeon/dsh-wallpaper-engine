@@ -534,6 +534,12 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 
 1. **启动自检（宿主）**：主包 `apply` 里主动 resolve 每个子包与其行，失败**大声报错**
    （因为行级失败是静默的，I5）。
+   ✅ **两条腿（2026-10-16 加固）**：① **仓库腿** —— `createRequire(import.meta.url)` 落在本仓
+   `node_modules`，管的是"patch 行与主包 manifest 脱节"；② **宿主腿** ——
+   `assertSubpackagesResolvableInHost()`：对**每个会装载本主包的 profile**按其 `cordis.yml` 旁解析裸包名，
+   管的是"仓库里在、profile 侧缺链接"（仓库腿结构性看不见的那种）。判据 = `test/verify-subpackage-boot.mjs`
+   的 ②b 段；落地账见 §15.2 末块。**探不到任何 profile（CI / 没装过 DSH）⇒ 静默退化**，
+   `DSH_WE_SKIP_HOST_CHECK=1` 是唯一旁路。
 2. **浏览器半边在场判据**：每个带 `dsh.client` 的子包，其**行必须被某个已选中的 bundle patch 插入**
    （C2 + §2.2 的那条静默失效）。
    ⚠️ **字体包今天不在本条范围内**（它没声明 `dsh.client`）—— 这是**已知的过渡态、不是覆盖**：
@@ -1049,6 +1055,25 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 > - **仍未做**：账③（组件浏览器半边独立成产物：`about-notice` 35 行 → `mascot-avatar` 1542 行 →
 >   `media-bridge` 交给 P-D）；`visibility.js` 归属**已结案**（§14 `D-16`）；发布形态排期（`D-18`）。
 
+> **落地账 · 自检加固：宿主根腿（2026-10-16；随本笔提交入库）**
+> - **起因（真机事故）**：三条组件行的 `name` 改成裸真名后，profile 侧没人重跑
+>   `scripts/dev-link-subpackages.mjs` ⇒ 宿主按裸包名从 `<profile>/cordis.yml` 旁解析（§8.1 spike）失败，
+>   三行 `failed to import`（UI 只给一行 warning）；而主包自检的解析根是**本仓** `node_modules`
+>   （开发期 `file:packages/*` 自链恒在）⇒ 报"自检通过"。**这是 §7.6① 只有一条腿的结构性盲点**，
+>   不是某一行配置写错。
+> - **改动**：`lib/subpackage-boot.js` 新增 `dshHomePath()` / `hostRoots()` /
+>   `assertSubpackagesResolvableInHost(rows, { mainName, env, resolveInRoot })`（导出），文件头"四个面"→"五个面"；
+>   `lib/index.js` 的 0b 段拆出 `rootManifest` / `subpackageRows` 两个常量并**两条腿都调用**（`provide` 仍最前）。
+>   解析根 = 每个"会装载本主包的 profile"（`<DSH_HOME>/profiles/<名>` 且含 `package.json` 与
+>   `node_modules/<主包名>`）的 `cordis.yml` 旁；探不到任何根（CI / 没装过 DSH 的机器）⇒ **静默退化**；
+>   `DSH_WE_SKIP_HOST_CHECK=1` 是唯一旁路（用于确知环境特殊时恢复启动）。
+> - **判据**：`test/verify-subpackage-boot.mjs` 新增 ②b 段（合成 `$DSH_HOME` 的发现口径正/负两态、
+>   默认解析根真 fs 正/负两态、两条腿的接线与顺序、旁路开关、真源码变异体），并同步扩了文件头的判据口径。
+> - **读数（2026-10-16 实测，复算见下）**：`node test/verify-subpackage-boot.mjs` = ALL PASSED（34 条）；
+>   `node test/run-guards.mjs all` = 全部 86 步 exit 0；真机探针 = 装载根 `["desktop","web"]`、六行全解析、
+>   人造缺行立刻抛错并指认 profile 名 + 包名。
+> - **复算**：`node test/verify-subpackage-boot.mjs`；人造缺行探针见本块（`env.DSH_HOME` 指向合成 home）。
+
 ### 15.3 时机（A）与分批
 
 | 选项 | 内容 | 判定 |
@@ -1094,6 +1119,9 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
    否则双位置结构将来可以无声漂回。
 8. **`lib/subpackage-boot.js` 的 `assertSubpackagesResolvable()` 失败文案**说"检查主包 `package.json` 的 dependencies 是否精确依赖"，
    而开发期形态实际是 `devDependencies` + `file:packages/<pkg>`（发布形态未执行，ADR-0014 `S8.2`）⇒ 顺手改成两态口径。
+   ✅ **已处置（2026-10-16）**：文案已改两态；**更进（同日）** —— 只改文案救不了真机事故，因为那段文案属于
+   **仓库腿**，而三条组件行失败在**宿主侧**（profile 缺 junction）⇒ 新增宿主腿
+   `assertSubpackagesResolvableInHost()`（§7.6① 第 1 条 / §15.2 末块落地账）。
 
 ### 15.5 判红面（同批必改）与自动适应（不用改）
 
@@ -1144,7 +1172,7 @@ Cordis 的级联只有**一个判据**：`name in fiber.inject`（`cordis/src/re
 | P-F-3 | 账③ 是否本轮 | 拆 2a / 2b 两批；`media-bridge` 交 P-D → 落 §14 D-17 |
 | P-F-4 | **发布形态排期** | 统一后主包必须**精确依赖**这 3 个包 ⇒ ADR-0014 `S8.2`「发布形态尚未执行过」由"没做过"变"必须做"；按 §12 顺序（先发子包 → 主包 `dependencies` 加精确版本 + 删 `devDependencies` 的 `file:` + 重算 lock → 再发主包）。**可先只落开发期形态**（`devDependencies` + `file:packages/<pkg>`）→ 落 §14 D-18 |
 | P-F-5 | ADR 动作 | ADR-0014 `S1.1` 的"组件行 / 子包"术语二分可删（统一后只剩一种）；ADR-0014 前言"问题 1 / 问题 2"结案；ADR-0013 §重新考虑的触发线是否补"组件级 `dsh.client` 的前提已变"→ 落 §14 D-19 |
-| P-F-6 | `lib/subpackage-boot.js` 的 `assertSubpackagesResolvable()` 失败文案 | ✅ **已落地（2026-10-16）**：文案已改两态口径 —— 开发期 `devDependencies` + `file:packages/<pkg>` 链接 / 发布期 `dependencies` 精确版本 |
+| P-F-6 | `lib/subpackage-boot.js` 的 `assertSubpackagesResolvable()` 失败文案 | ✅ **已落地（2026-10-16）**：文案已改两态口径 —— 开发期 `devDependencies` + `file:packages/<pkg>` 链接 / 发布期 `dependencies` 精确版本。**同日追加**：文案讲的是**仓库侧**形态，真机事故失败在**宿主侧**（profile 缺 junction）⇒ 同批加了宿主腿 `assertSubpackagesResolvableInHost()`（§7.6① 第 1 条；判据 `test/verify-subpackage-boot.mjs` ②b 段） |
 | P-F-7 | **门面路径 `applyComponent()` 保留还是退役** | **取保留**（已按此落地）：它今天在 `lib/**` 里**没有运行期调用者**，承重面是"声明面 + 守卫/fixture"；退役要连带改写 `verify-bundle-rows` 的 ⑥/⑧、`host-route-index` 的 `c` 面推导与 `componentProbe` 语义。代价：主包必须以**裸包名** import 出户组件 ⇒ 主包 → 子包的 value import，需要在 ADR-0014 `S5.3` / `D2` 的禁止清单里写明**例外口径**：「这是**宿主装载面**，不是跨包通道」（发布形态下正是 §12 的"主包精确依赖子包"） |
 | P-F-8 | **守卫里的"组件行"类别整体退役还是保类别重定基** | **已按"整体退役"落地（批 1c，三格全出户后）**：守卫改由 `COMPONENT_VIEW_KEYS` **声明面**驱动（"是不是组件"不再由落点目录回答），`host-route-index` 的 `kind === 'subpath'` 在本仓成为空集（预期形态）；`verify-subpackage-manifests` 的 subpath 分支改成「**0 条 = 已统一**」+ 用**合成夹具**继续喂 `manifestViolations()`（判据的牙不随用例消失）。**未删**的残留：`name/rule-subpath` 那支判据代码仍在 `test/tools/packages.mjs`（无生产用例，留给将来又按旧形态登记的情形） |
 
