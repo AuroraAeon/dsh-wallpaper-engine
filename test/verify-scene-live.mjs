@@ -1697,6 +1697,7 @@ for (const [name, ok] of clientChecks) check(name, ok);
     // 实测：宿主+磁盘 ~4ms、loadedmetadata→presented ~110ms，其余是"还没开始取数"；
     // 视频档此前刻意不跑准备链（怕第二个 4K 解码器）⇒ 整段启动成本压在关键路径上。
     // 折中＝只预到 HAVE_METADATA：**绝不 play()、绝不开 autoplay**。
+    const guardsAdoptedVideoSource = (text) => /if \(\(!prepared && !warmed\)\s*\|\| \(useCached && media\.dataset\.weTranscoded !== String\(rc\.fps\)\)\) \{/.test(text);
     check('① 提交前预热只到元数据（不引进第二个解码器）',
       CH.includes('const VIDEO_WARM_TTL_MS')
       && CH.includes('el.preload = "metadata"')
@@ -1707,9 +1708,10 @@ for (const [name, ok] of clientChecks) check(name, ok);
       // 赋 src 已经启动资源选择，**不得**再补一次 load()（同值重启 = 白跑一次取数）。
       && !/el\.src = u;\s*\n\s*el\.load\(\);/.test(CH)
       && CH.includes('const warmed = prepared ? null : consumeWarmVideo(sel.url);')
-      // 领养的元素**不得重赋 src**（同值重赋也会重启资源选择 = 黑屏闪烁源）：
-      // 建层那段"设 src / 挑抽帧版"只对新建元素生效。
-      && CH.includes('if (!prepared && !warmed) {'));
+      // 领养原片仅在匹配的抽帧缓存已就绪时换源；已匹配元素不得同值重赋。
+      && guardsAdoptedVideoSource(CH));
+    check('① negative control: 去掉已匹配转码元素的 src 保护会被判出',
+      !guardsAdoptedVideoSource(CH.replace('media.dataset.weTranscoded !== String(rc.fps)', 'true')));
     check('① 预热的触发点是卡片身份标记（按下即预热、停在卡上也预热）',
       src.includes('warmVideoForPointer')
       && src.includes('addEventListener("pointerdown", onWarmPointerDown, { capture: true, passive: true });')
