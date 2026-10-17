@@ -54,8 +54,8 @@ function weSurfaceGeometry(target, id, owned) {
   const nativeBlur = [style.backdropFilter, style.webkitBackdropFilter].some(v => v && v !== "none");
   let safeRoot = visible && rect.left >= 0 && rect.top >= 0
     && rect.right <= win.innerWidth + 1 && rect.bottom <= win.innerHeight + 1;
-  // 全屏 dock 会覆盖会话前景，不能用位于页面底层的矩形冒充该模态内的玻璃。
-  if (id === "right-sidebar" && target.getAttribute("data-sidebar-right-panel") !== "push") safeRoot = false;
+  // 宿主明确声明的 push/fullscreen 才进入右栏安全几何路径；未知模式继续原生回退。
+  if (id === "right-sidebar" && !['push', 'fullscreen'].includes(target.getAttribute("data-sidebar-right-panel"))) safeRoot = false;
   for (let el = target; safeRoot && el; el = el.parentElement) {
     const cs = win.getComputedStyle(el);
     if (Number(cs.opacity) < 1 || cs.transform !== "none" || cs.perspective !== "none"

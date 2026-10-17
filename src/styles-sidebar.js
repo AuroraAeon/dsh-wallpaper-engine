@@ -375,6 +375,10 @@ const CSS_SIDEBAR = `  /* ── 左侧栏液态玻璃（宿主原生左栏的�
       var(--we-readability-base) calc(var(--we-readability-floor) * 100%),
       color-mix(in srgb, var(--we-sidebar-color) calc(var(--we-sidebar-tint) * 0.65), transparent) calc((1 - var(--we-readability-floor)) * 100%)) !important;
   }
+  /* fullscreen 是宿主明确声明的前景 dock 模式；只抬面板自身，不改共享祖先或第三方节点。 */
+  body[data-we-glass-page] [data-sidebar-right-panel="fullscreen"][data-sidebar-right-open]:where([data-we-surface-runtime="right-sidebar"]) {
+    z-index: var(--dsh-dockkit-dock-layer, 40);
+  }
   /* Closed state: the host's own container carries no background — keep ours
      off too, whatever the master-switch state (#107). */
   body[data-we-glass-page] [data-sidebar-right-panel]:not([data-sidebar-right-open]) {

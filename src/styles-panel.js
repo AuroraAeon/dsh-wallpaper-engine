@@ -365,6 +365,13 @@ const CSS_PANEL = `  /* ── 吉祥物形态**3D 圆环转盘**（四次返工
     padding-right: 24px;
   }
 
+  /* 本插件自有控件的局部表面：宿主别名只在宿主壳或已知 chat-flow 内接管，
+     picker/快捷面板不能因此退回宿主默认实底。令牌仅挂在本插件根节点，第三方内容不会继承。 */
+  .we-picker, .we-picker__modal, .we-qp {
+    --dsw-alias-bg-layer-1: color-mix(in srgb, var(--we-readability-base, #ffffff) 92%, transparent);
+    --dsw-alias-bg-layer-2: color-mix(in srgb, var(--we-readability-base, #ffffff) 94%, transparent);
+    --dsw-alias-bg-layer-3: color-mix(in srgb, var(--we-readability-base, #ffffff) 96%, transparent);
+  }
   /* Motion tokens: one shared ease (expo-out) + two durations. */
   .we-picker, .we-picker__modal {
     --we-ease: cubic-bezier(0.16, 1, 0.3, 1);
