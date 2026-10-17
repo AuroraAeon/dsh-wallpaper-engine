@@ -6,6 +6,8 @@ import { createHash } from 'node:crypto';
 import { runInNewContext } from 'node:vm';
 import { NAMES, MEMES } from '../tools/inject-assets.mjs';
 import { checkPetPrepared } from '../lib/prepared.js';
+import * as patcher from '../tools/patch-pet-client.mjs';
+import { sealPetPatch } from '../lib/compatibility.js';
 
 const module = await import('../tools/install-bridge.mjs').catch(error => {
   if (error.code === 'ERR_MODULE_NOT_FOUND' && error.message.includes('install-bridge.mjs')) return {};
@@ -128,6 +130,34 @@ const once = snapshot(f.root);
 assert.equal(installBridge(f).status, 'already-installed');
 assert.deepEqual(snapshot(f.root), once, '重复安装逐字节幂等且不累积备份');
 console.log('PASS 原版完整安装、配置字段保留、写后指纹与重复安装');
+
+let legacyClient = patcher.EDITS.reduce((text, edit) => edit.all ? text.split(edit.from).join(edit.to) : text.replace(edit.from, edit.to), readFileSync(join(original, 'lib/client.js'), 'utf8'));
+for (const stage of ['applyControlEdits', 'applyBubbleTimingEdits', 'applyAssetCacheEdits', 'applyLifecycleEdits', 'applyThrowEdits', 'applyRuntimeOwnerEdits']) legacyClient = patcher[stage](legacyClient);
+for (const sealed of upstreamVersion === '0.3.6' ? [false, true] : [true]) {
+  const upgrade = fixture();
+  installBridge(upgrade);
+  const clientPath = join(upgrade.packageRoot, 'lib/client.js');
+  const receiptPath = join(upgrade.dshHome, 'dsh-pet/pet-link-install.json');
+  const oldClient = sealed ? sealPetPatch(legacyClient, 'client') : legacyClient;
+  writeFileSync(clientPath, oldClient);
+  const receipt = JSON.parse(readFileSync(receiptPath, 'utf8'));
+  writeFileSync(receiptPath, JSON.stringify({ ...receipt, clientHash: hash(oldClient) }));
+  const beforeUpgrade = snapshot(upgrade.root);
+  assert.equal(installBridge({ ...upgrade, check: true }).status, 'ready');
+  assert.deepEqual(snapshot(upgrade.root), beforeUpgrade, '旧安装升级预检零写入');
+  assert.throws(() => installBridge({ ...upgrade, afterWrite(index) { if (index === 1) throw new Error('模拟升级失败'); } }), /模拟升级失败/);
+  const afterFailure = snapshot(upgrade.root);
+  for (const [path, sha] of Object.entries(beforeUpgrade)) assert.equal(afterFailure[path], sha, '升级失败恢复原件 ' + path);
+  const upgraded = installBridge(upgrade);
+  assert.equal(upgraded.status, 'installed');
+  assert.notEqual(upgraded.manifest.clientHash, hash(oldClient));
+  assert.match(readFileSync(clientPath, 'utf8'), /pet-link multi-instance-v1/);
+  assert.equal(checkPetPrepared(upgrade.dshHome, resolve(upgrade.packageRoot, '../..')).available, true);
+  const installedSnapshot = snapshot(upgrade.root);
+  assert.equal(installBridge(upgrade).status, 'already-installed');
+  assert.deepEqual(snapshot(upgrade.root), installedSnapshot, '升级后重复准备零写入');
+}
+console.log('PASS 旧裸补丁及摘要安装升级、预检零写入、失败回滚和新凭据幂等');
 
 const hostSource = readFileSync(join(f.packageRoot, 'lib/index.js'), 'utf8');
 const helperStart = hostSource.indexOf('/** 扫描 animation-ext/');

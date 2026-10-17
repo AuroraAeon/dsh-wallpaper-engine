@@ -607,6 +607,38 @@ export function applyRuntimeOwnerEdits(source) {
   }]);
 }
 
+/** 多桌宠共存：兼容入口只指向主桌宠，副实例不消费或清理主实例的锁。 */
+export function applyMultiInstanceEdits(source) {
+  return applyReplacements(source, [{
+    why: '显式动作锁只由对应目标读取，其他桌宠保持原生动画',
+    from: '\t\t\tif (l && typeof l.name === "string" && l.name) {',
+    to: '\t\t\tif (l && (!l.owner || l.owner.target === cfg.id) && typeof l.name === "string" && l.name) {',
+    expect: 'l.owner.target === cfg.id',
+  }, {
+    why: '气泡独占只影响持锁桌宠，不阻塞其他桌宠气泡',
+    from: '\t\t\tif (!held) return false;',
+    to: '\t\t\tif (!held || (held.owner && held.owner.target !== cfg.id)) return false;',
+    expect: 'held.owner.target !== cfg.id',
+  }, {
+    why: '按目标登记控制面，附加桌宠挂载不能覆盖main',
+    from: '\t\t\twindow.__dshPetCtl = ctl;\n\t\t\treturn () => {\n\t\t\t\tif (window.__dshPetCtl === ctl) {\n\t\t\t\t\twindow.__dshPetCtl = null;\n\t\t\t\t\twindow.__dshPetLock = null;\n\t\t\t\t\twindow.__dshPetBubbleLock = null;\n\t\t\t\t}\n\t\t\t};',
+    to: [
+      '\t\t\t// pet-link multi-instance-v1',
+      '\t\t\tconst controls = window.__dshPetCtrls || (window.__dshPetCtrls = Object.create(null));',
+      '\t\t\tcontrols[cfg.id] = ctl;',
+      '\t\t\twindow.__dshPetCtl = controls.main || null;',
+      '\t\t\treturn () => {',
+      '\t\t\t\tif (controls[cfg.id] === ctl) delete controls[cfg.id];',
+      '\t\t\t\tif (window.__dshPetCtl === ctl) window.__dshPetCtl = controls.main || null;',
+      '\t\t\t\tif (window.__dshPetLock?.owner === ctl) window.__dshPetLock = null;',
+      '\t\t\t\tif (window.__dshPetBubbleLock?.owner === ctl) window.__dshPetBubbleLock = null;',
+      '\t\t\t\tif (!Object.keys(controls).length && window.__dshPetCtrls === controls) delete window.__dshPetCtrls;',
+      '\t\t\t};',
+    ].join('\n'),
+    expect: '// pet-link multi-instance-v1',
+  }]);
+}
+
 /** 已发布旧补丁：只允许此精确指纹升级，仍拒绝未知修改。 */
 export const PREVIOUS_PATCHED = '3a5cfec6751110e2d6f438fcc1be549250841450b573dd5b52325df68a6524a5';
 /** 补丁后的预期指纹（修改后从已核对的原版复算）。 */
@@ -615,7 +647,8 @@ export const PREVIOUS_BUBBLE_PATCHED = '4535c9447c350d7b2966d8ef417c9cf6612385df
 export const PREVIOUS_CACHE_PATCHED = '4a73b16354d6c579456276c890c01578539fd182fac903b3b3176b32ca41b4d2';
 export const PREVIOUS_LIFECYCLE_PATCHED = 'd257a88dba762e2ea7074d5e7550e5507bb441deb1534a76abf9b38731b67eda';
 export const PREVIOUS_THROW_PATCHED = '9ce475c8f7cb5a5743334067666361845529137f78bad48aef120665df66ed26';
-export const PATCHED = '7073c497cb9d81f28a7e303ef318b0fcb444b91ecb7682e4ccec69a2b3559c5a';
+export const PREVIOUS_RUNTIME_PATCHED = '7073c497cb9d81f28a7e303ef318b0fcb444b91ecb7682e4ccec69a2b3559c5a';
+export const PATCHED = 'e33d610a88f22d300abc6c3f9329805c9fbcf3ab00a10505d243b787b7568ec3';
 
 /** 对给定源码按序施加全部替换；任一 `from` 找不到即抛错（**不做部分补丁**）。
  *
@@ -642,7 +675,7 @@ export function applyControlEdits(source) {
   return applyReplacements(source, CONTROL_EDITS);
 }
 export function applyEdits(source) {
-  return applyRuntimeOwnerEdits(applyThrowEdits(applyLifecycleEdits(applyAssetCacheEdits(applyBubbleTimingEdits(applyControlEdits(applyReplacements(source, EDITS)))))));
+  return applyMultiInstanceEdits(applyRuntimeOwnerEdits(applyThrowEdits(applyLifecycleEdits(applyAssetCacheEdits(applyBubbleTimingEdits(applyControlEdits(applyReplacements(source, EDITS))))))));
 }
 
 /** 给 dsh-pet 包打补丁。
@@ -661,11 +694,17 @@ export function preparePetClient({ packageRoot } = {}) {
   const original = readFileSync(target);
   const hash = sha(original);
   const source = original.toString('utf8');
-  if (hash === PATCHED || hasSealedPetPatch(source, 'client')) {
+  const sealed = hasSealedPetPatch(source, 'client');
+  if (hash === PATCHED || (sealed && source.includes('// pet-link multi-instance-v1'))) {
     return { status: 'already-patched', target, original, patched: original, hash, version: manifest.version };
   }
+  if (sealed) {
+    const body = source.slice(0, source.indexOf('\n// pet-link-client-v1 sha256:'));
+    const patched = Buffer.from(sealPetPatch(applyMultiInstanceEdits(body), 'client'), 'utf8');
+    return { status: 'ready', target, original, patched, hash: sha(patched), version: manifest.version };
+  }
   const known = [ORIGINAL, PREVIOUS_PATCHED, PREVIOUS_CONTROL_PATCHED, PREVIOUS_BUBBLE_PATCHED,
-    PREVIOUS_CACHE_PATCHED, PREVIOUS_LIFECYCLE_PATCHED, PREVIOUS_THROW_PATCHED].includes(hash);
+    PREVIOUS_CACHE_PATCHED, PREVIOUS_LIFECYCLE_PATCHED, PREVIOUS_THROW_PATCHED, PREVIOUS_RUNTIME_PATCHED].includes(hash);
   const upgraded = hash === PREVIOUS_BUBBLE_PATCHED
     ? original.toString('utf8')
     : hash === PREVIOUS_CONTROL_PATCHED
@@ -677,7 +716,8 @@ export function preparePetClient({ packageRoot } = {}) {
     : hash === PREVIOUS_LIFECYCLE_PATCHED ? applyThrowEdits(original.toString('utf8'))
       : hash === PREVIOUS_CACHE_PATCHED ? applyThrowEdits(applyLifecycleEdits(original.toString('utf8')))
         : upgraded === null ? null : applyThrowEdits(applyLifecycleEdits(applyAssetCacheEdits(upgraded)));
-  const result = basePatched === null ? applyEdits(source) : applyRuntimeOwnerEdits(basePatched);
+  const result = hash === PREVIOUS_RUNTIME_PATCHED ? applyMultiInstanceEdits(source)
+    : basePatched === null ? applyEdits(source) : applyMultiInstanceEdits(applyRuntimeOwnerEdits(basePatched));
   if (known && sha(result) !== PATCHED) {
     throw new Error('补丁产物指纹与预期不符，拒绝写入（预期 ' + PATCHED + '）。');
   }

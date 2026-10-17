@@ -4,7 +4,7 @@ import { applyEdits } from '../tools/patch-pet-client.mjs';
 const original = new URL('../../../.artifacts/hotplug-upstream/package/lib/client.js', import.meta.url);
 const source = applyEdits(readFileSync(process.argv[2] || original, 'utf8'));
 const start = source.indexOf('\t\t\tconst ctl = {');
-const end = source.indexOf('\n\t\t\twindow.__dshPetCtl = ctl;', start);
+const end = source.indexOf('\n\t\t\t// pet-link multi-instance-v1', start);
 assert.ok(start >= 0 && end > start);
 const code = source.slice(start, end) + ';return ctl;';
 const window = {};

@@ -22,6 +22,10 @@ node packages/pet-link/tools/install-bridge.mjs --dsh-home "<DSH_HOME>" --pet-pa
 
 运行中的资格每 500ms 复核，租约上限 1500ms。桌宠隐藏、桥接退出、联动关闭或运行实例更换时撤销演出，归还动作、气泡、位移、侧栏临时样式及特效；恢复条件后重新探测。它不是“任意依赖变动在同一毫秒生效”的保证。
 
+同页存在多个桌宠时，联动只绑定 `main`。附加桌宠不会覆盖主控制入口，也不会消费或清除主桌宠的动作锁、气泡锁；朝向修正与身体量测仅查询当前绑定根节点内部。主桌宠退出时撤销联动，不自动改为操控另一只桌宠。
+
+已经准备过旧补丁的安装也需要显式重新执行上面的检查和准备命令，再重新加载桌宠插件与网页。安装器会把已知旧指纹或有效摘要的旧控制面局部升级为多实例修订，沿用备份、失败回滚和篡改拒绝规则；当前修订重复准备仍然幂等。这里只修复目标隔离，不保证未经实测的其他桌宠动画或所有第三方组合均兼容。
+
 可通过独立的 `wallpaper-engine-pet-link` 宿主行启停本子包，或将该行配置设为 `linkEnabled: false`。不会因此关闭 wallpaper 的其他能力。
 
 ## 四条逻辑与维护
@@ -47,6 +51,7 @@ npm run verify:pet-link
 ```sh
 node packages/pet-link/test/verify-pet-install-transaction.mjs "<原版解包目录>"
 node packages/pet-link/test/verify-pet-runtime-owner.mjs "<原版解包目录>/lib/client.js"
+node packages/pet-link/test/verify-pet-multi-instance.mjs "<原版解包目录>/lib/client.js"
 ```
 
 集成测试通过 `PET_TEST_UPSTREAM` 指定原版目录，`PET_TEST_CORDIS_MODULE` 可指定真实 Cordis 的模块入口，再运行 `npm run verify:pet-link:integration`。测试会在仓库 `.artifacts/` 创建隔离 profile，验证真实 Cordis 的配置更新和十轮启停，不使用真实用户配置。

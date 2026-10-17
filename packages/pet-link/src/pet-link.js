@@ -359,9 +359,9 @@ const PET_FACING_TICK_MS = 100;
  *  @returns 解除函数（幂等） */
 function petLinkArmFacing() {
   const root = petLinkPetEl();
-  if (!root || typeof document === 'undefined' || !document.querySelector) return () => {};
+  if (!root || typeof root.querySelectorAll !== 'function') return () => {};
   const videos = () => {
-    try { return Array.from(document.querySelectorAll('.dsh-pet-video')); } catch { return []; }
+    try { return Array.from(root.querySelectorAll('.dsh-pet-video')); } catch { return []; }
   };
   /** dsh-pet 的朝向状态：它自己渲染在 root 的 `data-facing` 上（`pet.ts:1535`），
    *  是唯一稳定的真源 —— 比自己解析 transform 字符串可靠（squash 期间会有 `scaleY`）。 */
@@ -788,8 +788,9 @@ function petLinkPetRect() {
  *  身体框，**绝不**退回画布边界：画布左右是透明留白，拿它当身体会误判"已贴边"。 */
 function petLinkBodyRect() {
   try {
-    if (typeof document !== 'undefined' && document.querySelector) {
-      const el = document.querySelector('.dsh-pet-hit');
+    const root = petLinkPetEl();
+    if (root && typeof root.querySelector === 'function') {
+      const el = root.querySelector('.dsh-pet-hit');
       if (el && typeof el.getBoundingClientRect === 'function') {
         const r = el.getBoundingClientRect();
         if (r && Number.isFinite(r.left)) return r;
