@@ -27,11 +27,15 @@ export const CHAIN_KEYS = { verify: 'verify', docs: 'verify:docs', smoke: 'smoke
  * 与 `test/verify-package-files.mjs` 的 P5 同源（那边也按同一组数字设地板）。
  * 只数 `tier === 'hard'`；软档不计（软档改档位不该触发地板变化）。
  *
- * 口径：`verify` / `smoke` 是**硬档组**，地板与 P5 一致（24 / 5）；`docs` 整组是软档
- * ⇒ 地板 **0**（对它设 1 会把"整组软档"这个**设计**判成违规）；`all` 的地板是前两者之和
- * （`build` 那一步是 npm 步骤，不落 `file`，不计）。
+ * 口径：`docs` 整组是软档 ⇒ 地板 **0**（对它设 1 会把"整组软档"这个**设计**判成违规）；
+ * `all` 的地板是前两者之和（`build` 那一步是 npm 步骤，不落 `file`，不计）。
+ *
+ * **取值 = 实测**（2026-10-17 复算：84 / 0 / 6 / 90，与 `test/verify-package-files.mjs`
+ * 的 P5 实测同源）。地板只该在**链有意变短**时下调，且必须与
+ * `test/fixtures/verify-chain.json` 在同一次改动里更新 —— 否则就是"把清单削空"。
+ * 旧的宽口径（24 / 5 / 29）等于给"悄悄砍掉 60 条硬档"留了通道。
  */
-export const TIER_FLOOR = { verify: 24, docs: 0, smoke: 5, all: 29 };
+export const TIER_FLOOR = { verify: 84, docs: 0, smoke: 6, all: 90 };
 
 /** 读某一组的 `--list-json`。runner 起不来 / 输出不是 JSON ⇒ 抛（调用方转成判据失败）。 */
 export function readChain(group) {
@@ -152,8 +156,8 @@ export const OFF_CHAIN_WHY = {
   'verify-static.mjs': '静态棘轮入口（ESLint / tsc 都是 devDependencies）⇒ CI 独立步骤 `npm run verify:static`；链上零裸依赖容不下它。',
 };
 
-/** 守卫面地板（防"面变空 ⇒ 脱链判据永真"）。实测 2026-10-16 = 88。 */
-export const OFF_CHAIN_FLOOR = 80;
+/** 守卫面地板（防"面变空 ⇒ 脱链判据永真"）。实测 2026-10-17 = 109（链上 95 · 豁免 14）。 */
+export const OFF_CHAIN_FLOOR = 109;
 
 /**
  * 判据：守卫面上每个文件「要么在链上、要么有非空脱链理由」，且豁免表里没有过期/悬空条目。
