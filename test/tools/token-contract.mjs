@@ -177,6 +177,12 @@ export function bucketOf(chain) {
 export function ungatedReason(chain) {
   if (/\[data-we-thinking-native\]/.test(chain)) return 'thinking-native（思考块自带开关）';
   if (chain === '.we-layer') return '.we-layer（插件自有元素，卸载即消失）';
+  // 插件自有控件根（picker / 快捷面板）：与 .we-layer 同一类 —— 节点只由本插件创建、
+  // 卸载即消失，令牌覆盖不可能泄漏到宿主内容。它们必须能自定底色，否则会退回宿主实底。
+  const parts = chain.split(',').map((s) => s.trim());
+  if (parts.every((s) => /^\.we-(picker|picker__modal|qp)$/.test(s))) {
+    return chain + '（插件自有控件根，卸载即消失）';
+  }
   return null; // 不在白名单 ⇒ 守卫红
 }
 
