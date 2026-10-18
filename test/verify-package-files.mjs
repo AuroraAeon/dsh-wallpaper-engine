@@ -360,7 +360,7 @@ async function main() {
     // `-egg1-motion` / `-egg1-rebound` / `-sidebar-rebound` / `-egg2-motion` / `-follow`，见 run-guards.mjs
     // 的 VERIFY_STEPS 清单）。合并时按实测重取：原 PR 基于 P-F 批 1c 之前的树，写的是 84/97。
     // 统一表面层新增策略、生命周期与真实浏览器三项硬档回归。
-    const CHAIN_FLOOR = { verify: 88, docs: 6, smoke: 6, all: 101 };
+    const CHAIN_FLOOR = { verify: 89, docs: 6, smoke: 6, all: 102 };
     /** 地板表与 GROUPS 的对齐体检：键名必须与**组名**逐一对齐（纯函数 ⇒ 负对照可直接喂）。 */
     const floorGaps = (groups, floors) => groups.map(([, g]) => g).filter((g) => !Number.isInteger(floors[g]));
     const problems = floorGaps(GROUPS, CHAIN_FLOOR).map((g) => '地板表缺组 ' + g
