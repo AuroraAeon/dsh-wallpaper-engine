@@ -1048,6 +1048,7 @@ function seedGroupsFromPlaylists() {
     name: typeof source.name === "string" && source.name.trim() ? source.name.trim() : weT("轮播列表"),
     interval: DEFAULTS.rotationInterval,
     order: source.order === "random" ? "random" : "sequence",
+    trigger: "interval",
     wallpaperIds: ids,
   });
   selection.rotationGroupId = selection.rotationGroups[selection.rotationGroups.length - 1].id;
@@ -1113,8 +1114,16 @@ function syncRotationTimer() {
   clearRotationTimer();
   if (!selection.rotationEnabled || !selection.id) return;
   if (rotationCandidates().length < 2) return;
-  if (typeof window === "undefined" || typeof window.setTimeout !== "function") return;
   const group = activeRotationGroup();
+  // 「当前视频播完就换」档（issue #230 后续诉求）：**不计时** —— 推进由视频的 ended
+  // 事件驱动（watchVideoState 里那一支）。这里只把上一次留下的计时收掉（上面已调
+  // clearRotationTimer），于是切回「按间隔」档时由下一次 sync 重新 arm。
+  const trigger = group && group.trigger === "videoEnd" ? "videoEnd" : "interval";
+  if (trigger === "videoEnd") {
+    liveLog("rotation-arm", "跟随视频播放结束（不计时，候选 " + rotationCandidates().length + " 张）");
+    return;
+  }
+  if (typeof window === "undefined" || typeof window.setTimeout !== "function") return;
   const minutes = group ? group.interval : DEFAULTS.rotationInterval;
   // 开发/测试覆盖钩子：localStorage.weRotationTestSec（秒）可临时缩短轮换
   // 间隔（冒烟测试与手动预览用）；未设置时按组间隔正常运转（缺省值见 lib/settings-schema.js
@@ -1286,6 +1295,7 @@ function startCreateGroup() {
     name: weT("轮播列表 {index}", { index: selection.rotationGroups.length + 1 }),
     interval: DEFAULTS.rotationInterval,
     order: "sequence",
+    trigger: "interval",
     wallpaperIds: [],
   });
   emit();
@@ -1298,7 +1308,8 @@ function saveEditingGroup() {
   const cleaned = {
     id: draft.id,
     name: typeof draft.name === "string" && draft.name.trim() ? draft.name.trim() : weT("轮播列表"),
-    interval: clampNum(draft.interval, ...schemaRange("rotationInterval"), DEFAULTS.rotationInterval),
+    interval: clampNum(draft.interval, ROTATION_INTERVAL_MIN, ROTATION_INTERVAL_MAX, DEFAULTS.rotationInterval),
+    trigger: draft.trigger === "videoEnd" ? "videoEnd" : "interval",
     order: draft.order === "random" ? "random" : "sequence",
     wallpaperIds: Array.isArray(draft.wallpaperIds)
       ? draft.wallpaperIds.filter((x) => typeof x === "string" && x)
@@ -1810,6 +1821,27 @@ function watchVideoState(video) {
   for (const t of ["play", "playing", "pause", "ended", "error", "emptied"]) {
     try { video.addEventListener(t, () => syncVideoState(video)); } catch { /* ignore */ }
   }
+  // 「当前视频播完就换下一张」（issue #230 后续诉求）：轮播组选了 `trigger: 'videoEnd'`
+  // 时，壁纸视频的 ended 就是轮换信号 —— 与计时器二选一（syncRotationTimer 在该档不计时）。
+  // 只认**当前层**那个 <video>：预热 / 探测元素也走 watchVideoState，它们播完不代表壁纸播完。
+  // `loop` 会把 ended 吞掉，所以按 trigger 在建层时关掉 loop（见 video-layer 的
+  // loop 分支）—— 这里再加一道 `video.loop` 判断，防止旧层残留的 ended 误触。
+  try {
+    video.addEventListener("ended", () => {
+      if (video.loop) return;
+      if (!selection.rotationEnabled || !selection.id) return;
+      const group = activeRotationGroup();
+      if (!group || group.trigger !== "videoEnd") return;
+      const cur = (selection.inventory && selection.inventory.wallpapers || []).find((w) => w && w.id === selection.id);
+      // 只对**视频**壁纸生效：场景内嵌视频播完不等于场景结束（它可能还有别的动画）；
+      // 图片 / 网页壁纸没有 ended 语义，真出现了也按"不是这个档该管的事"跳过。
+      if (!cur || cur.type !== "video") return;
+      if (video.currentSrc && selection.url && video.currentSrc.indexOf(String(selection.url).split("?")[0]) < 0) return;
+      if (rotationCandidates().length < 2) return;
+      liveLog("rotation-video-end", "视频播完 → 换下一张（候选 " + rotationCandidates().length + " 张）");
+      beginRotationPrepare(new Set());
+    });
+  } catch { /* ignore */ }
   // 媒体就绪后按意图自动补一次播放：play() 最常见的失败是被紧接着的 src 切换
   // （转码替换 / 换源）打断 —— 那一刻元素已经 paused，用户看到的就是冻在首帧
   // 的静止画面。就绪事件里重试即可自愈；真的被拒过时由 wePlayRefused 兜底，
@@ -2272,7 +2304,16 @@ function onEditName(e) {
 }
 function onEditInterval(e) {
   if (!selection.editing) return;
-  selection.editing.interval = clampNum(Number(e.target.value), ...schemaRange("rotationInterval"), DEFAULTS.rotationInterval);
+  // ⚠️ 取值域用 ROTATION_INTERVAL_MIN/MAX 而不是 schemaRange("rotationInterval")：
+  // `rotationInterval` 是 DEFAULTS_ONLY 键（**不在 KINDS 里**）⇒ 问 KINDS 得到的是
+  // [undefined, undefined] ⇒ clampNum 恒回落默认值 30，界面上"选任何时间都无效"
+  // （issue #230 的根因）。真源见 lib/settings-schema.js 的那对常量。
+  selection.editing.interval = clampNum(Number(e.target.value), ROTATION_INTERVAL_MIN, ROTATION_INTERVAL_MAX, DEFAULTS.rotationInterval);
+  emit();
+}
+function onEditTrigger(e) {
+  if (!selection.editing) return;
+  selection.editing.trigger = e.target.value === "videoEnd" ? "videoEnd" : "interval";
   emit();
 }
 function onEditOrder(e) {
@@ -2712,6 +2753,13 @@ async function postImageAsset(path, blob, what) {
 function onAvatarEnabled(e) { setSetting("avatarEnabled", e.target.checked); emit(); }
 function onAvatarSize(v, live) { commitLiveSetting("avatarSize", v, live); if (live) syncAvatarLayer(); }
 function onAvatarRadius(v, live) { commitLiveSetting("avatarRadius", v, live); if (live) syncAvatarLayer(); }
+/** 助手头像的出现间隔（issue #231）：只影响分组判定，没有样式变量 ⇒ 抬手那一次 emit 重算即可
+ *  （渲染器不重算分组；分组由 emit 订阅链里的 syncAvatarLayer 触发，见下）。 */
+function onAvatarAiRepeatRows(v, live) {
+  // 取值域走 schemaRange（与其它滑块同一口径：改 KINDS 不会漏改这里的第二份数字）。
+  commitLiveSetting("avatarAiRepeatRows", clampNum(Math.round(Number(v)), ...schemaRange("avatarAiRepeatRows"), DEFAULTS.avatarAiRepeatRows), live);
+  if (live) syncAvatarLayer();
+}
 // 上传裁切（issue #191 问题 1）：用户口径是"上传非正方形、或主体不在中央时效果很差"。
 // 做法是**导入时先裁再传**（而不是存裁切参数第二次渲染）：
 //   · 盘上那张就是裁完的方形图 ⇒ 预览、会话里、以及"以后任何读到它的地方"天然一致，
@@ -2809,10 +2857,15 @@ async function openAvatarCrop(side, file) {
     return;
   }
   let url;
+  // ⚠️ `w` / `h` 必须声明在 try **之外**：它们要在 catch 之后写进瞬态（`avatarCropW/H`）。
+  // 写进 try 内曾让这两行抛 `ReferenceError: w is not defined` —— 结果是裁切弹窗弹出但
+  // 几何恒为 0（图不可见）、且 `emit()` 永远到不了（首次选图界面毫无反应）。
+  let w;
+  let h;
   try {
     const src = await decodeImageFile(file);
-    const w = Number(src.width) || 0;
-    const h = Number(src.height) || 0;
+    w = Number(src.width) || 0;
+    h = Number(src.height) || 0;
     if (src.close) { try { src.close(); } catch { /* ignore */ } }
     if (!w || !h) throw new Error(weT("读不出图片尺寸"));
     url = URL.createObjectURL(file);
@@ -2871,21 +2924,70 @@ function avatarCropGeometry() {
     dy: -slackY * ny,
   };
 }
-/** 拖动取景：把指针位移换成归一化平移（1 = 可用位移的满量）。 */
+/**
+ * 拖动 / 缩放期间把取景框里那张图**就地**挪到新几何（live 档的"看得见的那部分"）。
+ *
+ * 为什么不是 emit：拖动与滚轮一次就是上百个事件，emit 会重渲染整棵设置面板（与
+ * `commitLiveSetting` 的两档纪律相同）。渲染器只在完整渲染时按 ctx 里的几何写 inline
+ * style，而 live 档**没有**重渲染 ⇒ 图必须由这里自己挪。几何仍然只来自唯一实现
+ * `avatarCropGeometry()`；抬手那一次照常 emit，React 写回的值与这里逐字相同。
+ */
+function syncAvatarCropLive() {
+  if (typeof document === "undefined" || typeof document.querySelector !== "function") return;
+  let view;
+  try { view = document.querySelector(".we-crop__view"); } catch { return; }
+  const img = view && typeof view.querySelector === "function" ? view.querySelector(".we-crop__img") : null;
+  if (!img || !img.style) return;
+  const geo = avatarCropGeometry();
+  img.style.width = geo.dw + "px";
+  img.style.height = geo.dh + "px";
+  img.style.left = ((AVATAR_CROP_VIEW - geo.dw) / 2 + geo.dx) + "px";
+  img.style.top = ((AVATAR_CROP_VIEW - geo.dh) / 2 + geo.dy) + "px";
+  // 缩放滑块也跟着回真值：live 档没有重渲染，不补这一下，滚轮放大了图而滑块还停在 100%
+  // （滑块自己的 liveFill 只在**它的** input 事件里跑，滚轮不经过它）。
+  try {
+    const row = document.querySelector(".we-crop");
+    const range = row && typeof row.querySelector === "function" ? row.querySelector('input[type="range"]') : null;
+    if (!range) return;
+    const pct = Math.round((Math.max(1, Number(selection.avatarCropZoom) || 1)) * 100);
+    range.value = String(pct);
+    const lo = Number(range.min); const hi = Number(range.max);
+    if (typeof range.style.setProperty === "function" && isFinite(lo) && isFinite(hi) && hi > lo) {
+      range.style.setProperty("--we-fill", ((pct - lo) / (hi - lo) * 100) + "%");
+    }
+    const out = row.querySelector(".we-picker__value");
+    if (out) out.textContent = pct + "%";
+  } catch { /* 回显是增强，失败不影响取值 */ }
+}
+/** 拖动取景：把**这一步**的指针增量换成归一化平移（1 = 可用位移的满量）。 */
 function onAvatarCropDrag(dxPx, dyPx) {
   const geo = avatarCropGeometry();
   const slackX = Math.max(0, (geo.dw - AVATAR_CROP_VIEW) / 2);
   const slackY = Math.max(0, (geo.dh - AVATAR_CROP_VIEW) / 2);
   const nx = slackX > 0 ? (Number(selection.avatarCropX) || 0) - dxPx / slackX : 0;
   const ny = slackY > 0 ? (Number(selection.avatarCropY) || 0) - dyPx / slackY : 0;
-  // 拖动是"看得见的那部分" ⇒ 走 live 档（面板不重渲染；预览图由控件按新值自己挪）。
+  // 拖动是"看得见的那部分" ⇒ 走 live 档（面板不重渲染），图由 syncAvatarCropLive 就地挪。
   commitLiveTransient("avatarCropX", Math.max(-1, Math.min(1, nx)), true);
   commitLiveTransient("avatarCropY", Math.max(-1, Math.min(1, ny)), true);
+  syncAvatarCropLive();
 }
-/** 缩放取景（滚轮 / 滑块）。 */
+/** 缩放取景（滑块：绝对值）。 */
 function onAvatarCropZoom(z, live) {
   const v = Math.max(1, Math.min(4, Number(z) || 1));
   commitLiveTransient("avatarCropZoom", v, live);
+  if (live) syncAvatarCropLive();
+}
+/**
+ * 滚轮缩放（增量）。**必须从 `selection` 现读当前值**：live 档不 emit，渲染器手里的
+ * `sel.avatarCropZoom` 会停在事件发生前那一版 —— 拿它累加的话连滚十格也只放大一步。
+ */
+function onAvatarCropWheel(delta) {
+  const cur = Math.max(1, Number(selection.avatarCropZoom) || 1);
+  // 按百分位取整：滚轮一格是 ±0.1，浮点累加会留下 1.2000000000000002 这类尾巴
+  // （它会被写进滑块回显，也让「滚十格正好到上限」变得不确定）。
+  const v = Math.round(Math.max(1, Math.min(4, cur + (Number(delta) || 0))) * 100) / 100;
+  commitLiveTransient("avatarCropZoom", v, true);
+  syncAvatarCropLive();
 }
 /** 把取景框里那一块**按原图分辨率**裁出来（再用既有 downscale 链缩到 512）。 */
 async function cropAvatarToBlob() {
@@ -3794,12 +3896,31 @@ const onEdgeCompatChange = (checked) => {
 };
 // Per-group interval: writes straight into the active group so each rotation
 // list keeps its own switch cadence.
-const onGroupInterval = (e) => {
+function onGroupInterval(e) {
   const group = activeRotationGroup();
   if (!group) return;
-  group.interval = clampNum(Number(e.target.value), ...schemaRange("rotationInterval"), DEFAULTS.rotationInterval);
+  group.interval = clampNum(Number(e.target.value), ROTATION_INTERVAL_MIN, ROTATION_INTERVAL_MAX, DEFAULTS.rotationInterval);
   persistSelection();
   syncRotationTimer();
+  emit();
+};
+/**
+ * 轮播推进方式（「按间隔」/「当前视频播完就换」）。写进**当前列表**（与 interval 同口径：
+ * 每个列表记自己的节奏），然后重排计时器 —— 视频结束档要在建层时关掉 loop，而已经上屏
+ * 的那一层不会自己变，所以这里额外触发一次层同步。
+ */
+const onGroupTrigger = (e) => {
+  const group = activeRotationGroup();
+  if (!group) return;
+  group.trigger = e.target.value === "videoEnd" ? "videoEnd" : "interval";
+  persistSelection();
+  syncRotationTimer();
+  // 已经上屏的视频层要跟着换 loop 语义（否则"切到视频结束档"要等下一次换壁纸才生效）。
+  const layer = typeof document !== "undefined" && document.getElementById ? document.getElementById(LAYER_ID) : null;
+  const media = layer && typeof layer.querySelector === "function" ? layer.querySelector("video") : null;
+  if (media && "loop" in media) {
+    try { media.loop = group.trigger !== "videoEnd"; } catch { /* ignore */ }
+  }
   emit();
 };
 // 「删除」按钮**只置令牌**；真正的删除在问句行的「确认」里（不变量 2）。两件事分开的
@@ -4358,9 +4479,9 @@ function WallpaperPicker() {
     // **插件前端那一块自己的开关**（用户诉求 m03549）关着时层也不认它们，面板就跟着空 ——
     // 名单与"真的会动"必须同源，否则会出现点了没反应的滑杆。它与「界面元素跟随」互不依赖。
     parallaxPluginSlots: sel.parallaxPlugin === true ? weDiscoveredGroupsOf('parallax').sort() : [],
-    onAvatarEnabled, onAvatarSize, onAvatarRadius, onAvatarPick, onAvatarClear,
+    onAvatarEnabled, onAvatarSize, onAvatarRadius, onAvatarAiRepeatRows, onAvatarPick, onAvatarClear,
     // 上传裁切（issue #191 问题 1）：几何在这里现算（唯一实现），渲染器只读结果。
-    onAvatarCropZoom, onAvatarCropDrag, onAvatarCropConfirm, onAvatarCropCancel: closeAvatarCrop,
+    onAvatarCropZoom, onAvatarCropDrag, onAvatarCropWheel, onAvatarCropConfirm, onAvatarCropCancel: closeAvatarCrop,
     avatarCropGeo: avatarCropGeometry(), avatarCropView: AVATAR_CROP_VIEW,
     // 超限拦截（#185 后续）：面板画提示行 + 「自动压缩后导入」按钮，处理器在 client 这一侧。
     onAvatarAutoCompress,
@@ -4433,7 +4554,7 @@ function WallpaperPicker() {
     );
     return renderWallpaperTab({
       setSetting, setTransient,
-      INTERVALS, armedConfirm: sel.armedConfirm, cdMode, current, editing, editorPageView, group, groups, isLiveScene, onArmConfirm: armConfirm, onArmDeleteGroup, onCancelEditUploadDir, onCancelEditWeAssetsDir, onClear, onDeleteGroup, onDisarmConfirm: disarmConfirm, onEditInterval, onEditName, onEditOrder, onGroupChange, onGroupInterval, onOpenPicker, onOpenPickerDraft, onRefresh, onStartEditUploadDir, onStartEditWeAssetsDir, onSwitchTransition, onSwitchTransitionDir, onSwitchTransitionSpeed, onToggleAudio, onTogglePlay, onTogglePropsPanel, onToggleRotation, onUploadDirDraft, onWeAssetsDirDraft, pagerRow, playableCount, playableList, playbackLive, propsPanelOpen, renderUserPropsPanel, sel, setPickerOpener, uploadedList,
+      INTERVALS, armedConfirm: sel.armedConfirm, cdMode, current, editing, editorPageView, group, groups, isLiveScene, onArmConfirm: armConfirm, onArmDeleteGroup, onCancelEditUploadDir, onCancelEditWeAssetsDir, onClear, onDeleteGroup, onDisarmConfirm: disarmConfirm, onEditInterval, onEditName, onEditOrder, onEditTrigger, onGroupChange, onGroupInterval, onGroupTrigger, onOpenPicker, onOpenPickerDraft, onRefresh, onStartEditUploadDir, onStartEditWeAssetsDir, onSwitchTransition, onSwitchTransitionDir, onSwitchTransitionSpeed, onToggleAudio, onTogglePlay, onTogglePropsPanel, onToggleRotation, onUploadDirDraft, onWeAssetsDirDraft, pagerRow, playableCount, playableList, playbackLive, propsPanelOpen, renderUserPropsPanel, sel, setPickerOpener, uploadedList,
     });
   };
   const tabIdx = Math.max(0, visibleTabs.findIndex((t) => t.id === activeTab));
@@ -4709,14 +4830,14 @@ function RopeDock() {
     const dx = e.clientX - d.startX;
     const dy = e.clientY - d.startY;
     if (!d.moved && dx * dx + dy * dy < 9) return; // dead zone: treat jitter as a click
-    if (!d.moved) { d.moved = true; if (sidebarRightMode() === "official") { try { petLink.performer.onGrab(); } catch { /* 不影响原生手势。 */ } } }
+    d.moved = true;
     d.lastX = clampX(d.baseX + dx);
     d.lastY = clampY(d.baseY + dy);
     const el = ropeRef.current;
     if (el) { el.style.left = d.lastX + "px"; el.style.top = d.lastY + "px"; }
     // Follow-hand preview: pull down opens (when closed), push up closes (when open).
     // 官方态没有抽屉可预览（面板在右侧栏里）—— 只跟手移动吉祥物，不出抽屉影子。
-    if (sidebarRightMode() === "official") { clearPreview(); try { petLink.performer.onPull(Math.abs(dy) / ROPE_OPEN_THRESHOLD); } catch { /* 不影响拖动。 */ } return; }
+    if (sidebarRightMode() === "official") { clearPreview(); return; }
     if (!open && dy > ROPE_PREVIEW_START) {
       applyPreview((dy - ROPE_PREVIEW_START) / (ROPE_OPEN_THRESHOLD - ROPE_PREVIEW_START));
     } else if (open && dy < -ROPE_PREVIEW_START) {
@@ -4739,13 +4860,9 @@ function RopeDock() {
     if (d) {
       const dy = clientY - d.startY;
       // 点击 = 开/关切换；下拉 ≥ 阈值 = 开；上推 ≥ 阈值 = 关（官方态收起同样由此统一）。
-      if (sidebarRightMode() !== "official") {
-        if (!canceled && !d.moved) wallSidebarToggle();
-      } else if (!canceled && !d.moved) {
-        try { petLink.mascot.tap(); } catch { wallSidebarToggle(); }
-      }
-      if (!canceled && d.moved && dy >= ROPE_OPEN_THRESHOLD) wallSidebarOpen();
-      else if (!canceled && d.moved && dy <= -ROPE_OPEN_THRESHOLD) wallSidebarClose();
+      if (!canceled && !d.moved) wallSidebarToggle();
+      else if (!canceled && dy >= ROPE_OPEN_THRESHOLD) wallSidebarOpen();
+      else if (!canceled && dy <= -ROPE_OPEN_THRESHOLD) wallSidebarClose();
     }
     clearPreview(); // committed class transitions continue smoothly from the inline value
     // Snap to the TOP edge; Y resets to the top inset while X stays wherever
@@ -4761,7 +4878,7 @@ function RopeDock() {
     try { localStorage.setItem(ROPE_POS_KEY, JSON.stringify(next)); } catch { /* ignore */ }
   };
   const onRopeKeyDown = (e) => {
-    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (sidebarRightMode() !== "official") wallSidebarToggle(); else { try { petLink.mascot.tap(); } catch { wallSidebarToggle(); } } }
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); wallSidebarToggle(); }
   };
 
   // ESC anywhere closes the panel — unless the picker modal is open. The
@@ -4778,8 +4895,6 @@ function RopeDock() {
     document.addEventListener("keydown", onKey, true);
     return () => document.removeEventListener("keydown", onKey, true);
   }, []);
-
-  React.useEffect(() => petLink.mascot.registerGesture(() => { const d = dragRef.current; if (d) finishDrag(d.startX, d.startY, true); }), []);
 
   // Keep the rope inside the viewport when the window shrinks/grows.
   React.useEffect(() => {
@@ -4823,132 +4938,6 @@ function RopeDock() {
     };
     return () => { ropeDrawerControl = null; };
   }, [hidden]);
-
-  const petOfficialMode = sidebarRightMode() === "official";
-  // 桌宠联动编排用的侧栏控制面（pet-link 子包）。旧版抽屉已删除，所以只有官方态。
-  // 官方侧栏是**宿主自己的** CSS Grid 第三列，列宽由 React 内联样式写，且宿主自带
-  // `transition: grid-template-columns var(--ds-transition-duration-slow)`。
-  // 我们**绝不改写它的 grid-template-columns**（实测那样会覆盖宿主三列定义、
-  // 把左列冻结成错误宽度，面板会跑到屏幕左侧）；只把它的过渡时长临时调长，
-  // 让宿主**自己的**展开动画变慢 —— 这就是"缓慢拉出"，且不碰它的布局。
-  const officialPull = {
-    saved: null,
-    savedOverflow: null,
-    /** 调长宿主过渡并触发展开。 */
-    begin(ms, expanded = true) {
-      const frame = typeof document !== "undefined" && document.querySelector
-        ? document.querySelector(".dshDesktopFrame") : null;
-      if (!frame) { if (expanded) wallSidebarOpen(); else wallSidebarClose(); return 0; }
-      if (officialPull.saved === null) {
-        officialPull.saved = frame.style.getPropertyValue("--ds-transition-duration-slow") || "";
-      }
-      // 面板内容**固定渲染在最终位置**（x=面板最终左边缘），只把列宽变慢会出现
-      // "容器慢慢开、内容早就到位"的错位（用户："侧边栏其他部分会先动"）。
-      // 拉出期间把表面裁剪到列边界，内容就随边缘一起露出 —— 这才是"贴着边缘拉出来"。
-      // 只动 overflow（用完还原），不碰宿主的任何尺寸/网格定义。
-      const surf = typeof document !== "undefined" && document.querySelector
-        ? document.querySelector(".dshDesktopRightbarSurface") : null;
-      if (surf && officialPull.savedOverflow === null) {
-        officialPull.savedOverflow = surf.style.getPropertyValue("overflow") || "";
-        try { surf.style.setProperty("overflow", "hidden"); } catch { /* ignore */ }
-      }
-      frame.style.setProperty("--ds-transition-duration-slow", ms + "ms");
-      if (expanded) wallSidebarOpen(); else wallSidebarClose();
-      return ms;
-    },
-    /** 动画结束后把时长与裁剪还回去（宿主后续的开合恢复原样）。 */
-    restore() {
-      const frame = typeof document !== "undefined" && document.querySelector
-        ? document.querySelector(".dshDesktopFrame") : null;
-      if (frame && officialPull.saved !== null) {
-        if (officialPull.saved) frame.style.setProperty("--ds-transition-duration-slow", officialPull.saved);
-        else frame.style.removeProperty("--ds-transition-duration-slow");
-      }
-      officialPull.saved = null;
-      const surf = typeof document !== "undefined" && document.querySelector
-        ? document.querySelector(".dshDesktopRightbarSurface") : null;
-      if (surf && officialPull.savedOverflow !== null) {
-        try {
-          if (officialPull.savedOverflow) surf.style.setProperty("overflow", officialPull.savedOverflow);
-          else surf.style.removeProperty("overflow");
-        } catch { /* ignore */ }
-      }
-      officialPull.savedOverflow = null;
-    },
-    /** 只接管本次新建的原生过渡；视频进度推进它，真实 ended 才 finish。 */
-    syncOpen() {
-      if (officialPull.syncOwner) officialPull.syncOwner.cancel();
-      const frame = typeof document !== "undefined" && document.querySelector
-        ? document.querySelector(".dshDesktopFrame") : null;
-      const before = new Set(frame && typeof frame.getAnimations === 'function' ? frame.getAnimations() : []);
-      let animation = null;
-      const current = () => officialPull.syncOwner === session;
-      const capture = () => {
-        if (!animation && frame && typeof frame.getAnimations === 'function') {
-          animation = frame.getAnimations().find(item => !before.has(item)
-            && item.transitionProperty === 'grid-template-columns') || null;
-          if (animation) {
-            animation.pause();
-            animation.effect.updateTiming({ easing: 'linear' });
-          }
-        }
-        return animation;
-      };
-      const release = (complete) => {
-        if (!current()) return;
-        officialPull.syncOwner = null;
-        const owned = capture();
-        if (owned) { if (complete) owned.finish(); else owned.cancel(); }
-        officialPull.restore();
-      };
-      const session = {
-        seek(progress) {
-          if (!current() || !Number.isFinite(progress)) return;
-          const owned = capture();
-          if (!owned) return;
-          const duration = Number(owned.effect.getComputedTiming().duration);
-          if (Number.isFinite(duration)) owned.currentTime = duration * Math.max(0, Math.min(.999, progress));
-        },
-        finish() { release(true); },
-        cancel() { release(false); },
-      };
-      officialPull.syncOwner = session;
-      officialPull.begin(1000);
-      return session;
-    },
-    /** 侧边栏**左边缘**的实时 x（宠物拉着它一起往左走）。 */
-    edgeX() {
-      const surf = typeof document !== "undefined" && document.querySelector
-        ? document.querySelector(".dshDesktopRightbarSurface") : null;
-      if (!surf) return null;
-      const r = surf.getBoundingClientRect();
-      return Number.isFinite(r.left) ? r.left : null;
-    },
-  };
-  React.useEffect(() => {
-    try {
-      petLink.mascot.registerSidebar({
-        mode: "official",
-        open: () => wallSidebarOpen(),
-        close: () => wallSidebarClose(),
-        isOpen: () => sidebarRightOursActive(),
-        // 默认展开时长按用户导出的参数；提前量由 pet-link 单独计入。
-        pullMs: 8125,
-        // ⚠️ `ms` 是**透传**的（不在这里写死）：调参面板可以把 `slowOpenMs` 改掉，
-        //    那时侧栏的 CSS 过渡必须跟着变，否则「宠物拉完了、面板还在动」。
-        //    面板没改过时，pet-link.js 传下来的就是 `pullMs` 本身。
-        beginPull: (ms) => { officialPull.begin(Number.isFinite(ms) ? ms : 8125); },
-        rebound: (expanded, ms) => { officialPull.begin(Number.isFinite(ms) ? ms : 240, expanded); },
-        syncOpen: () => officialPull.syncOpen(),
-        edgeX: () => officialPull.edgeX(),
-        commit: () => { officialPull.restore(); },
-      });
-    } catch { /* 注册失败不影响面板本身 */ }
-    return () => {
-      try { petLink.mascot.registerSidebar(null); } catch { /* ignore */ }
-      try { if (officialPull.syncOwner) officialPull.syncOwner.cancel(); officialPull.restore(); } catch { /* 还原失败不影响布局 */ }
-    };
-  }, [hidden, petOfficialMode]);
 
   // Hidden: render nothing (rope + drawer), but keep the one-time update
   // notice — it is independent of the mascot and must still surface. The
@@ -5622,7 +5611,6 @@ function apply(ctx) {
       }
       // 样式标签也按 fiber 生命周期注入 (dispose 会移除, 见下方 cleanup)
       ensurePluginCss();
-      petLink.warmup();
       // Battery optimization (省电暂停): navigator.getBattery is deprecated but
       // still functional in Chromium; feature-detected so other engines just
       // no-op. 'chargingchange' covers plug/unplug; onOcclusionChange re-applies
@@ -5648,7 +5636,6 @@ function apply(ctx) {
       }
       return () => {
         disposed = true;
-        petLink.dispose();
         unsub();
         unsubEffects();
         weSetLayerAttacher(null);
@@ -5902,80 +5889,6 @@ function apply(ctx) {
 
 exports.apply = apply;
 exports.inject = inject;
-// ── 桌宠联动（packages/pet-link）的宿主侧门面 ──────────────────────────────────────────
-// 收口后这半边是**独立产物**（packages/pet-link/lib/client.pet-link.js）：它自己那一行求值，
-// 再用 host.registerPetLink(petLink) 把服务登记回来。跨包求值顺序不保证（src/extension-registry.js
-// 的注释：顺序必须由声明决定，不靠数组序）⇒ 主包**不许**假设子包已装载，所以这里把主包发出的
-// 一次性接线先记下来，登记到达时补做（petLinkWireAttach）；之后所有调用直接转发。
-// 本文件里 9 处 `petLink.*` 调用点因此**文本零改动**：它们读的就是这个作用域里的这个裸名。
-//
-// 缺席语义**必须**与"子包在场但没拿到运行资格"分开：
-//   · mascot.tap() 在缺席时**抛错**（不是空操作）—— 下面那两处
-//     `try { petLink.mascot.tap(); } catch { wallSidebarToggle(); }` 靠的就是"缺席 = 抛"来回落
-//     原生吉祥物行为；空操作会让吉祥物点击在子包缺席时既不联动、也不回落（静默失效）。
-//   · 其余方法缺席时安静 no-op，与"子包在场但未拿到资格"的观感一致。
-const petLinkWiring = {
-  armed: false,      // warmup() ⇒ true；dispose() ⇒ false（最后一次生效）
-  gesture: null,     // registerGesture(cb) 的最后一次实参
-  sidebarSet: false, // registerSidebar(desc) 是否调用过
-  sidebar: null,     // 其最后一次实参（null = 摘下）
-};
-
-/** 登记到达时把主包已发出的一次性接线补做（补接失败只影响联动，不许带崩子包装载）。 */
-function petLinkWireAttach(api) {
-  try {
-    if (petLinkWiring.gesture && typeof api.mascot.registerGesture === "function") {
-      api.mascot.registerGesture(petLinkWiring.gesture);
-    }
-    if (petLinkWiring.sidebarSet && typeof api.mascot.registerSidebar === "function") {
-      api.mascot.registerSidebar(petLinkWiring.sidebar);
-    }
-    if (petLinkWiring.armed && typeof api.warmup === "function") api.warmup();
-  } catch { /* 见上：补接是尽力而为 */ }
-}
-
-/** 子包登记入口（桥键 registerPetLink）：先入槽，再把缓冲补做；返回服务本身便于子包自用。 */
-function petLinkRegister(api) {
-  weRegisterPetLink(api);
-  petLinkWireAttach(api);
-  return api;
-}
-
-const petLink = {
-  performer: {
-    onGrab() { const api = wePetLinkService(); if (api) api.performer.onGrab(); },
-    onPull(ratio) { const api = wePetLinkService(); if (api) api.performer.onPull(ratio); },
-  },
-  mascot: {
-    tap() {
-      const api = wePetLinkService();
-      if (!api) throw new Error("[wallpaper-engine] 桌宠联动浏览器半边未装载（pet-link 子包未启用 / 未构建）");
-      api.mascot.tap();
-    },
-    registerGesture(cb) {
-      petLinkWiring.gesture = cb;
-      const api = wePetLinkService();
-      return api ? api.mascot.registerGesture(cb) : undefined;
-    },
-    registerSidebar(desc) {
-      petLinkWiring.sidebarSet = true;
-      petLinkWiring.sidebar = desc;
-      const api = wePetLinkService();
-      return api ? api.mascot.registerSidebar(desc) : undefined;
-    },
-  },
-  warmup() {
-    petLinkWiring.armed = true;
-    const api = wePetLinkService();
-    return api ? api.warmup() : Promise.resolve(false);
-  },
-  dispose() {
-    petLinkWiring.armed = false;
-    const api = wePetLinkService();
-    if (api) api.dispose();
-  },
-};
-
 // ── 跨包浏览器半边通道（BUNDLE-SPLIT §6.2「宿主注入显式键集」）──────────────────────────
 // 子包产物由 loader 用 `require("dsh-plugin-wallpaper-engine")` 取本 bundle 的导出面。
 // 这里挂的是**显式键集**，不是整个 module.exports：子包要什么就登记什么，多给一个键就是多
@@ -6022,19 +5935,6 @@ const HOST_BRIDGE_BINDINGS = {
   COMPONENT_FONT_TARGETS: () => COMPONENT_FONT_TARGETS,
   componentFontDefaults: () => componentFontDefaults,
   registerPanelSection: () => weRegisterPanelSection,
-  // ── 桌宠联动半边（packages/pet-link）的显式键集 ─────────────────────────────────────
-  // 来源 = 被搬文件里的**自由标识符**逐个点名（acorn 扫，手法与 fonts 那次相同，脚本：
-  //   node .integration-notes/scratch/petlink-host-keys.mjs）
-  //   packages/pet-link/src/pet-link.js       : weT · apiUrl · apiFetch · wallSidebarOpen · wallSidebarClose · wallSidebarToggle
-  //   packages/pet-link/src/pet-link-tuner.js : weT（与上面复用，不重复登记）
-  // 反向（主包要**调**子包）只有一个键：registerPetLink = 登记槽 + 缓冲补做（见上面的门面）。
-  // 反面同样严格：这里每多一个键就是多一条没人维护的隐式契约（多一个都不给）。
-  apiUrl: () => apiUrl,
-  apiFetch: () => apiFetch,
-  wallSidebarOpen: () => wallSidebarOpen,
-  wallSidebarClose: () => wallSidebarClose,
-  wallSidebarToggle: () => wallSidebarToggle,
-  registerPetLink: () => petLinkRegister,
 };
 const HOST_BRIDGE_KEYS = Object.keys(HOST_BRIDGE_BINDINGS);
 for (const bridgeKey of HOST_BRIDGE_KEYS) {

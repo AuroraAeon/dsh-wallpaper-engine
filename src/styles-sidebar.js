@@ -42,12 +42,12 @@ const CSS_SIDEBAR = `  /* ── 左侧栏液态玻璃（宿主原生左栏的�
      ⇒ 按钮被整块裁掉、展开按钮「不可见」。
      修法：玻璃配方里**只把 backdrop-filter 那一对声明**搬到本列的 ::before（伪元素没有
      后代，永不成为 fixed 的包含块），列自身加 position:relative（只影响 absolute 的包含块
-     选择）与 z-index:0（把 ::before 的 z-index:-1 圈在列内）。
+     选择），不再给宿主列制造层叠上下文：该围栏会把列内的模态困在输入区后面。
      底色 / 釉光 / 边框 / 令牌留在列上：模糊作用在「底色 + 壁纸」的合成结果上，与「先滤
      壁纸再压底色」数学等价（模糊与滤镜都是线性算子，而这一列底色是中性色）。 */
   body[data-we-glass-page][data-we-left-sidebar] div:has(> [data-slot="sidebar"]) {
     position: relative; /* 只为给下面 ::before 那条规则提供定位参照（不影响 fixed） */
-    z-index: 0; /* 把 ::before 的 z-index:-1 圈在这一列内部 */
+    /* Do not fence in viewport-fixed modal descendants behind the composer. */
     background-color: color-mix(in srgb,
       var(--we-readability-base) calc(var(--we-readability-floor) * 100%),
       color-mix(in srgb, var(--we-surface-tint-light, #ffffff) calc(var(--we-left-sidebar-alpha) * 100%), transparent) calc((1 - var(--we-readability-floor)) * 100%));
@@ -77,8 +77,8 @@ const CSS_SIDEBAR = `  /* ── 左侧栏液态玻璃（宿主原生左栏的�
     --dsw-alias-brand-primary: var(--we-accent, #4f8cff);
     --dsw-alias-brand-text: var(--we-accent, #4f8cff);
   }
-  /* 玻璃的模糊层（issue #131）：::before 铺满这一列、压在内容之下（z-index:-1，父级
-     z-index:0 把它圈在列内），只负责 backdrop-filter。它没有后代 ⇒ 不会成为任何
+  /* 玻璃的模糊层（issue #131）：::before 铺满这一列、压在内容之下（z-index:-1），
+     不改变宿主列的层叠关系，只负责 backdrop-filter。它没有后代 ⇒ 不会成为任何
      fixed 元素的包含块，宿主那两个 fixed 按钮（收起/展开侧边栏、收起态新建会话）于是
      继续相对视口定位。深浅两色共用这一条（模糊配方本身不随主题分叉）。 */
   body[data-we-glass-page][data-we-left-sidebar] div:has(> [data-slot="sidebar"])::before {
@@ -317,8 +317,7 @@ const CSS_SIDEBAR = `  /* ── 左侧栏液态玻璃（宿主原生左栏的�
      or tinted however you like without touching the 玻璃 / 玻璃透明度 sliders.
      Inner chrome surfaces that paint the same opaque tokens get a translucent
      base too; the blur lives on the root panels (one blur per shell). */
-  body[data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_boundaryError"],
-  body[data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_panel"] {
+  body[data-we-sidebar-glass] [data-dsh-better-sidebar] [data-dsh-panel] {
     /* 侧栏面板同样承载文字 → 同一层可读性下限（--we-sidebar-tint 是这里的
        玻璃色权重，只在另一项上生效）。 */
     background-color: color-mix(in srgb,
@@ -333,60 +332,37 @@ const CSS_SIDEBAR = `  /* ── 左侧栏液态玻璃（宿主原生左栏的�
       rgba(255, 255, 255, var(--we-sidebar-sheen-a)),
       rgba(255, 255, 255, var(--we-sidebar-sheen-b)) 38%,
       rgba(255, 255, 255, var(--we-sidebar-sheen-c))) !important;
-    -webkit-backdrop-filter: blur(var(--we-sidebar-blur)) saturate(var(--we-sidebar-saturate)) brightness(var(--we-glass-brightness, 1.04)) contrast(1.01) !important;
-    backdrop-filter: blur(var(--we-sidebar-blur)) saturate(var(--we-sidebar-saturate)) brightness(var(--we-glass-brightness, 1.04)) contrast(1.01) !important;
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, calc(var(--we-sidebar-sheen) * 0.32)),
       inset 0 -1px 0 rgba(255, 255, 255, calc(var(--we-sidebar-sheen) * 0.08)),
       inset 0 0 0 0.5px rgba(255, 255, 255, calc(var(--we-sidebar-sheen) * 0.06));
   }
-  body[data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_pane"],
-  body[data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_tabBar"],
-  body[data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_paneCard"],
-  body[data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_editorHeader"],
-  body[data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_explorerHeader"],
-  body[data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_gitHeader"],
-  body[data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_browserBar"],
-  body[data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_terminalWrap"] {
-    background-color: color-mix(in srgb,
-      var(--we-readability-base) calc(var(--we-readability-floor) * 100%),
-      color-mix(in srgb, var(--we-sidebar-color) calc(var(--we-sidebar-tint) * 0.75), transparent) calc((1 - var(--we-readability-floor)) * 100%)) !important;
+  body[data-we-sidebar-glass] [data-dsh-better-sidebar] [data-dsh-panel]::before {
+    content: ""; position: absolute; inset: 0; z-index: -1;
+    pointer-events: none; border-radius: inherit;
+    -webkit-backdrop-filter: blur(var(--we-sidebar-blur)) saturate(var(--we-sidebar-saturate)) brightness(var(--we-glass-brightness, 1.04)) contrast(1.01);
+    backdrop-filter: blur(var(--we-sidebar-blur)) saturate(var(--we-sidebar-saturate)) brightness(var(--we-glass-brightness, 1.04)) contrast(1.01);
   }
-  body[data-ds-dark-theme][data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_boundaryError"],
-  body[data-ds-dark-theme][data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_panel"] {
+  body[data-we-sidebar-glass] [data-dsh-better-sidebar] [data-dsh-panel] :is([class*="_pane_"], [class*="_tabBar_"], [class*="_paneCard_"], [class*="_editorHeader_"], [class*="_explorerHeader_"], [class*="_gitHeader_"], [class*="_browserBar_"], [class*="_terminalWrap_"]) {
+    background-color: transparent !important;
+  }
+  body[data-ds-dark-theme][data-we-sidebar-glass] [data-dsh-better-sidebar] [data-dsh-panel] {
     background-color: color-mix(in srgb,
       var(--we-readability-base) calc(var(--we-readability-floor) * 100%),
       color-mix(in srgb, var(--we-sidebar-color) calc(var(--we-sidebar-tint) * 0.65), transparent) calc((1 - var(--we-readability-floor)) * 100%)) !important;
-  }
-  body[data-ds-dark-theme][data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_pane"],
-  body[data-ds-dark-theme][data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_tabBar"],
-  body[data-ds-dark-theme][data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_paneCard"],
-  body[data-ds-dark-theme][data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_editorHeader"],
-  body[data-ds-dark-theme][data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_explorerHeader"],
-  body[data-ds-dark-theme][data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_gitHeader"],
-  body[data-ds-dark-theme][data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_browserBar"],
-  body[data-ds-dark-theme][data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_terminalWrap"] {
-    background-color: color-mix(in srgb,
-      var(--we-readability-base) calc(var(--we-readability-floor) * 100%),
-      color-mix(in srgb, var(--we-sidebar-color) calc(var(--we-sidebar-tint) * 0.5), transparent) calc((1 - var(--we-readability-floor)) * 100%)) !important;
   }
   /* No backdrop-filter support: fall back to near-opaque tinted surfaces so
      sidebar text never sits directly on a busy wallpaper (same policy as the
      settings-window glass). The tint still applies. */
   @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-    body[data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_boundaryError"],
-    body[data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_panel"],
-    body[data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_pane"],
-    body[data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_tabBar"],
-    body[data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_paneCard"],
-    body[data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_editorHeader"],
-    body[data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_explorerHeader"],
-    body[data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_gitHeader"],
-    body[data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_browserBar"],
-    body[data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_terminalWrap"] {
+    body[data-we-sidebar-glass] [data-dsh-better-sidebar] [data-dsh-panel] {
       background-color: color-mix(in srgb, var(--we-sidebar-color) 92%, transparent) !important;
       backdrop-filter: none !important;
       -webkit-backdrop-filter: none !important;
+    }
+    body[data-we-sidebar-glass] [data-dsh-better-sidebar] [data-dsh-panel]::before {
+      -webkit-backdrop-filter: none !important;
+      backdrop-filter: none !important;
     }
   }
 
@@ -421,18 +397,16 @@ const CSS_SIDEBAR = `  /* ── 左侧栏液态玻璃（宿主原生左栏的�
        --dsw-alias-bg-layer-* 在壁纸下已被改写成玻璃配方 ⇒ 这里读插件自己的面板色。 */
     background-color: var(--we-panel-color, #1e1f26);
   }
-  /* #150（dockkit 层级体系）：backdrop-filter 让本面板自成层叠
-     上下文（z=auto 档）。宿主的层级设计是「面板内部的 dock 单元消费
-     --dsh-dockkit-dock-layer（常态 10 / 右栏全屏 40）」——层叠上下文一成，这个 z
-     被困在面板内部，整个面板作为原子跌回 z=auto，被会话列里宿主自己的更高层内容
-     （hero 输入卡 z=1 / composerSeat z=7，同为根层叠上下文里的 flex 项）反压：
-     push / 收起态没有空间重叠所以看不出来，唯独「右栏全屏」面板与对话列重叠时，
-     输入卡与 hero 标题会穿透玻璃面板叠在侧栏上（issue #150 截图形态）。
-     修法 = 玻璃开着时把面板本身抬到宿主为它设计的同一层——该 var 就声明在面板上，
-     全屏时自动解析为 40，与内部 dock 单元原生取得的层完全一致；玻璃关着（主开关
-     兜底只上不透明底色）与软件光栅回退档（backdrop-filter 显式 none）都不成层叠
-     上下文，保持原生绘制顺序，无需此抬升。 */
+  /* Keep the dock's native stacking and fixed containing blocks. Only the
+     empty decorative leaf uses the native dock layer (#150). Its background
+     must live there too, or overlapping conversation content covers it. */
   body[data-we-sidebar-glass] [data-sidebar-right-panel][data-sidebar-right-open] {
+    background: transparent !important;
+  }
+  body[data-we-sidebar-glass] [data-sidebar-right-panel][data-sidebar-right-open]::before {
+    content: ""; position: absolute; inset: 0;
+    z-index: var(--dsh-dockkit-dock-layer, 10);
+    pointer-events: none; border-radius: inherit;
     background-color: color-mix(in srgb,
       var(--we-readability-base) calc(var(--we-readability-floor) * 100%),
       color-mix(in srgb, var(--we-sidebar-color) var(--we-sidebar-tint), transparent) calc((1 - var(--we-readability-floor)) * 100%)) !important;
@@ -440,15 +414,14 @@ const CSS_SIDEBAR = `  /* ── 左侧栏液态玻璃（宿主原生左栏的�
       rgba(255, 255, 255, var(--we-sidebar-sheen-a)),
       rgba(255, 255, 255, var(--we-sidebar-sheen-b)) 38%,
       rgba(255, 255, 255, var(--we-sidebar-sheen-c))) !important;
-    -webkit-backdrop-filter: blur(var(--we-sidebar-blur)) saturate(var(--we-sidebar-saturate)) brightness(var(--we-glass-brightness, 1.04)) contrast(1.01) !important;
-    backdrop-filter: blur(var(--we-sidebar-blur)) saturate(var(--we-sidebar-saturate)) brightness(var(--we-glass-brightness, 1.04)) contrast(1.01) !important;
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, calc(var(--we-sidebar-sheen) * 0.32)),
       inset 0 -1px 0 rgba(255, 255, 255, calc(var(--we-sidebar-sheen) * 0.08)),
       inset 0 0 0 0.5px rgba(255, 255, 255, calc(var(--we-sidebar-sheen) * 0.06));
-    z-index: var(--dsh-dockkit-dock-layer, 10);
+    -webkit-backdrop-filter: blur(var(--we-sidebar-blur)) saturate(var(--we-sidebar-saturate)) brightness(var(--we-glass-brightness, 1.04)) contrast(1.01);
+    backdrop-filter: blur(var(--we-sidebar-blur)) saturate(var(--we-sidebar-saturate)) brightness(var(--we-glass-brightness, 1.04)) contrast(1.01);
   }
-  body[data-ds-dark-theme][data-we-sidebar-glass] [data-sidebar-right-panel][data-sidebar-right-open] {
+  body[data-ds-dark-theme][data-we-sidebar-glass] [data-sidebar-right-panel][data-sidebar-right-open]::before {
     background-color: color-mix(in srgb,
       var(--we-readability-base) calc(var(--we-readability-floor) * 100%),
       color-mix(in srgb, var(--we-sidebar-color) calc(var(--we-sidebar-tint) * 0.65), transparent) calc((1 - var(--we-readability-floor)) * 100%)) !important;
@@ -465,7 +438,7 @@ const CSS_SIDEBAR = `  /* ── 左侧栏液态玻璃（宿主原生左栏的�
   /* No backdrop-filter support: near-opaque tinted plate, same policy as the
      better-sidebar glass above. */
   @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-    body[data-we-sidebar-glass] [data-sidebar-right-panel][data-sidebar-right-open] {
+    body[data-we-sidebar-glass] [data-sidebar-right-panel][data-sidebar-right-open]::before {
       background-color: color-mix(in srgb, var(--we-sidebar-color) 92%, transparent) !important;
       backdrop-filter: none !important;
       -webkit-backdrop-filter: none !important;
@@ -495,7 +468,18 @@ const CSS_SIDEBAR = `  /* ── 左侧栏液态玻璃（宿主原生左栏的�
   body[data-we-sidebar-glass] [data-dsh-better-sidebar] .cm-editor,
   body[data-we-sidebar-glass] [data-dsh-better-sidebar] .xterm,
   body[data-we-sidebar-glass] [data-sidebar-right-panel][data-sidebar-right-open] .cm-editor,
-  body[data-we-sidebar-glass] [data-sidebar-right-panel][data-sidebar-right-open] .xterm {
+  body[data-we-sidebar-glass] [data-sidebar-right-panel][data-sidebar-right-open] .xterm,
+  /* ── 阅读文件页（issue 现场："侧边栏阅读文件页面的背景底色设置被删除了"）───────
+     那一页是宿主的 dsh-client-ui-sidebar-documentpreview，它的根是
+     [data-document-preview]（实测自 asar：TextPreview 的 preview 节点），
+     **原本不在上面这条内容面列表里** ⇒ 「内容面透明度 / 内容面底色」两个旋钮
+     在阅读页上从来不生效（用户因此以为设置被删了）。这里把它接进同一张底板：
+     同一条 --we-content-surface-* 配方、同一条可读性地板。
+     ⚠️ 只作用于**打开态**的右栏（与上面两条同一纪律，见上方 #107 的注释）；门户型
+     预览（图片灯箱等）不在 [data-sidebar-right-open] 里，不受影响。
+     ⚠️ 本段不许出现反引号：整套样式文本是模板字符串（构建期拼接）。 */
+  body[data-we-sidebar-glass] [data-sidebar-right-panel][data-sidebar-right-open] [data-document-preview],
+  body[data-we-sidebar-glass] [data-dsh-better-sidebar] [data-document-preview] {
     background-color: color-mix(in srgb, var(--we-content-surface-color, var(--we-panel-color, #1e1f26)) max(calc(var(--we-readability-floor) * 100%), var(--we-content-surface-alpha, 88%)), transparent) !important;
   }
 

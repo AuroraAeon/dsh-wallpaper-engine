@@ -104,11 +104,6 @@ const INLINE_MODULES = [
     markers: ['const WE_I18N_EN_GLASS = {', '"思考块液态玻璃": "Thinking-block liquid glass",'],
   },
   {
-    file: 'src/i18n-copy-pet-link.js',
-    why: '英文词表域：桌宠联动（pet-link 的浏览器半边文字；源在包内时属"停在主 bundle"的域表，收口后按 fonts 惯例归主包 src/）',
-    markers: ['const WE_I18N_EN_PET_LINK = {'],
-  },
-  {
     file: 'src/i18n-copy.js',
     why: '英文词表的**组装点** + 宿主显示表（域模块在前，这里只展开组装；两张表的键集各由 verify-i18n 双向对账）',
     markers: ['const WE_I18N_EN = {', 'const WE_I18N_HOST_EN = {'],

@@ -225,33 +225,6 @@ function weSetRegistryListener(fn) {
   weRegistryListener = typeof fn === "function" ? fn : null;
 }
 
-/**
- * 浏览器半边**服务槽**（与上面的"贡献点"注册表分开：贡献点是主包去读的表，
- * 服务槽是主包要**调**的对象）。目前只有一项：pet-link（`packages/pet-link`）的
- * 排播 / 吉祥物 / 触摸面。
- *
- * ⚠️ 跨包求值顺序**不保证**（见本文件 `weExtensionModules` 的注释：顺序必须由声明决定，
- * 不靠数组序）⇒ 主包不许假设"子包已装载"。主包的调用点因此走
- * `src/client.js` 的门面（缓冲 + 登记到达时补做），这里只存槽位。
- */
-let wePetLinkApi = null;
-
-function weRegisterPetLink(api) {
-  if (!api || typeof api !== "object") {
-    throw new Error("[wallpaper-engine] pet-link 浏览器半边登记的服务必须是对象");
-  }
-  if (wePetLinkApi !== null) {
-    throw new Error("[wallpaper-engine] pet-link 浏览器半边重复登记（同一份 bundle 求值两次？）");
-  }
-  wePetLinkApi = api;
-  return api;
-}
-
-/** pet-link 服务；未装载 ⇒ null（"缺席"的语义由调用点决定，见 src/client.js 的门面）。 */
-function wePetLinkService() {
-  return wePetLinkApi;
-}
-
 export {
   weRegisterExtensionModule,
   weExtensionModules,
@@ -263,6 +236,4 @@ export {
   weDiscoveredGroupsOf,
   weSetLayerAttacher,
   weSetRegistryListener,
-  weRegisterPetLink,
-  wePetLinkService,
 };

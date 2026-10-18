@@ -29,21 +29,16 @@ const CSS_EXT = `  /* ── 软件渲染回退（upstream #95，运行时探测
      (data-we-sidebar-glass / data-we-glass-window)，所以关掉开关仍然是原生外观。
      输入框卡片按上游 #94 的 ::before 载体单独覆盖（见下方规则）。
      手动覆盖：?we-glassfallback=on|off（见 detectSoftwareRender）。 ── */
-  body[data-we-glass-fallback][data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_boundaryError"],
-  body[data-we-glass-fallback][data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_panel"],
-  body[data-we-glass-fallback][data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_pane"],
-  body[data-we-glass-fallback][data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_tabBar"],
-  body[data-we-glass-fallback][data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_paneCard"],
-  body[data-we-glass-fallback][data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_editorHeader"],
-  body[data-we-glass-fallback][data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_explorerHeader"],
-  body[data-we-glass-fallback][data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_gitHeader"],
-  body[data-we-glass-fallback][data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_browserBar"],
-  body[data-we-glass-fallback][data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_terminalWrap"] {
+  body[data-we-glass-fallback][data-we-sidebar-glass] [data-dsh-better-sidebar] [data-dsh-panel] {
     background-color: color-mix(in srgb, var(--we-sidebar-color) 92%, transparent) !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
   }
-  body[data-we-glass-fallback][data-we-sidebar-glass] [data-sidebar-right-panel][data-sidebar-right-open] {
+  body[data-we-glass-fallback][data-we-sidebar-glass] [data-dsh-better-sidebar] [data-dsh-panel]::before {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+  body[data-we-glass-fallback][data-we-sidebar-glass] [data-sidebar-right-panel][data-sidebar-right-open]::before {
     background-color: color-mix(in srgb, var(--we-sidebar-color) 92%, transparent) !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
@@ -104,6 +99,10 @@ const CSS_EXT = `  /* ── 软件渲染回退（upstream #95，运行时探测
     --dsw-alias-bg-layer-1: var(--we-surface-tint-dark, #0d1524);
     --dsw-alias-bg-layer-2: var(--we-surface-tint-dark, #0d1524);
     --dsw-alias-bg-layer-3: var(--we-surface-tint-dark, #0d1524);
+  }
+  body[data-we-glass-fallback][data-we-glass-window] [role="dialog"]:has([data-slot="settings.section"])::before {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
   }
   /* 软件光栅器（data-we-glass-fallback）下同样把**整窗**的表面令牌钉回实色：
      玻璃配方在这一档等于「半透明 + 无霜」（模糊被下面的回退规则关掉），
@@ -309,10 +308,12 @@ const CSS_EXT = `  /* ── 软件渲染回退（upstream #95，运行时探测
   .we-avatar__img { display: block; width: 100%; height: 100%; object-fit: cover; }
   .we-avatar__glyph { display: flex; align-items: center; justify-content: center; }
   .we-avatar__glyph svg { width: 62%; height: 62%; }
-  /* 连续同侧消息的后续行（issue #191 问题 2）：头像**只显示在第一条**。
-     ⚠️ 只做 visibility: hidden —— 节点与它的框都还在，缩进对齐与 flex 几何逐字节不变。
-     绝不写 display: none / 摘节点：那会让宿主 display:contents 锚点下的内容退回
-     flex: 0 1 auto，收起的思考行固有宽为 0 ⇒ 整条消息连入口一起消失（issue #154）。 */
+  /* 续行 / 不在当前可见段的头像（issue #191 问题 2 + issue #231 的频率口径）：
+     助手侧**回合起始一定露脸**，长回合里每过若干条可见流条目（选 AVATAR_AI_REPEAT_ROWS）
+     在下一条可见助手行上再露一次（思考 / 工具调用撑满好几屏时不至于整页没脸）；用户侧连续
+     消息只显示第一张。⚠️ 只做 visibility: hidden —— 节点与它的框都还在，缩进对齐与 flex
+     几何逐字节不变。绝不写 display: none / 摘节点：那会让宿主 display:contents 锚点下的内容
+     退回 flex: 0 1 auto，收起的思考行固有宽为 0 ⇒ 整条消息连入口一起消失（issue #154）。 */
   .we-avatar--cont { visibility: hidden; }
   /* 面板里的预览：固定框（不随滑块长高），里头那张脸按当前大小 / 圆角现画。
      预览用的是自己的一对类名（不是 .we-avatar）—— 那些节点由装饰层建在会话里，
@@ -431,7 +432,8 @@ const CSS_EXT = `  /* ── 软件渲染回退（upstream #95，运行时探测
     --we-sidebar-sheen-b: 0;
     --we-sidebar-sheen-c: 0;
   }
-  body[data-we-wallpaper][data-we-sidebar-fullclear] [data-sidebar-right-panel][data-sidebar-right-open] {
+  body[data-we-wallpaper][data-we-sidebar-fullclear] [data-sidebar-right-panel][data-sidebar-right-open],
+  body[data-we-wallpaper][data-we-sidebar-fullclear] [data-sidebar-right-panel][data-sidebar-right-open]::before {
     background-color: transparent !important;
     background-image: none !important;
   }

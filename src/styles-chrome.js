@@ -108,8 +108,6 @@ const CSS_CHROME = `    /* ── 统一控件 token：一套高度/圆角/墨�
        see the composer note above) and brightness is pinned — so the settings
        window glass tracks the conversation-bar blur range exactly. Plus a
        specular sheen + inner edge highlight + diffuse shadow (panel rounds at 24px). */
-    -webkit-backdrop-filter: blur(var(--we-settings-window-blur)) saturate(var(--we-saturate, 1.8)) brightness(var(--we-glass-brightness, 1.04)) contrast(1.01);
-    backdrop-filter: blur(var(--we-settings-window-blur)) saturate(var(--we-saturate, 1.8)) brightness(var(--we-glass-brightness, 1.04)) contrast(1.01);
     background-image: linear-gradient(
       180deg,
       rgba(255, 255, 255, 0.1) 0%,
@@ -120,6 +118,13 @@ const CSS_CHROME = `    /* ── 统一控件 token：一套高度/圆角/墨�
       inset 0 1px 0 rgba(255, 255, 255, 0.22),
       inset 0 0 0 1px rgba(255, 255, 255, 0.06),
       0 24px 80px rgba(0, 7, 18, 0.35);
+  }
+  /* A decorative leaf cannot become a containing block for fixed controls. */
+  body[data-we-glass-window] [role="dialog"]:has([data-slot="settings.section"])::before {
+    content: ""; position: absolute; inset: 0; z-index: -1;
+    border-radius: inherit; pointer-events: none;
+    -webkit-backdrop-filter: blur(var(--we-settings-window-blur)) saturate(var(--we-saturate, 1.8)) brightness(var(--we-glass-brightness, 1.04)) contrast(1.01);
+    backdrop-filter: blur(var(--we-settings-window-blur)) saturate(var(--we-saturate, 1.8)) brightness(var(--we-glass-brightness, 1.04)) contrast(1.01);
   }
   /* Dark scheme: deep translucent base instead of white. The default glass
      color is deep navy; a user-picked 玻璃颜色 overrides it in both themes. */
@@ -155,6 +160,10 @@ const CSS_CHROME = `    /* ── 统一控件 token：一套高度/圆角/墨�
       --dsw-alias-bg-layer-1: var(--we-surface-tint-dark, #0d1524);
       --dsw-alias-bg-layer-2: var(--we-surface-tint-dark, #0d1524);
       --dsw-alias-bg-layer-3: var(--we-surface-tint-dark, #0d1524);
+    }
+    body[data-we-glass-window] [role="dialog"]:has([data-slot="settings.section"])::before {
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
     }
     /* 同一个「无 backdrop-filter ⇒ 近不透明」政策也要覆盖**整窗**那层表面令牌：
        玻璃配方在没有模糊的内核上等于「半透明 + 无霜」，文字会直接落在壁纸上。

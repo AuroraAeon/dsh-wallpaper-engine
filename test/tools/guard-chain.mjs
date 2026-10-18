@@ -30,12 +30,12 @@ export const CHAIN_KEYS = { verify: 'verify', docs: 'verify:docs', smoke: 'smoke
  * 口径：`docs` 整组是软档 ⇒ 地板 **0**（对它设 1 会把"整组软档"这个**设计**判成违规）；
  * `all` 的地板是前两者之和（`build` 那一步是 npm 步骤，不落 `file`，不计）。
  *
- * **取值 = 实测**（2026-10-17 复算：84 / 0 / 6 / 90，与 `test/verify-package-files.mjs`
+ * **取值 = 实测**（2026-10-17 移除十二条专项、增加边界/原生拉绳/玻璃生命周期守卫：75 / 0 / 6 / 81，与 `test/verify-package-files.mjs`
  * 的 P5 实测同源）。地板只该在**链有意变短**时下调，且必须与
  * `test/fixtures/verify-chain.json` 在同一次改动里更新 —— 否则就是"把清单削空"。
  * 旧的宽口径（24 / 5 / 29）等于给"悄悄砍掉 60 条硬档"留了通道。
  */
-export const TIER_FLOOR = { verify: 84, docs: 0, smoke: 6, all: 90 };
+export const TIER_FLOOR = { verify: 75, docs: 0, smoke: 6, all: 81 };
 
 /** 读某一组的 `--list-json`。runner 起不来 / 输出不是 JSON ⇒ 抛（调用方转成判据失败）。 */
 export function readChain(group) {
@@ -140,13 +140,8 @@ export function compositionDiff(chains) {
  * 判据见 `test/verify-guard-chain.mjs` ⑤（正判据与负对照走 `offChainDiff` 同一个函数）。
  */
 export const OFF_CHAIN_WHY = {
-  'verify-pet-link.mjs': '快捷汇总入口 npm run verify:pet-link；其十二个离线用例已逐项接入默认 verify 链，不重复运行汇总器。',
-  'verify-pet-hotplug-integration.mjs': '显式安装集成入口，需要受支持原版桌宠夹具与真实 Cordis 模块；不得在离线 verify 链隐式下载或修改用户安装。',
-  'verify-pet-hotplug-browser.mjs': '完整 React 与真实视频集成，需要独立 Edge、ReactDOM 和已准备隔离 profile，使用 verify:pet-link:browser 显式运行。',
-  'verify-pet-egg2-browser-case.mjs': '完整浏览器入口导入的彩蛋二用例模块，依赖其 CDP 会话与真实视频，不是独立命令。',
-  'verify-pet-egg1-native-browser.mjs': '真实原生抛掷与媒体验收，需要独立 Edge 和显式 PET_TEST_CLIENT 隔离客户端。',
-  'verify-pet-phase-browser.mjs': '真实阶段接管验收，需要独立 Edge 和显式 PET_TEST_CLIENT 隔离客户端。',
-  'verify-pet-tuner-browser.mjs': '真实面板几何和动效验收，需要独立 Edge；默认链保留无外部依赖的面板 DOM 回归。',
+  'verify-glass-browser.mjs': '真实浏览器玻璃验收的本地 HTTP 夹具服务器；需用官方 browser-use 入口驱动页面并检查布局与像素，它本身常驻监听、不自行结束，不能作为串行 runner 的一步。',
+  'verify-test-bundle.mjs': '独立 verify:pack:test 实物集成入口：需先 pack 出 .artifacts 测试包，依赖 tar 与可用的离线 npm 缓存，再在临时 profile 安装真实归档；不是跨平台零前提的默认链。清单形态仍由默认链 verify-package-publish 硬判。',
   'compat-harness-live.mjs': '真跑**活** harness 页面（需要宿主实际启动）：本地/CI 都按需手动跑，由 .github/workflows/harness-compat.yml 单独触发；verify 链要求零外部环境依赖。',
   'compat-harness-pages.mjs': '同族：活 harness 的页面面普查，断言依赖真实宿主实例，不进链。',
   'compat-harness-surfaces.mjs': '同族：活 harness 的界面面普查，断言依赖真实宿主实例，不进链。',
@@ -156,8 +151,8 @@ export const OFF_CHAIN_WHY = {
   'verify-static.mjs': '静态棘轮入口（ESLint / tsc 都是 devDependencies）⇒ CI 独立步骤 `npm run verify:static`；链上零裸依赖容不下它。',
 };
 
-/** 守卫面地板（防"面变空 ⇒ 脱链判据永真"）。实测 2026-10-17 = 109（链上 95 · 豁免 14）。 */
-export const OFF_CHAIN_FLOOR = 109;
+/** 守卫面地板（防"面变空 ⇒ 脱链判据永真"）。六包版实测 2026-10-17 = 95（链上 86 · 豁免 9）。 */
+export const OFF_CHAIN_FLOOR = 95;
 
 /**
  * 判据：守卫面上每个文件「要么在链上、要么有非空脱链理由」，且豁免表里没有过期/悬空条目。

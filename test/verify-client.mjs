@@ -245,7 +245,7 @@ const fetch = (url, opts) => {
 
 // 变异测试钩子：默认读构建产物，DSH_MUT_LIB 指向变异副本时读它。
 const code = readFileSync(process.env.DSH_MUT_LIB || new URL('../lib/client.js', import.meta.url), 'utf8');
-const independentSidebarSelector = 'body[data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_panel"]';
+const independentSidebarSelector = 'body[data-we-sidebar-glass] [data-dsh-better-sidebar] [data-dsh-panel]';
 const wallpaperGatedSidebarSelector = 'body[data-we-sidebar-glass][data-we-wallpaper] [data-dsh-better-sidebar]';
 assert.ok(code.includes(independentSidebarSelector), 'sidebar glass must not require an active wallpaper');
 assert.ok(!code.includes(wallpaperGatedSidebarSelector), 'legacy wallpaper-gated sidebar selector must be removed');
@@ -370,10 +370,6 @@ const SUBPACKAGE_CLIENT_ARTIFACTS = [
   // P-C 第一刀：字体节（「字体自定义」那一节）已随子包出产物 —— 设置页/外观页要看到它，
   // 挂载台就必须像真实 loader 那样把这份 bundle 也求值掉（它的 factory 会往面板节注册表注册）。
   ['../packages/fonts/lib/client.fonts.js', 'dsh-plugin-wallpaper-engine-fonts'],
-  // pet-link 收口（2026-10-17）：桌宠联动的浏览器半边也出产物了。它的 factory 会调
-  // 主 bundle 显式键集里的 registerPetLink 把服务登记回主包（门面缓冲 + 登记到达时补做）。
-  // 求值在 apply() **之前** ⇒ 这里正是"子包先到"那一半的真实形态。
-  ['../packages/pet-link/lib/client.pet-link.js', 'dsh-plugin-wallpaper-engine-pet-link'],
 ];
 const subRequireMock = (spec) => {
   if (spec === 'dsh-plugin-wallpaper-engine') return exportsObj;
@@ -1425,7 +1421,12 @@ setTimeout(async () => {
     //    "它是一道折叠门（可收起）"这件事由下面的 aria-expanded 与翻转用例承担，
     //    不再靠"默认收起所以看不见"来表达。 ──
     assert.equal(findCtlInput(tree, '侧栏玻璃·独立配置'), null, '设置页不画「侧栏玻璃·独立配置」（已迁侧栏折叠块）');
-    assert.equal(findCtlInput(tree, '内容面玻璃·独立配置'), null, '设置页不画「内容面玻璃·独立配置」（已迁侧栏折叠块）');
+    // ⚠️ **内容面是这一族的例外**（用户口径："侧边栏阅读文件页面的背景底色的设置被删除了，需要找回"）：
+    //    它此前也只在侧栏「详细玻璃调节」展开时才可达 ⇒ 设置页与侧栏收起态**两条路都够不着**，
+    //    观感就是"设置没了"。这一面看的是正文（阅读文件页 / 编辑器 / 终端），调整期望远高于
+    //    其余独立配置 ⇒ 从折叠块里提出来、**两档都画**（仍在 `open` 门内，节收起时随节收起）。
+    assert.ok(findCtlInput(tree, '内容面玻璃·独立配置'),
+      '设置页必须画「内容面玻璃·独立配置」（阅读页底色 / 透明度的唯一入口，用户要求找回）');
     assert.equal(findSliderRow(tree, '侧栏模糊'), null, '设置页不画「侧栏模糊」（精确标签，防 tooltip 骗过）');
     assert.equal((JSON.stringify(tree).match(/"aria-label":"侧栏玻璃颜色 /g) || []).length, 0,
       '设置页不画侧栏玻璃颜色色板（已迁侧栏折叠块）');

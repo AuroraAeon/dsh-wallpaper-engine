@@ -26,12 +26,17 @@
  * 也不算（生产侧改了也不会红）。规则全文见 [`docs/DEV-GUIDE.md`](../docs/DEV-GUIDE.md) §约定 5。
  *
  * Usage:  node test/verify-package-publish.mjs
+ *
+ * This is a metadata/payload guard, not proof of a production registry release.
+ * The six child packages remain development-only file: dependencies. Run
+ * npm run verify:pack:test for the separately staged local seven-tarball install.
  */
 
 import { readFileSync, existsSync, statSync, readdirSync } from 'node:fs';
 import { join, relative, resolve, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Script } from 'node:vm';
+import { testSubpackages } from '../scripts/pack-test-bundle.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 let failed = 0;
@@ -74,7 +79,7 @@ const files = Array.isArray(pkg.files) ? pkg.files : [];
 const publishSet = (r) => files.some((entry) => coveredBy(r, entry));
 
 /** 遍历仓库文件；跳过永远不可能"被发布"的重目录（否则本机要白走一遍 .git 与 node_modules）。 */
-const SKIP_DIRS = new Set(['.git', 'node_modules', '.test-cache', '_refs', '.integration-notes']);
+const SKIP_DIRS = new Set(['.git', 'node_modules', '.test-cache', '_refs', '.integration-notes', '.artifacts', '.npm-cache']);
 const walk = (dir, out = []) => {
   let names;
   try { names = readdirSync(dir); } catch { return out; }
@@ -176,7 +181,7 @@ check('负对照：依赖判据在 Set 与数组两种形态下都成立（防 `
 
 // ── ② 不该进的进了 ──────────────────────────────────────────────────────────
 section('② 发布集里没有开发目录');
-const DEV = /^(src|scripts|test|docs|node_modules|\.test-cache|\.integration-notes|_refs|\.github|\.git)(\/|$)/;
+const DEV = /^(src|scripts|test|docs|packages|node_modules|\.test-cache|\.integration-notes|\.artifacts|\.npm-cache|_refs|\.github|\.git)(\/|$)/;
 /** 白名单**为空**（棘轮，只许收紧）—— 安装期一个仓库脚本都不跑（#141：`prepare` 在 git 直装时
  *  会被 pnpm 的 allowBuilds 闸拦下；构建已改挂 `prepack`，只在打包/发布时于发布者工作区跑），
  *  所以发布集里**任何**开发面文件都算泄漏。正判据（两个 check）与负对照都走 `isDevLeak`。 */
@@ -336,7 +341,7 @@ section('⑦ 安装期不得跑任何仓库脚本（无构建钩子 + 不引用�
     'build', 'verify', 'verify:docs', 'verify:all', 'verify:bridge', 'verify:e2e', 'smoke',
     // 本分支追加的桥闸门（严格模式）：命令指向 test/ 下的用例，同样只在仓库里跑 ⇒ 开发期脚本。
     'verify:bridge:strict',
-    'verify:pet-link', 'verify:pet-link:integration', 'verify:pet-link:browser',
+    'pack:test', 'verify:pack:test',
     // 静态门禁（ESLint / tsc 棘轮）：只在仓库里跑，工具与基线夹具都不随包发布。
     // `lint`/`typecheck` 不在此列是**不需要**：它们的命令里没有未随包路径（判据只看真引用）。
     'verify:static'];
@@ -434,11 +439,9 @@ section('⑧ 根清单 ⇄ package-lock.json 同步（`npm ci` 的前提）');
       { ...r0, dependencies: { a: '^1.0.0', c: '^3.0.0' } }).length === 0);
 }
 
-// ── ⑨ 发布形态自洽（ADR-0014 S8.2 的执行者：发布者的人工步骤 + 这条离线门）──────
-// 为什么单列一条：S8.2 的"发布时把 `file:` 换成同号精确版"没有脚本执行者，能离线钉住的只有
-// **形态自洽** —— 三份子包清单"全有或全无"。改了一半（部分进了 `dependencies`、`file:` 还留在
-// `devDependencies`）是唯一能让干净检出 `npm ci` 在 install 步 404 的形态（P-A 事故同款）。
-section('⑨ 发布形态自洽（开发期 ⇄ 发布期：全有或全无，混态判红）');
+// Six file: development dependencies are intentional. Production publishing is not implemented;
+// pack:test supplies seven real archives plus a separate top-level local test profile manifest.
+section('⑨ 开发清单边界（六个 file devDeps；本地 bundle 不等于生产发布）');
 {
   const subs = [];
   const packagesDir = join(ROOT, 'packages');
@@ -459,7 +462,7 @@ section('⑨ 发布形态自洽（开发期 ⇄ 发布期：全有或全无，�
     const devDeps = manifest.devDependencies || {};
     for (const [n, s] of Object.entries(deps)) {
       if (String(s).startsWith('file:')) {
-        problems.push('dependencies 里有 ' + n + '@' + s + '（未发布的包锁不出来 ⇒ 干净检出 `npm ci` E404）');
+        problems.push('dependencies 里有 ' + n + '@' + s + '（本地测试规格只允许出现在隔离 staging profile 清单）');
       }
     }
     const inDeps = list.filter((x) => Object.hasOwn(deps, x.name));
@@ -500,9 +503,11 @@ section('⑨ 发布形态自洽（开发期 ⇄ 发布期：全有或全无，�
     return { form, problems };
   };
   const live = publishForm(pkg, subs);
-  check('覆盖面：从 `packages/*` 清单读到 ≥3 个子包名（读不出来 ⇒ 下面的判据恒真）',
-    subs.length >= 3, subs.map((x) => x.dir).join(', ') || '无');
-  check('根清单处于自洽的开发期形态（S8.1）：`dependencies` 无子包、三条 `file:packages/<pkg>` 齐备',
+  let bundleBoundaryError = null;
+  try { testSubpackages(ROOT); } catch (error) { bundleBoundaryError = error.message; }
+  check('本地测试发现层要求恰好六个非 pet 子包，真包名/同版本/file devDeps 全部匹配',
+    bundleBoundaryError === null, bundleBoundaryError || subs.map((x) => x.dir).join(', '));
+  check('根清单处于自洽的开发期形态（S8.1）：`dependencies` 无子包、六条 `file:packages/<pkg>` 齐备',
     live.form === 'dev' && live.problems.length === 0,
     live.form + (live.problems.length ? '；' + live.problems.join('; ') : ''));
   // 负对照：同一判据对六种形态问题都有牙，对两个**合法**形态都不误报。

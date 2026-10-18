@@ -31,7 +31,7 @@ import { fileURLToPath } from 'node:url';
 import { createContext, Script } from 'node:vm';
 import { scanCjkStrings, needsTranslation } from './tools/i18n-scan.mjs';
 import { stripExportBlocks } from './tools/js-text.mjs';
-// 词表族（组装点 + 7 个域模块）的**按构建顺序**读法：单一真源是 scripts/build-client.mjs 的
+// 词表族（组装点 + 域模块）的**按构建顺序**读法：单一真源是 scripts/build-client.mjs 的
 // INLINE_MODULES（见 test/tools/src-scope.mjs）。词表已按域拆到同族模块，键序由内联顺序决定。
 import { parseInlineModules } from './tools/src-scope.mjs';
 
@@ -64,10 +64,6 @@ const DATA_BLOCKS = [
 
 /** 逐条精确值豁免（形如"是数据不是文案"的个别串）。每条都必须写明理由，且必须还在源码里。 */
 const VALUE_ALLOW = [
-  ...[
-    ...JSON.parse(readFileSync(join(ROOT, 'packages/pet-link/src/pet-link-actions.json'), 'utf8')).animations.events.DSHWE,
-    ...readdirSync(join(ROOT, 'packages/pet-link/assets/memes')).filter(name => name.endsWith('.png')).map(name => name.slice(0, -4)),
-  ].map(value => ({ value, why: '桌宠资源池的实际动画名或配图键；必须与文件名一致，不能翻译。' })),
   {
     value: '设置',
     why: '**宿主的**标签候选（src/sidebar-right.js 的 settingsLabelCandidates）：' +

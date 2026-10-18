@@ -88,10 +88,6 @@ const ZERO_COVERAGE_WHY = {
   [M('packages', 'parallax', 'lib', 'index.js')]: '同上（3D 子包宿主入口，P-A 拆包）：覆盖来源与 fx 逐条相同 —— verify-subpackage-boot 的双射对账 + verify-subpackage-toggle-roundtrip 的逐行装载与拆卸',
   [M('packages', 'fx', 'src', 'client.js')]: '子包浏览器半边入口（P-A 拆包）：注入键契约由 verify-subpackage-client-half 隔产物断言，宿主键集与包间纯度由 verify-subpackage-purity 动态扫 packages/*/src 覆盖，产物侧由 verify-scene-live / verify-client 在同一 vm 里真求值，本工具只认字面量路径 ⇒ 按口径算零覆盖',
   [M('packages', 'parallax', 'src', 'client.js')]: '同上（3D 子包浏览器半边入口，P-A 拆包）：覆盖来源与 fx 逐条相同 —— verify-subpackage-client-half 的隔产物断言 + verify-subpackage-purity 的动态扫面 + verify-scene-live / verify-client 的真求值',
-  // ── PR #5（可选桌宠联动）：2026-10-15 收口成一般形态（自出浏览器半边产物）──
-  //    词条表 `src/i18n-copy-pet-link.js` 已按 fonts 惯例归主包 src/（verify-i18n 的整族词表对账覆盖它）
-  //    ⇒ 旧的那条例外登记随之删除（登记了反而会被判"例外表空转"）。
-  [M('packages', 'pet-link', 'src', 'client.js')]: '桌宠联动浏览器半边入口（收口成一般形态后自出 packages/pet-link/lib/client.pet-link.js）：注入键契约由 verify-subpackage-client-half 隔产物断言（dsh.client / exports["./client"] / 产物 id / 构建期 require 主包），宿主键集与包间纯度由 verify-subpackage-purity 动态扫 packages/*/src 覆盖，行为面由 test/verify-pet-*.mjs 那组离线回归与 verify-scene-live 的真求值覆盖，本工具只认字面量路径 ⇒ 按口径算零覆盖',
 };
 
 /**
@@ -113,14 +109,13 @@ const NO_MODULE_TARGET_WHY = {
   'verify-guard-chain.mjs': '管的是**守卫链的形状**（`test/run-guards.mjs` 的 `MANIFEST` 与冻结 fixture 对账：成员/顺序/档位/参数/地板），读的是链自己的清单，不读任何模块',
   'verify-ci-steps.mjs': '管的是 **CI 步骤表自身**（`.github/workflows/verify.yml` 的步骤序列 / `npm run` 脚本是否存在 / `continue-on-error` 档位 / bash 与 install 步位置），读的是工作流文本与 package.json，不读任何模块',
   'verify-static.mjs': '管的是**静态门禁的棘轮**（ESLint / tsc 的**按规则计数**基线），读的是 `test/fixtures/static-baseline.json` 与 package.json 里的两个脚本名，不读源模块',
+  'verify-test-bundle.mjs': '管的是**真实归档与安装集成**：读取 npm pack 的 tar 内容、发布入口与字节，随后在临时隔离 profile 验证真包名解析和缺包失败；目标是出货归档及安装结果，不是某个源码模块',
   // P-F 批 1c：`verify-route-ownership.mjs` 现在**直读**各包的 `lib/index.js` 与实现文件（双形态落点解析），
   // 不再是"零模块目标"的元守卫 ⇒ 原例外条目已被元守卫表判为"登记了却已有目标，该删"。
   'verify-bridge-ci.mjs': '管的是 **CI 桥接面**（工作流/脚本接线，不读源模块）',
   'verify-undefined-refs.mjs': '管的是**未定义引用**（"用了但没 import/声明"的非全局内置名），扫 lib/src/scripts 全树按 AST 判，目标不是某个模块',
   // D-G1 收口（2026-10-16）：行尾契约是**字节级**的，判的是"整棵入库树"，不指向某个模块。
   'verify-eol.mjs': '管的是**行尾契约**（`.gitattributes` 的 `* text=auto eol=lf`）：扫 `git ls-files` 的全部入库文件，判"文本文件字节里零 `0x0D`"，目标是"整棵入库树必须是 LF"，不针对某个模块',
-  // PR #5：可选桌宠联动离线回归的**聚合入口**（逐个 spawn 上面那批 `verify-pet-*.mjs`，自身不读源文件）。
-  'verify-pet-link.mjs': '管的是**可选桌宠联动离线回归的整组**（聚合入口：按清单 spawn `test/verify-pet-*.mjs`，自身不直读任何源模块）；组内每条各自在链上，入口只是手动/包内便利入口',
 };
 
 const map = buildMap(ROOT);

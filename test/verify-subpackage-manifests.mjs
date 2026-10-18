@@ -390,7 +390,6 @@ const MANIFEST_TOP_KEY_TEMPLATE = [
 ];
 /** files 键值行的规范字面量（单行数组；见 ADR-0014 S3.8）。 */
 const MANIFEST_FILES_LINE = '  "files": ["lib/", "cordis.patch.yml", "locale/", "icon.png", "package.json"],';
-const MANIFEST_INSTALLER_FILES_LINE = '  "files": ["lib/", "cordis.patch.yml", "locale/", "icon.png", "package.json", "tools/", "assets/", "src/"],';
 
 /** 独立子包目录（数据驱动：不写死包名，目录名 = 真名里根包名 '-' 之后那一段）。 */
 function discoverPackageDirs() {
@@ -761,11 +760,10 @@ function braceEndLine(lines, startLine) {
   return -1;
 }
 
-/** 形态由浏览器半边和显式安装入口共同决定；S3.8 ③ 仅在同形态内逐字对账。 */
+/** 形态由浏览器半边决定；S3.8 ③ 仅在同形态内逐字对账。 */
 function manifestHalfOf(m) {
   const dsh = (m.dsh && typeof m.dsh === 'object' && !Array.isArray(m.dsh)) ? m.dsh : {};
-  const half = (dsh.client != null && dsh.client !== false) ? 'client-half' : 'host-only';
-  return m.exports?.['./install'] ? half + '-installer' : half;
+  return (dsh.client != null && dsh.client !== false) ? 'client-half' : 'host-only';
 }
 
 /**
@@ -878,12 +876,11 @@ function manifestTemplateViolations({ dirs, texts }) {
     // ② files：规范单行字面量（多行 / 内容漂移都在这里判红），且位置在 dsh 块之后。
     const lines = linesOf.get(dir);
     const filesAt = lines.findIndex((l) => /^\s*"files"\s*:/.test(l));
-    const expectedFilesLine = m.exports?.['./install'] ? MANIFEST_INSTALLER_FILES_LINE : MANIFEST_FILES_LINE;
     if (filesAt < 0) {
       add(dir, '顶层没有 files 键（模板要求；发布白名单）');
-    } else if (lines[filesAt] !== expectedFilesLine) {
+    } else if (lines[filesAt] !== MANIFEST_FILES_LINE) {
       add(dir, 'files 不是规范单行字面量：实际 L' + (filesAt + 1) + ' ' + JSON.stringify(lines[filesAt])
-        + '（应为 ' + JSON.stringify(expectedFilesLine) + '；改回单行数组，键值行样式与 S3.8 模板逐字相同）');
+        + '（应为 ' + JSON.stringify(MANIFEST_FILES_LINE) + '；改回单行数组，键值行样式与 S3.8 模板逐字相同）');
     }
     const dshAt = lines.findIndex((l) => /^\s*"dsh"\s*:\s*\{/.test(l));
     if (dshAt >= 0 && filesAt >= 0) {
@@ -992,18 +989,6 @@ check('发散判据：packages/ 下每个目录都是发现层认下的包（枚
 check('negative control: 枚举面多一个没被发现的目录 ⇒ 发散判据点名（同一集合运算）',
   [...packageDirs, 'packages/zzz-ghost'].filter((d) => !discoveredDirs.has(d)).join(' ') === 'packages/zzz-ghost');
 
-// 带显式安装器的包需要完整工具、素材和源码，不能误归入纯宿主壳包。
-for (const dir of packageDirs.filter(dir => JSON.parse(packageTexts.get(dir)).exports?.['./install'])) {
-  const raw = packageTexts.get(dir);
-  const violations = text => manifestTemplateViolations({ dirs: packageDirs, texts: new Map(packageTexts).set(dir, text) });
-  check('安装器包发布形态正对照：' + dir, violations(raw).length === 0, violations(raw).join(' | '));
-  for (const required of ['tools/', 'assets/', 'src/']) {
-    const missing = raw.replace(', ' + JSON.stringify(required), '');
-    check('negative control: 安装器包缺少 ' + required + ' 必须判红', missing !== raw && violations(missing).length > 0);
-  }
-  const disguised = raw.replace(/^ {4}"\.\/install":.*\n/m, '');
-  check('negative control: 没有显式安装入口不能冒充安装器形态', disguised !== raw && violations(disguised).length > 0);
-}
 const templateProblems = manifestTemplateViolations({ dirs: packageDirs, texts: packageTexts });
 const packageProblems = [...packagesViolations(packagesInput), ...templateProblems];
 const scoped = new Map(packageDirs.map((d) => [d, []]));

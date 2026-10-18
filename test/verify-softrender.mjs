@@ -416,18 +416,25 @@ function main() {
     // vacuously true — E1 only demands `fbRules.length >= 5`, so dropping
     // these one or two rules would otherwise stay silent. Each family reports
     // its measured size so a shrink is visible in the output.
-    const gatedFamily = (needle, gate) => {
-      const all = fbRules.filter((r) => r.header.includes(needle));
+    const gatedFamily = (needle, gate, input = fbRules) => {
+      const all = input.filter((r) => r.header.includes(needle));
       return { needle, total: all.length, ungated: all.filter((r) => !r.header.includes(gate)) };
     };
-    const sidebarFamily = gatedFamily('_panel', '[data-we-sidebar-glass]');
+    const sidebarFamily = gatedFamily('[data-dsh-panel]', '[data-we-sidebar-glass]');
+    const rightFamily = gatedFamily('[data-sidebar-right-panel]', '[data-we-sidebar-glass]');
     const settingsFamily = gatedFamily('settings.section', '[data-we-glass-window]');
     const dialogFamily = gatedFamily('[role="dialog"]', '[data-we-glass-window]');
     const familyLine = (f) => f.needle + '=' + f.total
       + (f.ungated.length ? ' (ungated=' + f.ungated.length + ')' : '');
     check('E4 master switches preserved: sidebar fallback stays gated on data-we-sidebar-glass, dialog on data-we-glass-window',
-      [sidebarFamily, settingsFamily, dialogFamily].every((f) => f.total > 0 && f.ungated.length === 0),
-      [sidebarFamily, settingsFamily, dialogFamily].map(familyLine).join(' · '));
+      [sidebarFamily, rightFamily, settingsFamily, dialogFamily].every((f) => f.total > 0 && f.ungated.length === 0),
+      [sidebarFamily, rightFamily, settingsFamily, dialogFamily].map(familyLine).join(' · '));
+    const ungatedSidebar = fbRules.map(rule => ({ ...rule,
+      header: rule.header.replace('[data-we-sidebar-glass]', ''),
+    }));
+    check('negative control E4: legacy and native sidebar fallbacks reject a missing master gate',
+      ['[data-dsh-panel]', '[data-sidebar-right-panel]'].every(needle =>
+        gatedFamily(needle, '[data-we-sidebar-glass]', ungatedSidebar).ungated.length > 0));
 
     // ── E5 (gap fix): upstream #94 moved the composer card's blur onto
     // [data-composer-card]::before, so the fallback block must cover that

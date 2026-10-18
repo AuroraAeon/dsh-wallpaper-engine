@@ -363,12 +363,10 @@ function main() {
     ['markdown tag token (dark)', '--dsw-alias-markdown-tag', 'body[data-ds-dark-theme][data-we-glass-page]'],
     ['code segment token (dark)', '--dsw-alias-markdown-code-segment-unselected', 'body[data-ds-dark-theme][data-we-glass-page]'],
     ['selected code segment token (dark)', '--dsw-alias-markdown-code-segment-selected', 'body[data-ds-dark-theme][data-we-glass-page]'],
-    ['sidebar panel (light)', 'background-color', 'body[data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_panel"]'],
-    ['sidebar chrome group (light)', 'background-color', 'body[data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_terminalWrap"]'],
-    ['sidebar panel (dark)', 'background-color', 'body[data-ds-dark-theme][data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_panel"]'],
-    ['sidebar chrome group (dark)', 'background-color', 'body[data-ds-dark-theme][data-we-sidebar-glass] [data-dsh-better-sidebar] [class*="_terminalWrap"]'],
-    ['native right panel (light)', 'background-color', 'body[data-we-sidebar-glass] [data-sidebar-right-panel]'],
-    ['native right panel (dark)', 'background-color', 'body[data-ds-dark-theme][data-we-sidebar-glass] [data-sidebar-right-panel]'],
+    ['sidebar panel (light)', 'background-color', 'body[data-we-sidebar-glass] [data-dsh-better-sidebar] [data-dsh-panel]'],
+    ['sidebar panel (dark)', 'background-color', 'body[data-ds-dark-theme][data-we-sidebar-glass] [data-dsh-better-sidebar] [data-dsh-panel]'],
+    ['native right decorative plate (light)', 'background-color', 'body[data-we-sidebar-glass] [data-sidebar-right-panel][data-sidebar-right-open]::before'],
+    ['native right decorative plate (dark)', 'background-color', 'body[data-ds-dark-theme][data-we-sidebar-glass] [data-sidebar-right-panel][data-sidebar-right-open]::before'],
     // 左侧栏液态玻璃（leftSidebarGlass，默认关）：那一列同样是文字面（会话列表 / 工作区），
     // 一旦接管成玻璃就必须过同一条下限 —— 而且它是**唯一**能直接看到壁纸的大块区域，
     // 少了这条声明就是"整列文字直接压在花壁纸上"。
@@ -387,6 +385,17 @@ function main() {
     veilMisses.length === 0,
     surfaceSpecs.length + ' surface(s) checked · missing/broken=' + veilMisses.length
       + (veilMisses.length ? ' · ' + JSON.stringify(veilMisses) : ''));
+
+  // The shell carries the floor once; transparent inner chrome must not add another veil.
+  const chromeSelector = 'body[data-we-sidebar-glass] [data-dsh-better-sidebar] [data-dsh-panel] :is(';
+  const chromeRule = ruleFor('background-color', chromeSelector);
+  const clearChrome = rule => !!rule && declValue(rule.body, 'background-color') === 'transparent !important';
+  check('F2a2 legacy sidebar chrome is transparent above the single floored panel',
+    clearChrome(chromeRule)
+      && ['_pane_', '_tabBar_', '_paneCard_', '_editorHeader_', '_explorerHeader_', '_gitHeader_', '_browserBar_', '_terminalWrap_']
+        .every(name => chromeRule.header.includes(name)));
+  check('negative control F2a2: a second inner readability floor is rejected',
+    !!chromeRule && !clearChrome({ ...chromeRule, body: 'background-color: var(--we-readability-base);' }));
 
   // The user's chat surfaces must transmit wallpaper at the slider alpha.
   // Keep protected host-token floor checks above; test the actual overrides
@@ -948,6 +957,20 @@ function main() {
       && rp.body.includes('background-color: transparent !important')
       && rp.body.includes('background-image: none !important'),
       rp ? rp.header.slice(0, 100) : '规则缺失');
+    const rootClearSelector = 'body[data-we-wallpaper][data-we-sidebar-fullclear] [data-sidebar-right-panel][data-sidebar-right-open]';
+    const clearsBothCarriers = rule => {
+      if (!rule) return false;
+      const selectors = rule.header.split(',').map(selector => selector.trim());
+      return selectors.includes(rootClearSelector) && selectors.includes(rootClearSelector + '::before')
+        && rule.body.includes('background-color: transparent !important')
+        && rule.body.includes('background-image: none !important');
+    };
+    check('F7c2 full-clear clears the root fallback and decorative glass plate', clearsBothCarriers(rp));
+    check('negative control F7c2: losing either full-clear carrier fails', !!rp
+      && [rootClearSelector, rootClearSelector + '::before'].every(removed => !clearsBothCarriers({
+        ...rp, header: rp.header.split(',').map(selector => selector.trim())
+          .filter(selector => selector !== removed).join(', '),
+      })));
     // 左栏：一条规则两个选择器（浅 + 深）—— 按**选择器**数，不按规则条数。
     const leftRule = fcRules.find((r) => r.header.includes('data-we-left-sidebar'));
     const leftSels = leftRule ? leftRule.header.split(',').filter((h) => h.includes('data-we-left-sidebar')) : [];

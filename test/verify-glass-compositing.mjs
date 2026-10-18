@@ -467,7 +467,7 @@ function main() {
       && declValue(x.body, 'background-color'));
     return r ? declValue(r.body, 'background-color') : '';
   };
-  const panelBg = bgOf('[class*="_panel"]', 'data-dsh-better-sidebar');
+  const panelBg = bgOf('[data-dsh-panel]', 'data-dsh-better-sidebar');
   const leftBg = bgOf('div:has(> [data-slot="sidebar"])');
   // ⚠️ 合并 #132 对本判据的口径修正：WIP 原版要求两侧**色染权重**也逐字相等 ——
   //    那是 WIP 时代左栏读 `--we-glass-alpha` 的实现。#132 把左栏改成按面独立的
@@ -535,7 +535,7 @@ function main() {
   // 包含块**。宿主在 Windows 标题栏模式下把「收起 / 展开侧边栏」按钮设成 fixed ——
   // 模糊画在列自身上时，按钮改成相对列定位（列被标题栏 padding 推下去 + 收起时
   // overflow:hidden 裁切）⇒ 按钮下移 / 不可见。修法：模糊只留在 ::before（无后代，
-  // 永远不会成为任何 fixed 元素的包含块），列自己拿 position:relative + z-index:0。
+  // 永远不会成为任何 fixed 元素的包含块），列只拿 position:relative，不围住模态层叠。
   // 判据 = 三条声明形态 + 负对照（把模糊种回列自身必须判红）。谓词与主判据同源
   // （先剥注释再找声明）—— 否则「注释里提到 backdrop-filter」会被误判，负对照失去意义。
   // ⚠️ 本块**自足**：左栏规则的取用在本块内自己算一遍（不依赖别处同名 const ——
@@ -551,12 +551,19 @@ function main() {
   check('S2c 左栏的 backdrop-filter 只画在 ::before（fixed 包含块修复，issue #131）',
     leftColBlurOnSelf === false
       && Boolean(leftBeforeRule) && /blur\(/.test(String(leftBeforeBlur))
-      && String(leftColPosition).trim() === 'relative' && String(leftColZ).trim() === '0',
+      && String(leftColPosition).trim() === 'relative' && (leftColZ === null || leftColZ === 'auto'),
     'self-blur=' + leftColBlurOnSelf + ' ::before=' + (leftBeforeRule ? 'present' : 'MISSING')
       + ' position=' + String(leftColPosition) + ' z-index=' + String(leftColZ));
   check('S2c 负对照：把 backdrop-filter 种回列自身，同一条判据必须判红（注释里的提及不算）',
     blurDeclaredOn('background-color: red; backdrop-filter: blur(4px);') === true
       && blurDeclaredOn('background-color: red; /* backdrop-filter: blur(4px); */') === false);
+  const keepsNativeStacking = (body) => {
+    const z = declValue(body, 'z-index');
+    return z === null || z === 'auto';
+  };
+  check('S2c 负对照：原生左栏不建新围栏（种回 z-index:0 会困住原生模态）',
+    Boolean(s2cLeftColRule) && keepsNativeStacking(s2cLeftColRule.body)
+      && !keepsNativeStacking(s2cLeftColRule.body + ';z-index:0;'));
   check('S2c2 软件光栅器回退把 ::before 的模糊也显式关掉（不留不会生效的声明）',
     rules.some((r) => r.header.includes('[data-we-glass-fallback][data-we-glass-page][data-we-left-sidebar]')
       && r.header.includes('::before')

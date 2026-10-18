@@ -151,7 +151,7 @@
   （`exports` 键序由此一并钉住）。
   跨形态的差异**不是**缺陷：字段集合取决于该包用不用某个面（例如 host-only 包没有
   `./client`/`dsh.client`，而注入宿主 `webServer` 面的包才需要那条 `peerDependencies`）—— 见 S3.5。
-- **S3.8a [机器判：verify-subpackage-manifests.mjs]** 带显式 `exports['./install']` 的包是安装器形态，不与纯宿主包混做逐字对账。保留相同顶层键序、布局、版本、依赖及入口存在性规则；其规范单行发布白名单在基础五项之后依次增加 `tools/`、`assets/`、`src/`，确保工具、资源和构建源码都可交付。缺任意一项目录白名单、去掉安装入口后仍携带安装器形态，均由同一判据的负控判红。`pet-link` 属于此形态；安装器必须显式调用，不挂自动安装脚本，也不因此给主包或子包添加 `dsh-pet`、Electron 等桌宠依赖。
+- **S3.8a [已废止]** 安装器专用形态已随联动子包移除；编号保留，不再复用。六个保留子包只使用 S3.8 的基础模板，已无安装器白名单或专属分组例外。
 - **S3.9 [人工]** `description` 写"能力 + 半边归属"，并**只引用稳定文档**（见 S9.1）。
 
 ### S4 行与接线
@@ -254,8 +254,7 @@
 | S3.8 | ✅ **已消除**（2026-10-15）：三份清单落在同一模板上，`files` 统一为单行且在 `dsh` 块之后 | —— | —— |
 | S3.9 / S9.1 | `packages/**` **已收口**（2026-10-15：改引本 ADR 的 `S*` 或 `ADR-0013 D*`；没有对应条款的**删引用保原意**）。**剩余引用面**（复算：`git grep -nE 'docs/wip\|BUNDLE-SPLIT' -- lib src scripts test cordis.patch.yml`；活 md 用同一模式加 `-- docs` —— 只数条数、不抄行号，行号必漂）。全仓惯例形的 `mNNNNN` 消息引用与阶段号（`P2-7A` 等）**不计入**本条款；2026-10-15 用户裁决 = 阶段号**暂保持现状**，不逐个改 | 剩余面按同一规则改引 `S*`（或删引用保原意）；`docs/wip/` 归档前必须完成 | 不阻塞，但 wip 归档前必须改 |
 | S3.4 | ✅ **已收口（2026-10-16，P-C 第一刀）**：字体包不再是 host-only —— 它现在有浏览器半边（`src/client.js` + 外观页签字体节 + 字体集编辑器，产物 `lib/client.fonts.js`）⇒ 声明 `dsh.client` 且 `exports['./client']` 两向齐。host-only **形态本身仍然合法**（本条只描述现状；"不许用空 `./client` 假装统一"的口径不变） | —— | —— |
-| S8.2 | 发布形态**尚未执行过**（三包都在开发期形态）；执行者 = 发布者的人工步骤（本仓不设发布脚本） | 人工执行 + 离线门只钉**形态自洽**（`verify-package-publish.mjs` ⑨：全有或全无，混态判红） | 已定（人工门） |
-| S3.4 / S10.2 | ✅ **已收口（2026-10-17，用户裁决"收口成一般形态"）**：第四个子包 `packages/pet-link` 补齐了浏览器半边的一般形态 —— 包内配方 `client.build.json`（`entry: src/client.js` → `artifact: lib/client.pet-link.js`）、包内产物 `packages/pet-link/lib/client.pet-link.js`（≈178 KB）、`exports['./client']` + `dsh.client`（与根逐键相同），并从主包 `INLINE_MODULES` 摘出（主包 `lib/client.js` 4,607,984 → 4,433,884 B）。收口前的"第三种形态"（源码在包内、构建归主包，2026-10-16 PR #5 引入）与 `test/verify-module-layout.mjs` 规则③ 的软档冲突随之消失；`FLOORS.clientArtifacts` 4→5。词条表按 fonts 惯例归位到主包 `src/i18n-copy-pet-link.js`（域表，与浏览器半边产物无关）。主包只留门面（`src/client.js` 的 `petLink` / `petLinkWiring` + `registerPetLink` 桥键）：跨包求值顺序不保证 ⇒ 门面缓冲 + 登记到达时补做；缺席语义 = `mascot.tap()` 抛错以保住回落。⚠️ 余一条**与本形态无关**的软档红（浏览器回归脚本引用运行时才创建的 `../.artifacts/**`，PR #5 既有）。详见 [`docs/SUBPACKAGE-GRAPH.md`](../SUBPACKAGE-GRAPH.md) §三/§五/§六 | 已裁决（走 ①）；② 的"扩规则③ 判据面"不再需要 | 已收口（硬档全绿） |
+| S8.2 | 发布形态**尚未执行过**（六个保留子包都在开发期形态）；执行者 = 发布者的人工步骤（本仓不设发布脚本） | 人工执行 + 离线门只钉**形态自洽**（`verify-package-publish.mjs` ⑨：全有或全无，混态判红） | 已定（人工门） |
 
 ## Consequences
 
@@ -275,11 +274,6 @@
 
 ## 复核触发线
 
-出现下面任一情况时回来改本文（而不是另开 ADR）：① 新增第三种包形态（既非 host-only 也非 host+client）
-—— ⚠️ **已触发（2026-10-16，PR #5 合并）**：`packages/pet-link` 的浏览器半边源码在包内、构建归主包
-（`INLINE_MODULES` 内联进 `lib/client.js`），既非 host-only 也非 host+client；✅ **已定案并收口
-（2026-10-17）**：选"收口成一般形态"，该形态**只此一例且已消失**（pet-link 现有包内 `client.build.json` +
-产物 + `exports['./client']` + `dsh.client`），本条触发线随之关闭；处置与实测见 §现状偏差的 `S3.4 / S10.2` 行
-与 `docs/SUBPACKAGE-GRAPH.md` §三/§五/§六；
+出现下面任一情况时回来改本文（而不是另开 ADR）：① 新增第三种包形态（既非 host-only 也非 host+client）；
 ② 跨包通道不再是 Cordis Service；③ `packages/<pkg>` 不再是同仓目录（例如改多仓）；
 ④ 有判据开始断言 markdown（D3 的边界被打破）。

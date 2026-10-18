@@ -9,12 +9,14 @@
  *   而开发期 profile 是按 `link:D:/dsh-wallpaper-engine` 装的，`link:` **不会**把被 link 包的
  *   `dependencies` 装进 profile（实测 `<profile>/node_modules/.package-map.json` 里那条的
  *   `dependencies` 是空表）⇒ **子包永远不会自己出现在 profile 的 node_modules 里**。
- *   ⇒ 发布期（用户装主包、子包作为传递依赖被 hoist 到 profile 顶层）成立，
- *     开发期必须在 profile 的 `node_modules` 里放一个**指向本仓 `packages/<pkg>/` 的目录 junction**。
+ *   Root file: subpackages are development dependencies only: plain npm pack of the
+ *   main package does not install them. pack:test creates a separate seven-tarball
+ *   test profile; production publishing/hoisting is not implemented by this helper.
+ *   开发期必须在 profile 的 `node_modules` 里放一个**指向本仓 `packages/<pkg>/` 的目录 junction**。
  *
  * 为什么用 junction（而不是改行名）：
- *   目录 junction 让 `<profile>/node_modules/dsh-plugin-wallpaper-engine-<pkg>` 与发布后 npm/pnpm
- *   hoist 出来的布局**同形** ⇒ **同一份 `cordis.patch.yml`（裸真名）开发期与发布期都成立**，
+ *   目录 junction 让 `<profile>/node_modules/dsh-plugin-wallpaper-engine-<pkg>` 与七包测试清单
+ *   显式安装后的布局**同形** ⇒ **同一份 `cordis.patch.yml`（裸真名）开发期与本地 tarball 都成立**，
  *   不需要"开发期行名 ↔ 发布期行名"两套（§8.1 里那条"开发期写相对行名"的备选口径已作废：
  *   `./packages/<pkg>/lib/index.js` 会落到不存在的 `<profile>/packages/…`）。
  *

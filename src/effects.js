@@ -697,6 +697,9 @@ function clearEffects() {
   s.removeProperty("--we-ui-tab");
   s.removeProperty("--we-ui-deep-diving");
   s.removeProperty("--we-glass-alpha");
+  s.removeProperty("--we-glass-fidelity");
+  s.removeProperty("--we-inline-code-blur");
+  s.removeProperty("--we-capsule-tint-rgb");
   s.removeProperty("--we-glass-color");
   s.removeProperty("--we-surface-tint-light");
   s.removeProperty("--we-surface-tint-dark");
@@ -750,6 +753,7 @@ function clearEffects() {
     "--we-left-sidebar-blur", "--we-left-sidebar-alpha",
     "--we-titlebar-blur", "--we-titlebar-alpha",
     "--we-floaters-blur", "--we-floaters-alpha",
+    "--we-thinking-trigger-blur", "--we-thinking-trigger-alpha",
     // ⚠️ 对话栏那一族（`--we-chat-*`）**提交态就没在撤** —— 既有缺陷，本次一并补上：
     //    它们是对话栏专属釉层变量，卸载后残留同样会被那几条规则读到。
     //    （判据"清理对称性"把这一组和上面 6 个一起抓了出来。）

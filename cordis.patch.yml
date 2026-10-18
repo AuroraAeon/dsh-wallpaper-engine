@@ -1,6 +1,6 @@
 # dsh-plugin-wallpaper-engine bundle patch.
 #
-# Applied over the dsh-web-app layer. This bundle contributes EIGHT host rows:
+# Applied over the dsh-web-app layer. This bundle contributes SEVEN host rows:
 #   - four owned by the main package: the plugin that scans Wallpaper Engine and
 #     serves its media, the `about-notice` component row that owns the About tab's
 #     two routes, the `mascot-avatar` component row that owns the mascot image +
@@ -66,9 +66,6 @@
     # `scripts/dev-link-subpackages.mjs` 在 <profile>/node_modules 下建的目录 junction，
     # 与发布期 pnpm hoist 布局同形（§8.1 spike 结论）。主包 apply 会先 resolve 这三行，
     # 解析不到就**大声抛错**（宿主对行级失败是静默的 —— §4.1 I5）。
-    # 可选桌宠联动；没有 dsh-pet 或首次准备未完成时保留吉祥物原生行为。
-    - id: wallpaper-engine-pet-link
-      name: 'dsh-plugin-wallpaper-engine-pet-link'
     # fx：点击拖尾 + 特效扩展（src/fx-layer.js、src/ext-fx.js），浏览器半边在本包自己的产物里。
     - id: wallpaper-engine-fx
       name: 'dsh-plugin-wallpaper-engine-fx'

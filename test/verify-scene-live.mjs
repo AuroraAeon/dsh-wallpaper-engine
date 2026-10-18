@@ -4096,16 +4096,30 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
       'panel-tabs + client 源码口径');
   }
   {
-    // ── #191 问题 2：连续同侧消息只在首条显示头像 ──────────────────────────────
+    // ── #191 问题 2 + #231：头像的出现频率 ─────────────────────────────────────
     const avSrc = readFileSync(join(root, 'src', 'avatar-layer.js'), 'utf8').replace(/\r\n/g, '\n');
     // ⚠️ 刀4 之后 `src/styles.js` 只是 31 行组装点 ⇒ 样式判据必须读**样式族全文**（styleText()）。
     const stSrc = styleText();
-    check('#191 头像分组：只在首条显示 + 续行用 visibility 隐藏（不摘节点 ⇒ 不踩回 #154）',
+    check('#191/#231 头像分组：一回合一张脸 + 贴在可见行 + 续行用 visibility 隐藏（不摘节点 ⇒ 不踩回 #154）',
       avSrc.includes("const AVATAR_CONT_CLASS = 'we-avatar--cont';")
       && avSrc.includes('function avatarApplyGrouping()')
-      && avSrc.includes('classList.toggle(AVATAR_CONT_CLASS, side === prev)')
+      && avSrc.includes('classList.toggle(AVATAR_CONT_CLASS, cont)')
+      // #231 的三个判据源：回合号、折叠标记、可见性判定（折叠行不占"段首"）。
+      && avSrc.includes("const AVATAR_TURN_ATTR = 'data-chat-turn';")
+      && avSrc.includes("const AVATAR_FOLD_ATTR = 'data-turn-process-hidden';")
+      && avSrc.includes('function avatarRowHidden(row)')
+      // 分组必须看见**全部** flow kind（工具调用行要能断开用户连续段、也要参与助手的
+      // 重复计数：思考 / 工具调用在宿主里是两类行，一个回合里工具调用可能几十条）。
+      && avSrc.includes("const AVATAR_FLOW_ROW_SELECTOR = '[data-chat-flow-kind]';")
+      && avSrc.includes('function avatarAiRepeatRows(selLike)')
+      && avSrc.includes('aiSince >= repeatRows')
+      && avSrc.includes('if (!hidden) aiSince++;')
+      && avSrc.includes('aiFacePending = true;')
       && avSrc.includes('function avatarScheduleGrouping()')
-      && avSrc.includes('if (decorated) avatarScheduleGrouping();')
+      && avSrc.includes('if (decorated || regroup) avatarScheduleGrouping();')
+      // 折叠 / 展开会换"当前可见的第一条"⇒ 观察者必须订这些属性（只订这几枚，别全量）。
+      && avSrc.includes('attributes: true,')
+      && avSrc.includes("attributeFilter: ['hidden', AVATAR_FOLD_ATTR, AVATAR_TURN_ATTR, 'data-chat-flow-kind']")
       // #154 的保护线：续行**只许**用 visibility 隐藏。出现 display 就是踩回那个坑 ——
       // 摘掉/收起头像那一路曾让收起的思考行宽度塌成 0、连入口一起消失。
       && /\.we-avatar--cont\s*\{\s*visibility:\s*hidden;\s*\}/.test(stSrc)
@@ -4132,6 +4146,105 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
       && eaSrc.includes('ctx.avatarCropGeo')
       && !eaSrc.includes('avatarCropGeometry('),
       'client + ext-avatar 源码口径');
+  }
+  {
+    // ── 回归：一次点击就必须弹出**能看见图**的裁切窗（v1.3.3 用户实测）──────────────
+    // 病根：`openAvatarCrop` 的 `const w/h` 曾声明在 try **块内**，却在 catch 之后使用
+    // ⇒ 运行到 `setTransient("avatarCropW", w)` 抛 `ReferenceError: w is not defined`：
+    //   · 尺寸合规路径：异常冒泡出 `onAvatarFileChosen`，末尾 `emit()` 永远到不了
+    //     ⇒ 第一次选完图界面毫无反应（"要再点一次才弹窗"）；
+    //   · 自动压缩路径：异常被 `onAvatarAutoCompress` 接住 ⇒ 屏上「压缩失败：w is not defined」，
+    //     而此前 `avatarCropSide/Url` 已写入并 emit ⇒ 弹出一个几何为 0 的**空白**裁切窗。
+    // 源码形状判据（"const 在不在 try 里"）挡不住同形的下一次手滑，所以这里**求值真实现**：
+    // 喂桩解码器，断言瞬态字段真的被写进 selection、emit 真的发生、压缩路径不再落错误文案。
+    const clSrc3 = readFileSync(join(root, 'src', 'client.js'), 'utf8').replace(/\r\n/g, '\n');
+    // `fnBody`（fnNameBody）从 `function <名>(` 起切、切到首个列 0 的 `\n}` 之前 ⇒ 两处都要补：
+    //   · `async` 前缀在 `function` 之前，会被切掉 ⇒ `await` 当场 SyntaxError（实测）；
+    //   · 闭括号自己补回来（否则下一段函数声明被吞进上一个函数体）。
+    const cropFnText = (name) => {
+      const head = clSrc3.indexOf('function ' + name + '(');
+      if (head < 0) return '';
+      const isAsync = clSrc3.slice(Math.max(0, head - 6), head) === 'async ';
+      return (isAsync ? 'async ' : '') + fnBody(clSrc3, name) + '}';
+    };
+    const cropFns = ['openAvatarCrop', 'closeAvatarCrop', 'avatarCropGeometry',
+      'syncAvatarCropLive', 'onAvatarCropDrag', 'onAvatarCropZoom', 'onAvatarCropWheel',
+      'onAvatarAutoCompress'].map(cropFnText).join('\n');
+    /** 起一张沙箱：selection + 瞬态写入 + emit 计数 + 可换的 decoder。 */
+    const cropSandbox = (decoder) => {
+      const sel = { avatarCropSide: '', avatarCropUrl: '', avatarCropW: 0, avatarCropH: 0, avatarCropZoom: 1, avatarCropX: 0, avatarCropY: 0, avatarError: '', avatarBusy: '', avatarCompressing: false };
+      const state = { emits: 0 };
+      const scope = {
+        selection: sel, state, avatarCropPending: null, avatarOverflowPending: null,
+        AVATAR_CROP_VIEW: 260, AVATAR_IMPORT_MAX_EDGE: 1024,
+        weT: (k) => k,
+        setTransient: (f, v) => { sel[f] = v; return v; },
+        commitLiveTransient: (f, v) => { sel[f] = v; return v; },
+        emit: () => { state.emits++; },
+        decodeImageFile: decoder,
+        downscaleDecoded: async () => ({ blob: { type: 'image/png' }, width: 1024, height: 768 }),
+        URL: { createObjectURL: () => 'blob:fake', revokeObjectURL: () => {} },
+        File: class { constructor(parts, name, opts) { this.type = (opts && opts.type) || ''; this.size = 3; } },
+        document: undefined,
+      };
+      const api = new Function('__scope', 'with (__scope) {\n' + cropFns
+        + '\nreturn { openAvatarCrop, closeAvatarCrop, avatarCropGeometry, syncAvatarCropLive, onAvatarCropDrag, onAvatarCropZoom, onAvatarCropWheel, onAvatarAutoCompress }; }')(scope);
+      return { sel, state, scope, api };
+    };
+    // ① 尺寸合规：一次 openAvatarCrop ⇒ 弹窗瞬态齐备（含宽高）且 emit 一次。
+    const okBox = cropSandbox(async () => ({ width: 800, height: 600, close() {} }));
+    await okBox.api.openAvatarCrop('user', { type: 'image/png', size: 1000 });
+    check('回归：一次导入就弹裁切窗（宽高已写入、URL 就位、emit 真的发生）',
+      okBox.sel.avatarCropSide === 'user' && okBox.sel.avatarCropW === 800
+      && okBox.sel.avatarCropH === 600 && okBox.sel.avatarCropUrl === 'blob:fake'
+      && okBox.sel.avatarError === '' && okBox.state.emits >= 1,
+      'side=' + okBox.sel.avatarCropSide + ' w=' + okBox.sel.avatarCropW + ' h=' + okBox.sel.avatarCropH
+      + ' emits=' + okBox.state.emits + ' err=' + okBox.sel.avatarError);
+    // ② 自动压缩路径：走**真** onAvatarAutoCompress（含 File 包装）⇒ 不得落在错误文案上，
+    //    且最终仍落到同一个裁切弹窗（这是截图里那条「压缩失败：w is not defined」的回归面）。
+    const zipBox = cropSandbox(async () => ({ width: 1024, height: 768, close() {} }));
+    zipBox.scope.avatarOverflowPending = { side: 'ai', file: { type: 'image/png', size: 5 * 1024 * 1024 } };
+    await zipBox.api.onAvatarAutoCompress();
+    check('回归：自动压缩后照常进裁切窗（不再落「压缩失败：w is not defined」）',
+      zipBox.sel.avatarError === '' && zipBox.sel.avatarCropSide === 'ai'
+      && zipBox.sel.avatarCropW === 1024 && zipBox.sel.avatarCropH === 768
+      && zipBox.sel.avatarCompressing === false && zipBox.sel.avatarOverflow === null,
+      'err=' + zipBox.sel.avatarError + ' side=' + zipBox.sel.avatarCropSide
+      + ' w=' + zipBox.sel.avatarCropW + ' h=' + zipBox.sel.avatarCropH);
+    // ③ live 档（拖动 / 滚轮）必须**就地**挪图：不 emit，但 .we-crop__img 的 inline style 要变。
+    //    没有这一步时，拖动只写 selection、界面不动（用户口径："无法正常移动图片"）。
+    const dragBox = cropSandbox(async () => ({ width: 800, height: 600, close() {} }));
+    dragBox.sel.avatarCropW = 800; dragBox.sel.avatarCropH = 600;
+    const img = { style: {} };
+    // 桩 DOM：`.we-crop` 里那枚 range + 回显 span（滑块回真值那条判据要读它们）。
+    const range = { min: '100', max: '400', value: '100', style: { setProperty() {} } };
+    const readout = { textContent: '100%' };
+    const fakeCrop = {
+      querySelector(sel) {
+        if (sel === 'input[type="range"]') return range;
+        if (sel === '.we-picker__value') return readout;
+        return null;
+      },
+    };
+    const fakeView = { querySelector: (sel) => (sel === '.we-crop__img' ? img : null) };
+    const fakeDoc = {
+      querySelector: (sel) => (sel === '.we-crop__view' ? fakeView : (sel === '.we-crop' ? fakeCrop : null)),
+    };
+    dragBox.scope.document = fakeDoc;
+    dragBox.api.onAvatarCropDrag(10, 0);
+    const leftAfterDrag = img.style.left;
+    dragBox.api.onAvatarCropWheel(0.1);
+    dragBox.api.onAvatarCropWheel(0.1);
+    check('回归：裁切窗的拖动 / 滚轮在 live 档就地生效（连滚两格累计放大到 1.2）',
+      typeof leftAfterDrag === 'string' && leftAfterDrag !== 'undefined'
+      && dragBox.sel.avatarCropX !== 0 && dragBox.sel.avatarCropZoom === 1.2
+      && img.style.width !== undefined && dragBox.state.emits === 0,
+      'left=' + leftAfterDrag + ' zoom=' + dragBox.sel.avatarCropZoom + ' emits=' + dragBox.state.emits);
+    // 滚轮不经过滑块自己的 input 事件 ⇒ 滑块位置与回显必须由 live 同步补上，否则图放大了而
+    // 滑块还显示 100%（用户看到的是"两处说法不一致"）。
+    check('回归：滚轮缩放后缩放滑块与回显跟着回真值（不靠重渲染）',
+      range.value === '120' && readout.textContent === '120%',
+      'range=' + range.value + ' readout=' + readout.textContent);
   }
   {
     // ── 文件头尺寸解析器：**喂真字节**跑真实现（#185 后续）──────────────────────────
@@ -5741,7 +5854,8 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
       };
       const prevFns = {};
       for (const k of Object.keys(stubs2)) { prevFns[k] = globalThis[k]; globalThis[k] = stubs2[k]; }
-      for (const k of ['AVATAR_SIZE_MIN', 'AVATAR_SIZE_MAX', 'AVATAR_RADIUS_MIN', 'AVATAR_RADIUS_MAX']) {
+      for (const k of ['AVATAR_SIZE_MIN', 'AVATAR_SIZE_MAX', 'AVATAR_RADIUS_MIN', 'AVATAR_RADIUS_MAX',
+        'AVATAR_AI_REPEAT_MIN', 'AVATAR_AI_REPEAT_MAX']) {
         prevFns[k] = globalThis[k]; globalThis[k] = schemaMod[k];
       }
       try {
@@ -5769,6 +5883,7 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
         const islandCtx = (sel) => ({
           sel,
           onAvatarEnabled: () => {}, onAvatarSize: () => {}, onAvatarRadius: () => {},
+          onAvatarAiRepeatRows: () => {},
           onAvatarPick: () => {}, onAvatarClear: () => {}, onAvatarAutoCompress: () => {},
         });
         const exceeded = Object.assign({}, schemaMod.DEFAULTS, {
@@ -5859,17 +5974,19 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
       onAvatarEnabled: () => {}, onAvatarSize: () => {}, onAvatarRadius: () => {},
       onAvatarPick: () => {}, onAvatarClear: () => {},
     });
-    const PARAMS = ['「我」的头像', '「助手」的头像', '头像大小', '圆角强度'];
+    const PARAMS = ['「我」的头像', '「助手」的头像', '头像大小', '圆角强度', '助手头像间隔'];
     // 岛的取值面跨了三个模块：schema 的四个常量（滑块范围 / 昵称上限）+ 头像层的三枚
     // （URL / 默认名 / 默认头像几何）⇒ 单独 import 时补替身（同 ext-fx 那块对
     // FX_BLEND_VALUES 的处理）。
     const STUB_KEYS = ['AVATAR_SIZE_MIN', 'AVATAR_SIZE_MAX', 'AVATAR_RADIUS_MIN', 'AVATAR_RADIUS_MAX',
+      'AVATAR_AI_REPEAT_MIN', 'AVATAR_AI_REPEAT_MAX',
       'avatarImageUrl', 'renderAvatarGlyph'];
     const PREV_STUBS = {};
     for (const k of STUB_KEYS) PREV_STUBS[k] = globalThis[k];
     Object.assign(globalThis, {
       AVATAR_SIZE_MIN: schemaMod.AVATAR_SIZE_MIN, AVATAR_SIZE_MAX: schemaMod.AVATAR_SIZE_MAX,
       AVATAR_RADIUS_MIN: schemaMod.AVATAR_RADIUS_MIN, AVATAR_RADIUS_MAX: schemaMod.AVATAR_RADIUS_MAX,
+      AVATAR_AI_REPEAT_MIN: schemaMod.AVATAR_AI_REPEAT_MIN, AVATAR_AI_REPEAT_MAX: schemaMod.AVATAR_AI_REPEAT_MAX,
       avatarImageUrl: avatarLayerMod.avatarImageUrl,
       renderAvatarGlyph: avatarLayerMod.renderAvatarGlyph,
     });
@@ -5959,7 +6076,20 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
         constructor(tag) { this.tagName = String(tag).toUpperCase(); this.children = []; this.attrs = {}; this.style = { props: {}, setProperty: (k, v) => { this.style.props[k] = v; }, removeProperty: (k) => { delete this.style.props[k]; } }; this.className = ''; this.textContent = ''; }
         get firstChild() { return this.children[0] || null; }
         get firstElementChild() { return this.children[0] || null; }
-        get classList() { const self = this; return { contains: (c) => String(self.className).split(/\s+/).includes(c) }; }
+        get classList() {
+          const self = this;
+          const has = (c) => String(self.className).split(/\s+/).filter(Boolean).includes(c);
+          return {
+            contains: has,
+            // 分组只用 toggle（它必须"加了还在、删了真没"），所以替身也得有同一语义。
+            toggle: (c, on) => {
+              const set = new Set(String(self.className).split(/\s+/).filter(Boolean));
+              if (on === undefined ? !set.has(c) : Boolean(on)) set.add(c); else set.delete(c);
+              self.className = [...set].join(' ');
+              return set.has(c);
+            },
+          };
+        }
         appendChild(c) { c.parent = this; this.children.push(c); return c; }
         insertBefore(c) { c.parent = this; this.children.unshift(c); return c; }
         remove() {
@@ -5969,7 +6099,20 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
         }
         setAttribute(k, v) { this.attrs[k] = String(v); }
         getAttribute(k) { return Object.prototype.hasOwnProperty.call(this.attrs, k) ? this.attrs[k] : null; }
+        hasAttribute(k) { return Object.prototype.hasOwnProperty.call(this.attrs, k); }
         removeAttribute(k) { delete this.attrs[k]; }
+        /** 宿主可见性判定要向上找过程窗口 body（`[data-step-process-body][hidden]`）。 */
+        closest(sel) {
+          const parts = [...String(sel).matchAll(/\[([a-z-]+)(?:="?([^"\]]*)"?)?\]/g)];
+          let cur = this;
+          while (cur) {
+            const hit = parts.length > 0 && parts.every((m) => (m[2] === undefined
+              ? cur.getAttribute(m[1]) !== null : cur.getAttribute(m[1]) === m[2]));
+            if (hit) return cur;
+            cur = cur.parent || null;
+          }
+          return null;
+        }
         querySelector(sel) { return this.querySelectorAll(sel)[0] || null; }
         querySelectorAll(sel) { return query(this, sel); }
       }
@@ -6090,6 +6233,250 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
       }
       check('avatar-layer.js 行为：开 ⇒ 只给两类消息行补节点 + body 两个变量 · 换设置就地更新 · 关 ⇒ 逐字节回原生',
         !behavior, behavior);
+    }
+    // ── issue #231 的**频率**判据：脸必须落在该回合**当前可见的第一条**助手行上 ──────
+    // 报告的事实（Console 实测）：助手侧 62 个装饰行里 53 行带 --cont、其中 44 行被隐藏；
+    // 根因是分组只认三类消息行，过程行被 `continue` 跳过 ⇒ `prev` 永远是 'ai'，而折叠窗口里
+    // 看不见的行又占了"段首" ⇒ 整轮唯一可见的回复行被判成续行。
+    // 这里按宿主真实形态造 DOM（过程窗口是包着成员的 `[data-step-process-body]`，折叠时它自己
+    // 带 `hidden`；答案行在窗口外），断言"哪一张脸露着"。
+    {
+      class El2 {
+        constructor(tag) { this.tagName = String(tag).toUpperCase(); this.children = []; this.attrs = {}; this.style = { props: {}, setProperty: (k, v) => { this.style.props[k] = v; }, removeProperty: (k) => { delete this.style.props[k]; } }; this.className = ''; this.textContent = ''; }
+        get firstChild() { return this.children[0] || null; }
+        get firstElementChild() { return this.children[0] || null; }
+        get classList() {
+          const self = this;
+          const has = (c) => String(self.className).split(/\s+/).filter(Boolean).includes(c);
+          return { contains: has, toggle: (c, on) => { const set = new Set(String(self.className).split(/\s+/).filter(Boolean)); if (on) set.add(c); else set.delete(c); self.className = [...set].join(' '); return set.has(c); } };
+        }
+        appendChild(c) { c.parent = this; this.children.push(c); return c; }
+        insertBefore(c) { c.parent = this; this.children.unshift(c); return c; }
+        remove() { const p = this.parent; if (p) { const i = p.children.indexOf(this); if (i >= 0) p.children.splice(i, 1); } this.parent = null; }
+        setAttribute(k, v) { this.attrs[k] = String(v); }
+        getAttribute(k) { return Object.prototype.hasOwnProperty.call(this.attrs, k) ? this.attrs[k] : null; }
+        hasAttribute(k) { return Object.prototype.hasOwnProperty.call(this.attrs, k); }
+        removeAttribute(k) { delete this.attrs[k]; }
+        closest(sel) {
+          const parts = [...String(sel).matchAll(/\[([a-z-]+)(?:="?([^"\]]*)"?)?\]/g)];
+          let cur = this;
+          while (cur) {
+            const hit = parts.length > 0 && parts.every((m) => (m[2] === undefined
+              ? cur.getAttribute(m[1]) !== null : cur.getAttribute(m[1]) === m[2]));
+            if (hit) return cur;
+            cur = cur.parent || null;
+          }
+          return null;
+        }
+        querySelector(sel) { return this.querySelectorAll(sel)[0] || null; }
+        querySelectorAll(sel) { return query2(this, sel); }
+      }
+      const query2 = (rootEl, sel) => {
+        const out = [];
+        const want = String(sel).split(',').map((s) => s.trim());
+        const hit = (el) => want.some((s) => {
+          if (s.startsWith('.')) return String(el.className).split(/\s+/).includes(s.slice(1));
+          const m = /^\[([a-z-]+)(?:="?([^"\]]*)"?)?\]$/.exec(s);
+          return m ? (m[2] === undefined ? el.getAttribute(m[1]) !== null : el.getAttribute(m[1]) === m[2]) : false;
+        });
+        (function walk(el) { for (const c of el.children || []) { if (hit(c)) out.push(c); walk(c); } })(rootEl);
+        return out;
+      };
+      const PREV = { document: globalThis.document, MutationObserver: globalThis.MutationObserver, selection: globalThis.selection };
+      const restoreWeBase = stubWeBase();
+      const body = new El2('body');
+      /** 一条流条目（带回合号）；返回行元素。 */
+      const mkFlowRow = (kind, turn) => {
+        const el = new El2('div');
+        el.setAttribute('data-chat-flow-kind', kind);
+        if (turn != null) el.setAttribute('data-chat-turn', String(turn));
+        const outlet = new El2('div');
+        outlet.setAttribute('data-slot', 'conversation.chat.node');
+        outlet.style.display = 'contents';
+        outlet.appendChild(new El2('div'));
+        el.appendChild(outlet);
+        body.appendChild(el);
+        return el;
+      };
+      /** 过程窗口容器（宿主的 `[data-step-process-body]`；折叠时自己带 hidden）。 */
+      const mkProcessBody = (hidden) => {
+        const el = new El2('div');
+        el.setAttribute('data-step-process-body', '');
+        if (hidden) el.setAttribute('hidden', '');
+        body.appendChild(el);
+        return el;
+      };
+      const put = (parent, row) => { row.remove(); parent.appendChild(row); return row; };
+      // 回合 1：用户发问 → 折叠的过程窗口（思考 + 工具）→ 窗口外的答案行（唯一可见的助手行）
+      const t1User = mkFlowRow('user', 1);
+      const t1Body = mkProcessBody(true);
+      const t1Think = put(t1Body, mkFlowRow('assistant-step', 1));
+      put(t1Body, mkFlowRow('tool-call', 1));
+      const t1Folded = mkFlowRow('assistant-step', 1);
+      t1Folded.setAttribute('data-turn-process-hidden', '');
+      const t1Answer = mkFlowRow('assistant-step', 1);
+      // 回合 2：正常的两次助手行（同回合 ⇒ 只露第一张）
+      mkFlowRow('user', 2);
+      const t2First = mkFlowRow('assistant-step', 2);
+      const t2Second = mkFlowRow('assistant-step', 2);
+      // 回合 3：用户连发两条，中间夹一次工具调用 ⇒ 第二条**必须**重新露脸（#231 的另一半）
+      mkFlowRow('user', 3);
+      mkFlowRow('tool-call', 3);
+      const t3Steer = mkFlowRow('steering', 3);
+      let behavior2 = '';
+      try {
+        globalThis.document = {
+          body,
+          createElement: (t) => new El2(t),
+          querySelectorAll: (sel) => query2(body, sel),
+          querySelector: (sel) => query2(body, sel)[0] || null,
+        };
+        globalThis.MutationObserver = class { observe() {} disconnect() {} };
+        globalThis.selection = { avatarEnabled: true, avatarSize: 40, avatarRadius: 100 };
+        avatarLayerMod.syncAvatarLayer();
+        const cont = (row) => {
+          const node = row.firstElementChild;
+          return Boolean(node) && String(node.className).split(/\s+/).includes('we-avatar--cont');
+        };
+        const face = (row) => {
+          const node = row.firstElementChild;
+          return Boolean(node) && String(node.className).split(/\s+/).includes('we-avatar') && !cont(row);
+        };
+        const laid = {
+          t1Think: cont(t1Think), t1Folded: cont(t1Folded), t1Answer: face(t1Answer),
+          t2First: face(t2First), t2Second: cont(t2Second), t3Steer: face(t3Steer),
+          t1User: face(t1User),
+          // 折叠行与续行的头像**节点都还在**（#154：只许 visibility 隐藏，绝不摘节点）。
+          nodesKept: [t1Think, t1Folded, t2Second].every((r) => {
+            const n = r.firstElementChild;
+            return Boolean(n) && String(n.className).split(/\s+/).includes('we-avatar');
+          }),
+        };
+        if (!laid.t1User || !laid.t1Think || !laid.t1Folded || !laid.t1Answer
+          || !laid.t2First || !laid.t2Second || !laid.t3Steer || !laid.nodesKept) {
+          behavior2 = '分组落点不对：' + JSON.stringify(laid);
+        }
+        // 展开过程窗口（宿主去掉 body 的 hidden）⇒ 脸应当换成窗口里第一条可见行，
+        // 答案行让位。这一步走的是**同一套分组**（观察者收到 hidden 属性变化后重算）。
+        t1Body.removeAttribute('hidden');
+        avatarLayerMod.syncAvatarLayer();
+        const afterOpen = { think: face(t1Think), folded: cont(t1Folded), answer: cont(t1Answer) };
+        if (!afterOpen.think || !afterOpen.folded || !afterOpen.answer) {
+          behavior2 = behavior2 || '展开后重算不对：' + JSON.stringify(afterOpen);
+        }
+      } catch (e) { behavior2 = behavior2 || ('抛错：' + String((e && e.message) || e)); } finally {
+        if (PREV.document === undefined) delete globalThis.document; else globalThis.document = PREV.document;
+        if (PREV.MutationObserver === undefined) delete globalThis.MutationObserver; else globalThis.MutationObserver = PREV.MutationObserver;
+        globalThis.selection = PREV.selection;
+        restoreWeBase();
+      }
+      check('avatar-layer.js 行为（issue #231）：一回合一张脸 · 贴在可见行 · 折叠窗口不占位 · 展开后跟着换人',
+        !behavior2, behavior2);
+      // 兼容性兜底：**没有 `data-chat-turn` 的宿主**不能把整场会话压成一张脸 ——
+      // 退回"连续同侧只看首条"，被用户行打断后重新露脸。
+      let behavior3 = '';
+      const restoreWeBase3 = stubWeBase();
+      try {
+        globalThis.document = {
+          body,
+          createElement: (t) => new El2(t),
+          querySelectorAll: (sel) => query2(body, sel),
+          querySelector: (sel) => query2(body, sel)[0] || null,
+        };
+        globalThis.MutationObserver = class { observe() {} disconnect() {} };
+        globalThis.selection = { avatarEnabled: true, avatarSize: 40, avatarRadius: 100 };
+        const mkPlain = (kind) => {
+          const el = new El2('div');
+          el.setAttribute('data-chat-flow-kind', kind);
+          const outlet = new El2('div');
+          outlet.setAttribute('data-slot', 'conversation.chat.node');
+          outlet.style.display = 'contents';
+          outlet.appendChild(new El2('div'));
+          el.appendChild(outlet);
+          body.appendChild(el);
+          return el;
+        };
+        mkPlain('user');
+        const pA1 = mkPlain('assistant-step');
+        const pA2 = mkPlain('assistant-step');
+        mkPlain('user');
+        const pA3 = mkPlain('assistant-step');
+        avatarLayerMod.syncAvatarLayer();
+        const isCont = (row) => {
+          const n = row.firstElementChild;
+          return Boolean(n) && String(n.className).split(/\s+/).includes('we-avatar--cont');
+        };
+        if (isCont(pA1) || !isCont(pA2) || isCont(pA3)) {
+          behavior3 = '无回合号兜底不对：' + JSON.stringify({ a1: isCont(pA1), a2: isCont(pA2), a3: isCont(pA3) });
+        }
+      } catch (e) { behavior3 = behavior3 || ('抛错：' + String((e && e.message) || e)); } finally {
+        if (PREV.document === undefined) delete globalThis.document; else globalThis.document = PREV.document;
+        if (PREV.MutationObserver === undefined) delete globalThis.MutationObserver; else globalThis.MutationObserver = PREV.MutationObserver;
+        globalThis.selection = PREV.selection;
+        restoreWeBase3();
+      }
+      check('avatar-layer.js 兼容兜底：宿主没有 data-chat-turn 时退回"连续同侧只看首条"（不把整场会话压成一张脸）',
+        !behavior3, behavior3);
+      // 频率（用户反馈"一整页都没有助手头像"）：长回合里脸要**跟着内容往下走** ——
+      // 回合首条露脸之后，每过「助手头像间隔」条**可见**流条目在下一条助手行再露一次；
+      // 工具调用行参与计数但**不重置**这个额度（否则每一步工具调用都重新贴一张 = 太频繁）。
+      // 期望值由**设置里的值**推出来（不在这里手抄数字）：回合首条露脸后额度归零，
+      // 之后每一条**不露脸的可见行**（含被隐藏的助手行与工具调用行）各记 1 ⇒ 交替的
+      // (助手行, 工具行) 每对走 2。第 k 条助手行（k≥2）**评估时**的额度 = 2k-3（A1 露脸后归零，
+      // 它前面经过 T1、A2、T2…交替）⇒ 露脸条件 2k-3 >= repeat ⇒ k = ceil((repeat+3)/2)。
+      // 这一刀把间隔从常量改成了设置项 ⇒ 顺便当成负对照：喂一个**非默认值**（7），
+      // 断言分组真的跟着设置走（常量写死会在这里红）。
+      const repeatRows = 7;
+      const faceAt = Math.ceil((repeatRows + 3) / 2);   // 第几条助手行再露脸（1 基）
+      let behavior4 = '';
+      const restoreWeBase4 = stubWeBase();
+      try {
+        globalThis.document = {
+          body,
+          createElement: (t) => new El2(t),
+          querySelectorAll: (sel) => query2(body, sel),
+          querySelector: (sel) => query2(body, sel)[0] || null,
+        };
+        globalThis.MutationObserver = class { observe() {} disconnect() {} };
+        globalThis.selection = { avatarEnabled: true, avatarSize: 40, avatarRadius: 100, avatarAiRepeatRows: repeatRows };
+        // 一个回合：一条用户消息 + 交替的 思考(assistant-step) / 工具调用，条数够到第二次露脸。
+        mkFlowRow('user', 8);
+        const seq = [];
+        const pairs = faceAt + 2;   // 够到第二次露脸 + 后面还留几条"续行"可判
+        for (let i = 0; i < pairs; i++) {
+          seq.push(mkFlowRow('assistant-step', 8));
+          seq.push(mkFlowRow('tool-call', 8));
+        }
+        avatarLayerMod.syncAvatarLayer();
+        const isCont4 = (row) => {
+          const n = row.firstElementChild;
+          return Boolean(n) && String(n.className).split(/\s+/).includes('we-avatar--cont');
+        };
+        const isFace4 = (row) => {
+          const n = row.firstElementChild;
+          return Boolean(n) && String(n.className).split(/\s+/).includes('we-avatar') && !isCont4(row);
+        };
+        const aiRows = seq.filter((r) => r.getAttribute('data-chat-flow-kind') === 'assistant-step');
+        const got = aiRows.map((r) => isFace4(r));
+        const want = aiRows.map((_, i) => i === 0 || i === faceAt - 1);
+        if (got.join(',') !== want.join(',')) {
+          behavior4 = '长回合频率不对：' + JSON.stringify({ repeatRows, faceAt, got, want });
+        }
+        // 折叠掉全部工具调用（隐藏行）⇒ 它们**不参与计数**，额度涨得更慢：助手行各记 1，
+        // 条数不够 ⇒ 最后一条助手行判续行。与上面"工具调用可见时第 faceAt 条露脸"正负对照。
+        for (const row of seq) if (row.getAttribute('data-chat-flow-kind') === 'tool-call') row.setAttribute('hidden', '');
+        avatarLayerMod.syncAvatarLayer();
+        if (!isCont4(aiRows[aiRows.length - 1])) {
+          behavior4 = behavior4 || '隐藏行仍在参与计数（折叠后末行不该露脸）';
+        }
+      } catch (e) { behavior4 = behavior4 || ('抛错：' + String((e && e.message) || e)); } finally {
+        if (PREV.document === undefined) delete globalThis.document; else globalThis.document = PREV.document;
+        if (PREV.MutationObserver === undefined) delete globalThis.MutationObserver; else globalThis.MutationObserver = PREV.MutationObserver;
+        globalThis.selection = PREV.selection;
+        restoreWeBase4();
+      }
+      check('avatar-layer.js 行为（#231 频率）：长回合按 AVATAR_AI_REPEAT_ROWS 可见行再露一次脸 · 工具调用参与计数但不重置 · 隐藏行不计数',
+        !behavior4, behavior4);
     }
   }
 
@@ -6406,7 +6793,7 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
       // ⚠️ 本档打开 `thinkingGlass`（上游 #134 的「思考块液态玻璃」，默认关）：原属本档的
       //    「胶囊雾化」与「思考触发条玻璃·独立配置」都迁进侧栏折叠块了（本档不再画它们 ——
       //    这正是"真迁移"的字面含义；侧栏展开档在下面钉它们）。
-      wantLabels: ['主题随壁纸', '边框', '预设方案', '深色单独设置', '玻璃透明度', '雾化', '额外补雾化的选择器', '玻璃保真度', '思考块液态玻璃', '左侧栏液态玻璃', '标题栏液态玻璃', '侧栏液态玻璃', '侧栏全透明', '侧栏玻璃跟随全局', '左侧栏 · 统一圆角', '左侧栏 · 四角单独', '右侧栏 · 统一圆角', '右侧栏 · 四角单独'] },
+      wantLabels: ['主题随壁纸', '边框', '预设方案', '深色单独设置', '玻璃透明度', '雾化', '额外补雾化的选择器', '玻璃保真度', '思考块液态玻璃', '左侧栏液态玻璃', '标题栏液态玻璃', '侧栏液态玻璃', '侧栏全透明', '侧栏玻璃跟随全局', '内容面玻璃·独立配置', '左侧栏 · 统一圆角', '左侧栏 · 四角单独', '右侧栏 · 统一圆角', '右侧栏 · 四角单独'] },
     // 设置页 · 主题预设**收起**档：不给 `presetsOpen`（ctxFrom 填 noop ⇒ 被当成收起）。
     // 节头必须仍在（它是重新展开的唯一入口），预设网格一行都不画 —— 判据形状与「全局 UI 配色」
     // 收起档同款（verify-client 里那条"存 0 ⇒ 色板不进树、节头仍在"的渲染侧镜像）。
@@ -6414,7 +6801,7 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
       selOver: { sidebarPresent: true, sidebarGlass: true, thinkingGlass: true },
       ctxOver: { glassPresets: { presets: [] }, detailOpen: true, glassUiOpen: true, cornersOpen: true },
       want: ['主题', '细节', '主题预设', '玻璃 UI', '侧边栏圆角', '全局 UI 配色', '全局字体'],
-      wantLabels: ['主题随壁纸', '边框', '深色单独设置', '玻璃透明度', '雾化', '额外补雾化的选择器', '玻璃保真度', '思考块液态玻璃', '左侧栏液态玻璃', '标题栏液态玻璃', '侧栏液态玻璃', '侧栏全透明', '侧栏玻璃跟随全局', '左侧栏 · 统一圆角', '左侧栏 · 四角单独', '右侧栏 · 统一圆角', '右侧栏 · 四角单独'] },
+      wantLabels: ['主题随壁纸', '边框', '深色单独设置', '玻璃透明度', '雾化', '额外补雾化的选择器', '玻璃保真度', '思考块液态玻璃', '左侧栏液态玻璃', '标题栏液态玻璃', '侧栏液态玻璃', '侧栏全透明', '侧栏玻璃跟随全局', '内容面玻璃·独立配置', '左侧栏 · 统一圆角', '左侧栏 · 四角单独', '右侧栏 · 统一圆角', '右侧栏 · 四角单独'] },
     // 侧栏档（默认收起）：**简化配置 + 两块折叠块的头**（ADR-0008 D4）——
     // 「详细玻璃调节」开关在（收起 ⇒ 它后面的独立配置层一行都不画）；「全局字体」节头在
     // （收起 ⇒ 字体内容不画）。`selOver` 与设置页用例同位 ⇒ 侧栏家族开关同样画得出来。
@@ -6423,6 +6810,22 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
     //    不在、接线通不通"，那是**等价前提**下的老断言，不该因为默认值变了就删/改判不在
     //    （那会把"控件坏了"与"默认收起了"混成同一件事）。默认收敛这条**新行为**由紧随的
     //    下面这条用例单独承担（它一个门都不给 ⇒ 新判据的"收起"分支才不会空转）。
+    // ⚠️ **没装 dsh-better-sidebar 的机器**（`sidebarPresent` 缺省/false）：内容面那组
+    //    （阅读文件页 / 编辑器 / 终端的底色与透明度）**必须仍然画得出来**。用户实测报过这次回归：
+    //    门错挂在 `sidebarPresent` 上 ⇒ 不装该插件的用户整组行一行都没有，"阅读页底色"又一次
+    //    够不着。真正的 CSS 门是 `data-we-sidebar-glass`（由 `sidebarGlass` 写，默认开），
+    //    与 `sidebarPresent` 无关 —— 宿主原生右栏（阅读文件页就在那儿）同样吃那张底板。
+    { fn: 'renderAppearanceTab', label: '（设置页 · 未安装 better-sidebar：内容面那组仍在）', surface: 'settings',
+      selOver: { sidebarPresent: false, sidebarGlass: true },
+      ctxOver: { glassPresets: { presets: [] }, presetsOpen: true, detailOpen: true, glassUiOpen: true, cornersOpen: true },
+      want: ['主题', '细节', '主题预设', '玻璃 UI', '侧边栏圆角', '全局 UI 配色', '全局字体'],
+      wantLabels: ['主题随壁纸', '边框', '预设方案', '深色单独设置', '玻璃透明度', '雾化', '额外补雾化的选择器', '玻璃保真度', '思考块液态玻璃', '左侧栏液态玻璃', '标题栏液态玻璃', '内容面玻璃·独立配置', '左侧栏 · 统一圆角', '左侧栏 · 四角单独', '右侧栏 · 统一圆角', '右侧栏 · 四角单独'] },
+    // 同一条的另一半：`sidebarGlass` 关掉（侧栏玻璃总开关）⇒ 内容面那组也收（它的 CSS 门同源）。
+    { fn: 'renderAppearanceTab', label: '（设置页 · 侧栏玻璃总开关关：内容面那组跟着收）', surface: 'settings',
+      selOver: { sidebarPresent: false, sidebarGlass: false },
+      ctxOver: { glassPresets: { presets: [] }, presetsOpen: true, detailOpen: true, glassUiOpen: true, cornersOpen: true },
+      want: ['主题', '细节', '主题预设', '玻璃 UI', '侧边栏圆角', '全局 UI 配色', '全局字体'],
+      wantLabels: ['主题随壁纸', '边框', '预设方案', '深色单独设置', '玻璃透明度', '雾化', '额外补雾化的选择器', '玻璃保真度', '思考块液态玻璃', '左侧栏液态玻璃', '标题栏液态玻璃', '左侧栏 · 统一圆角', '左侧栏 · 四角单独', '右侧栏 · 统一圆角', '右侧栏 · 四角单独'] },
     // 侧栏档 · 三节**默认收敛**（一个门都不给 = 全收起）：这是用户口径要的新行为 ——
     // 侧栏外观页打开时只剩六行节头，一屏放得下（此前「细节 + 玻璃 UI + 侧边栏圆角」要滚好几屏）。
     { fn: 'renderAppearanceTab', label: '（侧栏档 · 三节默认收敛：只画节头）', surface: 'sidebar',
@@ -6440,7 +6843,7 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
       selOver: { sidebarPresent: true, sidebarGlass: true },
       ctxOver: { detailOpen: true, glassUiOpen: true, cornersOpen: true },
       want: ['主题', '细节', '玻璃 UI', '侧边栏圆角', '全局 UI 配色', '全局字体'],
-      wantLabels: ['主题随壁纸', '边框', '玻璃透明度', '雾化', '额外补雾化的选择器', '玻璃保真度', '思考块液态玻璃', '左侧栏液态玻璃', '标题栏液态玻璃', '侧栏液态玻璃', '侧栏全透明', '侧栏玻璃跟随全局', '详细玻璃调节', '左侧栏 · 统一圆角', '左侧栏 · 四角单独', '右侧栏 · 统一圆角', '右侧栏 · 四角单独'] },
+      wantLabels: ['主题随壁纸', '边框', '玻璃透明度', '雾化', '额外补雾化的选择器', '玻璃保真度', '思考块液态玻璃', '左侧栏液态玻璃', '标题栏液态玻璃', '侧栏液态玻璃', '侧栏全透明', '侧栏玻璃跟随全局', '详细玻璃调节', '内容面玻璃·独立配置', '左侧栏 · 统一圆角', '左侧栏 · 四角单独', '右侧栏 · 统一圆角', '右侧栏 · 四角单独'] },
     // 侧栏档 · 「详细玻璃调节」展开（ctxOver.glassDetailOpen）：高级行全部回来 ——
     // 胶囊细调（thinkingGlass 开 ⇒ 同门）、内容面与登记表各面的「独立配置」。
     // `sidebarFollowGlobal` 默认开 ⇒ 「侧栏玻璃·独立配置」被跟随门收起（画出来又不生效的
@@ -6449,7 +6852,7 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
       selOver: { sidebarPresent: true, sidebarGlass: true, thinkingGlass: true },
       ctxOver: { glassDetailOpen: true, detailOpen: true, glassUiOpen: true, cornersOpen: true },
       want: ['主题', '细节', '玻璃 UI', '侧边栏圆角', '全局 UI 配色', '全局字体'],
-      wantLabels: ['主题随壁纸', '边框', '玻璃透明度', '雾化', '额外补雾化的选择器', '玻璃保真度', '思考块液态玻璃', '左侧栏液态玻璃', '标题栏液态玻璃', '侧栏液态玻璃', '侧栏全透明', '侧栏玻璃跟随全局', '详细玻璃调节', '胶囊雾化', '内容面玻璃·独立配置', '设置窗口玻璃·独立配置', '对话框玻璃·独立配置', '思考触发条玻璃·独立配置', '浮层玻璃·独立配置', '左侧栏 · 统一圆角', '左侧栏 · 四角单独', '右侧栏 · 统一圆角', '右侧栏 · 四角单独'] },
+      wantLabels: ['主题随壁纸', '边框', '玻璃透明度', '雾化', '额外补雾化的选择器', '玻璃保真度', '思考块液态玻璃', '左侧栏液态玻璃', '标题栏液态玻璃', '侧栏液态玻璃', '侧栏全透明', '侧栏玻璃跟随全局', '详细玻璃调节', '胶囊雾化', '设置窗口玻璃·独立配置', '对话框玻璃·独立配置', '思考触发条玻璃·独立配置', '浮层玻璃·独立配置', '内容面玻璃·独立配置', '左侧栏 · 统一圆角', '左侧栏 · 四角单独', '右侧栏 · 统一圆角', '右侧栏 · 四角单独'] },
     // ⚠️ 这一条是**覆盖缺口**补上的：字体那一节的细节（颜色角色 / 排版角色 / 字体族 / 组件字体 /
     // 字体集预设，~180 行）被 `sel.fontCustom` 挡着，而它的默认值是关 ⇒ **任何用例都没渲染过它**。
     // 打开它才能让那些行第一次进入判据的视野（这本身是找缺陷，不只是补锚）。
@@ -6459,6 +6862,7 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
       ctxOver: { fontOpen: true, detailOpen: true, glassUiOpen: true, cornersOpen: true, fontSet: FONTSET_STUB },
       want: ['主题', '细节', '玻璃 UI', '侧边栏圆角', '全局 UI 配色', '全局字体'],
       wantLabels: ['主题随壁纸', '边框', '玻璃透明度', '雾化', '额外补雾化的选择器', '玻璃保真度', '思考块液态玻璃', '左侧栏液态玻璃', '标题栏液态玻璃', '侧栏液态玻璃', '侧栏全透明', '侧栏玻璃跟随全局', '详细玻璃调节',
+        '内容面玻璃·独立配置',
         '左侧栏 · 统一圆角', '左侧栏 · 四角单独', '右侧栏 · 统一圆角', '右侧栏 · 四角单独',
         '字体自定义', '默认字体', '终端字体', '文字颜色角色', '深色单独设置', '正文', '次要文字', '弱化说明', '极小说明', '禁用 / 更弱',
         '排版角色', '只看改过的', '高级字体设置', '字体集预设'] },
@@ -6477,6 +6881,7 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
       //    **按序拼接** —— 两个来源各自都被别的用例钉住了，这里是它们的交叉验证：拼接后
       //    逐字相等 ⇒ 设置页的字体节渲染的就是侧栏那一份同一渲染器的产物（无 surface 分支残留）。
       wantLabels: ['主题随壁纸', '边框', '预设方案', '深色单独设置', '玻璃透明度', '雾化', '额外补雾化的选择器', '玻璃保真度', '思考块液态玻璃', '左侧栏液态玻璃', '标题栏液态玻璃', '侧栏液态玻璃', '侧栏全透明', '侧栏玻璃跟随全局',
+        '内容面玻璃·独立配置',
         '左侧栏 · 统一圆角', '左侧栏 · 四角单独', '右侧栏 · 统一圆角', '右侧栏 · 四角单独',
         '字体自定义', '默认字体', '终端字体', '文字颜色角色', '深色单独设置', '正文', '次要文字', '弱化说明', '极小说明', '禁用 / 更弱',
         '排版角色', '只看改过的', '高级字体设置', '字体集预设'] },
@@ -6648,7 +7053,12 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
       // ⚠️ 这道判据只对**带「玻璃 UI」节**的档判（其它页签本来就没有独立配置层）；
       //    它必须住在**跑得到外观用例的那个循环**里 —— 上一版住在旧的 `CASES` 循环、
       //    而外观用例早已搬进 `MORE_CASES` ⇒ 那条判据当时是**空转的**（实测：改口径它不红）。
-      const indep = labels.filter((l) => l.includes('独立配置'));
+      // ⚠️ 「内容面玻璃·独立配置」是**这一族的例外**（用户口径："侧边栏阅读文件页面的背景
+      // 底色的设置被删除了，需要找回"）：它是阅读页 / 编辑器 / 终端底色的唯一入口，
+      // 此前只在侧栏折叠块里 ⇒ 设置页与侧栏收起态都够不着。现在它两档都画（仍在节门内），
+      // 所以下面那两条 D4 判据统计「独立配置」层时要把它排除在外。
+      const CONTENT_INDEP = '内容面玻璃·独立配置';
+      const indep = labels.filter((l) => l.includes('独立配置') && l !== CONTENT_INDEP);
       // 预设块的标签（`预设方案`）**也进标签序列** —— 它由 `ctlText` 画成一行 `we-picker__ctl`，
       // 与滑块 / 开关同族。所以两侧都钉得住：序列里不许有（侧栏档）/ 必须有（设置档），
       // 再加一条整树文本锚兜住"块被画了但标签换了写法"的形态。
