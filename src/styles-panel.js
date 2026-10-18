@@ -365,13 +365,11 @@ const CSS_PANEL = `  /* ── 吉祥物形态**3D 圆环转盘**（四次返工
     padding-right: 24px;
   }
 
-  /* 本插件自有控件的局部表面：宿主别名只在宿主壳或已知 chat-flow 内接管，
-     picker/快捷面板不能因此退回宿主默认实底。令牌仅挂在本插件根节点，第三方内容不会继承。 */
-  .we-picker, .we-picker__modal, .we-qp {
-    --dsw-alias-bg-layer-1: color-mix(in srgb, var(--we-readability-base, #ffffff) 92%, transparent);
-    --dsw-alias-bg-layer-2: color-mix(in srgb, var(--we-readability-base, #ffffff) 94%, transparent);
-    --dsw-alias-bg-layer-3: color-mix(in srgb, var(--we-readability-base, #ffffff) 96%, transparent);
-  }
+  /* ⚠️ 这里**不要**再给 .we-picker / .we-qp 覆盖 --dsw-alias-bg-layer-*：
+     0186c732 曾加过一条「92% 实底」的局部兜底，用来救"表面对齐重构把令牌映射收窄到
+     聊天流之后、自有控件退回宿主黑色令牌"。映射已恢复为页面级（见 styles-base.js），
+     那条兜底只会让自有面板变成实心块 —— 快捷面板的页签轨道（.we-tabs 读 layer-1）
+     在真机上是整条深色实底（用户圈出的就是它）。自有控件现在与宿主面吃同一份玻璃令牌。 */
   /* Motion tokens: one shared ease (expo-out) + two durations. */
   .we-picker, .we-picker__modal {
     --we-ease: cubic-bezier(0.16, 1, 0.3, 1);

@@ -176,7 +176,7 @@ try {
       document.body.innerHTML='<div id="wall"></div><section id="settings" role="dialog" aria-modal="true"><div data-slot="settings.section" id="settings-layout"><section id="plugin-native"><button id="native-button">Native</button><div id="warning">Warning</div></section><section id="declared" data-we-surface="v1"><div data-we-surface-layout id="layout">Layout<div data-we-surface-preserve id="keep">Preserve<div data-we-surface-layout id="preserve-child">Keep</div></div><section data-we-surface="v1" id="nested"><div data-we-surface-layout id="nested-layout">Nested</div></section></div></section><button id="nested-modal" style="position:fixed;left:10px;top:20px;z-index:1001">Nested</button></div></section><aside data-sidebar-right-panel="push" data-sidebar-right-open id="content-dock"><div class="cm-editor" id="editor"><span id="syntax" style="color:rgb(197,104,228)">Syntax</span><div class="cm-selectionBackground" id="selection"></div></div><div id="preview" data-we-surface="v1"><div data-we-surface-layout>Preview</div></div></aside><div id="own-host"><div class="we-picker" id="own-picker"><div class="we-tabs" id="own-tabs"><button class="we-tabs__tab">Library</button></div><div class="we-picker__uploads" id="own-uploads"><span>Upload</span></div></div></div><button class="we-rope" id="rope">Rope</button><div class="we-update-notice" id="notice">Notice</div><div class="we-preset-intro" id="intro">Intro</div>';
       const fixture=document.createElement('style');fixture.id='compat-fixture';fixture.textContent=
         'body{--dsw-alias-bg-layer-1:rgb(246,246,246);--dsw-alias-bg-layer-2:rgb(241,242,243);--dsw-alias-bg-layer-3:rgb(225,226,227);--dsw-alias-label-primary:#151515;--we-settings-window-blur:14px;--we-settings-window-alpha:.15}' +
-        '#settings{position:fixed;z-index:1000;left:5vw;top:100px;width:90vw;height:500px;overflow:auto;background:var(--dsw-alias-bg-layer-2)}#settings-layout{background:var(--dsw-alias-bg-layer-1)}#plugin-native{background:#fff}#native-button{background:var(--dsw-alias-label-primary);color:var(--dsw-alias-bg-layer-3)}#warning{background:rgb(244,180,40)}#declared{position:relative;z-index:1;background:white}#layout,#keep,#preserve-child,#nested-layout{background:rgb(222,223,224)}#content-dock{position:fixed;bottom:0;right:0;width:40vw;height:150px}#content-dock[data-sidebar-right-panel="fullscreen"]{--dsh-dockkit-dock-layer:40}#own-host{--dsw-alias-bg-layer-1:rgb(0,0,0);--dsw-alias-bg-layer-2:rgb(0,0,0);--dsw-alias-bg-layer-3:rgb(0,0,0)}#editor{background:#fff;height:80px}#selection{background:rgb(60,80,160);height:8px}#rope{left:10px;top:20px}#notice{bottom:30px;left:40px}#intro{bottom:100px;left:10px}';
+        '#settings{position:fixed;z-index:1000;left:5vw;top:100px;width:90vw;height:500px;overflow:auto;background:var(--dsw-alias-bg-layer-2)}#settings-layout{background:var(--dsw-alias-bg-layer-1)}#plugin-native{background:#fff}#native-button{background:var(--dsw-alias-label-primary);color:var(--dsw-alias-bg-layer-3)}#warning{background:rgb(244,180,40)}#declared{position:relative;z-index:1;background:white}#layout,#keep,#preserve-child,#nested-layout{background:rgb(222,223,224)}#content-dock{position:fixed;bottom:0;right:0;width:40vw;height:150px}#content-dock[data-sidebar-right-panel="fullscreen"]{--dsh-dockkit-dock-layer:40}#editor{background:#fff;height:80px}#selection{background:rgb(60,80,160);height:8px}#rope{left:10px;top:20px}#notice{bottom:30px;left:40px}#intro{bottom:100px;left:10px}';
       document.head.append(fixture);document.body.setAttribute('data-we-glass-window','on');document.body.setAttribute('data-we-glass-floaters','on');
       document.querySelector('#plugin-native').className='thirdparty_root';document.querySelector('#warning').className='thirdparty_frame';
       const host=document.createElement('div');host.id='root';host.innerHTML='<div class="host_frame" id="host-frame"><div class="host_root" id="host-root"></div></div>';document.body.append(host);
@@ -185,13 +185,24 @@ try {
       __selection={sidebarGlass:true};__glass.sync();return true;
     })()`);
     await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
-    const compat = await evaluate(`(()=>{const s=id=>getComputedStyle(document.getElementById(id));const r=document.querySelector('#nested-modal').getBoundingClientRect();return {blur:s('settings').backdropFilter,rect:r.toJSON(),token:s('native-button').color,unknown:s('plugin-native').backgroundColor,warning:s('warning').backgroundColor,mark:document.querySelector('#settings').getAttribute('data-we-surface-runtime'),layout:s('layout').backgroundColor,keep:s('keep').backgroundColor,child:s('preserve-child').backgroundColor,syntax:s('syntax').color,selection:s('selection').backgroundColor,editor:s('editor').backgroundColor,ownTab:s('own-tabs').backgroundColor,ownUploads:s('own-uploads').backgroundColor,rope:s('rope').visibility,notice:s('notice').visibility,intro:s('intro').visibility,status:__glass.status()};})()`);
+    const compat = await evaluate(`(()=>{const s=id=>getComputedStyle(document.getElementById(id));const r=document.querySelector('#nested-modal').getBoundingClientRect();
+      // 用 canvas 把任意 color()/rgba()/color-mix 解析后的颜色归一化到 [r,g,b,a]，不靠字符串正则。
+      const parse=(value)=>{const c=document.createElement('canvas').getContext('2d');c.fillStyle='#000';c.fillStyle=value;const m=c.fillStyle;if(m.startsWith('#'))return {a:1};const mm=m.match(/[\\d.]+/g)||[];return {a:mm.length>3?Number(mm[3]):1};};
+      return {blur:s('settings').backdropFilter,rect:r.toJSON(),token:s('native-button').color,unknown:s('plugin-native').backgroundColor,warning:s('warning').backgroundColor,mark:document.querySelector('#settings').getAttribute('data-we-surface-runtime'),layout:s('layout').backgroundColor,keep:s('keep').backgroundColor,child:s('preserve-child').backgroundColor,syntax:s('syntax').color,selection:s('selection').backgroundColor,editor:s('editor').backgroundColor,ownTab:s('own-tabs').backgroundColor,ownUploads:s('own-uploads').backgroundColor,ownTabA:parse(s('own-tabs').backgroundColor).a,ownUploadsA:parse(s('own-uploads').backgroundColor).a,rope:s('rope').visibility,notice:s('notice').visibility,intro:s('intro').visibility,status:__glass.status()};})()`);
     check(tag+' 设置本体不再建立fixed包含块', compat.blur==='none' && compat.rect.x===10 && compat.rect.y===20, compat);
-    check(tag+' 未知设置控件令牌与状态填充保留原生',compat.token==='rgb(225, 226, 227)' && compat.unknown==='rgb(255, 255, 255)' && compat.warning==='rgb(244, 180, 40)',compat);
+    // ⚠️ 这个用例的上半截（未知第三方面板的底色 / 状态色不被改写）保持不动；
+    //    `token` 那一项**按用户实测反转**：5cabb9e1 把宿主背景令牌映射收窄到聊天流后，
+    //    设置窗里的卡片 / 页签 / 导航全部退回宿主实底（用户："这些我用红色矩形框选中的
+    //    组件的玻璃效果又丢失了"）。现在的口径：宿主自己的设置窗控件吃玻璃令牌
+    //    （仍带可读性下限），未知第三方面板的底色声明与 preserve 区保持原生。
+    check(tag+' 未知设置控件底色保留原生（第三方面板不被改写）',
+      compat.unknown==='rgb(255, 255, 255)' && compat.warning==='rgb(244, 180, 40)', compat);
+    check(tag+' 宿主设置窗控件吃玻璃令牌（不是宿主实底）',
+      compat.token !== 'rgb(225, 226, 227)', compat.token);
     check(tag+' 壁纸仅清宿主外壳而非任意root和frame',await evaluate(`getComputedStyle(document.querySelector('#host-frame')).backgroundColor==='rgba(0, 0, 0, 0)' && getComputedStyle(document.querySelector('#host-root')).backgroundColor==='rgba(0, 0, 0, 0)'`));
     check(tag+' 已知设置面与显式布局接管且preserve优先',compat.mark==='settings-window' && compat.layout==='rgba(0, 0, 0, 0)' && compat.keep==='rgb(222, 223, 224)' && compat.child==='rgb(222, 223, 224)',compat);
     check(tag+' 编辑内容底板受控且语法选区不改',compat.editor!=='rgb(255, 255, 255)' && compat.syntax==='rgb(197, 104, 228)' && compat.selection==='rgb(60, 80, 160)',compat);
-    check(tag+' 本插件页签与上传区不继承宿主黑色实底',compat.ownTab!=='rgb(0, 0, 0)' && compat.ownUploads!=='rgb(0, 0, 0)',compat);
+    check(tag+' 本插件页签与上传区吃页面玻璃令牌（半透明，不是宿主实底）',compat.ownTabA>0 && compat.ownTabA<1 && compat.ownUploadsA>0 && compat.ownUploadsA<1,compat);
     check(tag+' 可见外部模态时自有装饰和自动提示让路',compat.rope==='hidden' && compat.notice==='hidden' && compat.intro==='hidden',compat);
     await evaluate("document.querySelector('#content-dock').setAttribute('data-sidebar-right-panel','fullscreen');__glass.sync()");
      await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
@@ -212,7 +223,18 @@ try {
     await evaluate("document.querySelector('#settings').scrollTop=0;document.querySelector('#settings-layout').style.minHeight='';document.querySelector('#settings').style.width='90vw'");
     await screenshot(tag+'-settings-owned');
     await evaluate("__selection.glassSurfacePolicy={'settings-window':'native',content:'native',declared:'native'};__glass.sync()");
-    check(tag+' 逐面原生撤销设置布局和内容接管',await evaluate(`!document.querySelector('#settings').hasAttribute('data-we-surface-runtime') && getComputedStyle(document.querySelector('#settings')).backgroundColor==='rgb(241, 242, 243)' && getComputedStyle(document.querySelector('#editor')).backgroundColor==='rgb(255, 255, 255)' && getComputedStyle(document.querySelector('#layout')).backgroundColor==='rgb(222, 223, 224)'`));
+    // 「保留原生」= 不接管这一面：不挂运行标记、不画霜；窗内的表面令牌由
+    // `:not(:where([data-we-surface-runtime="settings-window"]))` 那条钉回不透明面板色
+    // （--we-panel-color 的浅色缺省 #ffffff），因此底色是**实色**而不是玻璃色。
+    check(tag+' 逐面原生撤销设置布局和内容接管',await evaluate(`(()=>{
+      const bg=getComputedStyle(document.querySelector('#settings')).backgroundColor;
+      const rgba=bg.startsWith('rgba(') ? Number(bg.slice(5,-1).split(',')[3]) : 1;
+      return !document.querySelector('#settings').hasAttribute('data-we-surface-runtime')
+        && rgba===1
+        && getComputedStyle(document.querySelector('#settings')).backdropFilter==='none'
+        && getComputedStyle(document.querySelector('#editor')).backgroundColor==='rgb(255, 255, 255)'
+        && getComputedStyle(document.querySelector('#layout')).backgroundColor==='rgb(222, 223, 224)';
+    })()`));
     await evaluate("__selection.glassSurfacePolicy={};document.querySelector('#settings').remove();__glass.sync()");
     check(tag+' 模态卸载后浮层恢复',await evaluate("getComputedStyle(document.querySelector('#rope')).visibility==='visible'"));
     await evaluate("const el=document.createElement('div');el.setAttribute('role','dialog');el.style.cssText='width:20px;height:20px';document.body.append(el);__glass.sync()");
