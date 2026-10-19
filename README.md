@@ -1,36 +1,55 @@
 <div align="center">
 
-<img src="icon.png" alt="DSH Wallpaper Engine 项目图标" width="96" height="96">
+<p>
+  <a href="README.md"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/key-lang-zh-dark.png"><img src="assets/readme/key-lang-zh-light.png" alt="中文" width="64"></picture></a>
+  <a href="README.en.md"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/key-lang-en-dark.png"><img src="assets/readme/key-lang-en-light.png" alt="English" width="92"></picture></a>
+  <a href="README.beginner.md"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/key-lang-start-dark.png"><img src="assets/readme/key-lang-start-light.png" alt="入门指南" width="114"></picture></a>
+</p>
 
-# DSH Wallpaper Engine
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/readme/hero-dark.png">
+    <img src="assets/readme/hero-light.png" alt="DSH Wallpaper Engine：把喜欢的壁纸，带进每一次对话" width="1440" height="560">
+  </picture>
+</h1>
 
-**把喜欢的壁纸，带进每一次对话。**
+<p>
+  <a href="package.json"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/stat-version-dark.png"><img src="assets/readme/stat-version-light.png" alt="VERSION：源码版本 1.3.3" width="23%"></picture></a>
+  <a href="#支持哪些壁纸类型"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/stat-formats-dark.png"><img src="assets/readme/stat-formats-light.png" alt="WALLPAPERS：3 种 WE 壁纸类型，Scene、Web、Video" width="23%"></picture></a>
+  <a href="#吉祥物与扩展"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/stat-mascots-dark.png"><img src="assets/readme/stat-mascots-light.png" alt="MASCOTS：10 只内置立绘" width="23%"></picture></a>
+  <a href="cordis.patch.yml"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/stat-modules-dark.png"><img src="assets/readme/stat-modules-light.png" alt="MODULES：7 个独立子包" width="23%"></picture></a>
+</p>
 
-Wallpaper Engine 实时壁纸 · 液态玻璃 · 自定义外观 · Windows / macOS / Linux
+![Node.js](https://img.shields.io/badge/Node.js-18%2B-8fd6a0?style=flat-square&logo=nodedotjs&logoColor=white&labelColor=5a544a)
+[![License MIT](https://img.shields.io/badge/License-MIT-8fd6a0?style=flat-square&labelColor=5a544a)](LICENSE)
+[![npm Version](https://img.shields.io/npm/v/dsh-plugin-wallpaper-engine?style=flat-square&logo=npm&label=npm&color=8fd6a0&labelColor=5a544a)](https://www.npmjs.com/package/dsh-plugin-wallpaper-engine)
+[![Contributors](https://img.shields.io/badge/Contributors-Join-8fd6a0?style=flat-square&labelColor=5a544a)](https://github.com/elysia395/dsh-wallpaper-engine/graphs/contributors)
+[![维护分支](https://img.shields.io/badge/Fork-YV3507-f08a5d?style=flat-square&labelColor=5a544a)](https://github.com/YV3507/dsh-wallpaper-engine)
+[![Star This Project](https://img.shields.io/badge/GitHub-Star-ffd84a?style=flat-square&logo=github&logoColor=white&labelColor=5a544a)](https://github.com/YV3507/dsh-wallpaper-engine)
 
-[![GitHub Release](https://img.shields.io/github/v/release/elysia395/dsh-wallpaper-engine?style=for-the-badge&logo=github&label=Release&color=27866b)](https://github.com/elysia395/dsh-wallpaper-engine/releases/latest)
-[![npm Version](https://img.shields.io/npm/v/dsh-plugin-wallpaper-engine?style=for-the-badge&logo=npm&label=npm&color=cb3837)](https://www.npmjs.com/package/dsh-plugin-wallpaper-engine)
-[![npm Downloads](https://img.shields.io/npm/dm/dsh-plugin-wallpaper-engine?style=for-the-badge&logo=npm&label=Downloads%2Fmonth&color=27866b)](https://www.npmjs.com/package/dsh-plugin-wallpaper-engine)
-[![GitHub Stars](https://img.shields.io/github/stars/elysia395/dsh-wallpaper-engine?style=for-the-badge&logo=github&label=Stars&color=d4a72c)](https://github.com/elysia395/dsh-wallpaper-engine/stargazers)
-[![GitHub Forks](https://img.shields.io/github/forks/elysia395/dsh-wallpaper-engine?style=for-the-badge&logo=github&label=Forks&color=4385be)](https://github.com/elysia395/dsh-wallpaper-engine/forks)
-
-[![CI](https://img.shields.io/github/actions/workflow/status/elysia395/dsh-wallpaper-engine/verify.yml?branch=main&style=flat-square&logo=githubactions&label=CI)](https://github.com/elysia395/dsh-wallpaper-engine/actions/workflows/verify.yml)
-[![Contributors](https://img.shields.io/github/contributors/elysia395/dsh-wallpaper-engine?style=flat-square&logo=github&label=Contributors)](https://github.com/elysia395/dsh-wallpaper-engine/graphs/contributors)
-[![License](https://img.shields.io/github/license/elysia395/dsh-wallpaper-engine?style=flat-square&label=License&color=4385be)](https://github.com/elysia395/dsh-wallpaper-engine/blob/main/LICENSE)
-![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18-5fa04e?style=flat-square&logo=nodedotjs&logoColor=white)
-![Platforms](https://img.shields.io/badge/Platforms-Windows%20%7C%20macOS%20%7C%20Linux-4385be?style=flat-square)
-
-[中文](README.md) · [English](README.en.md) · [新手指南](README.beginner.md) · [安装](#安装) · [更新记录](https://github.com/elysia395/dsh-wallpaper-engine/blob/main/docs/CHANGELOG.md) · [反馈问题](https://github.com/elysia395/dsh-wallpaper-engine/issues) · [支持与赞赏](#支持与赞赏)
+<p>
+  <a href="#快速开始"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/key-get-dark.png"><img src="assets/readme/key-get-light.png" alt="安装使用 GET" width="156"></picture></a>
+  <a href="README.beginner.md"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/key-setup-dark.png"><img src="assets/readme/key-setup-light.png" alt="新手指南 SETUP" width="170"></picture></a>
+  <a href="docs/README.md"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/key-docs-dark.png"><img src="assets/readme/key-docs-light.png" alt="文档 DOCS" width="126"></picture></a>
+  <a href="https://github.com/elysia395/dsh-wallpaper-engine/releases"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/key-release-dark.png"><img src="assets/readme/key-release-light.png" alt="上游发布页 RELEASE" width="174"></picture></a>
+</p>
 
 </div>
 
-一个 DSH 插件，把本机 **Wallpaper Engine** 的场景、网页与视频壁纸放到对话界面后方，再配上液态玻璃、字体、吉祥物与可分享的外观预设。不向 agent 注册工具或注入提示文本，**不增加模型 token 开销**。
+<h2 id="简介"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/section-intro-dark.png"><img src="assets/readme/section-intro-light.png" alt="INTRO · 简介" width="1440" height="83"></picture></h2>
 
-![主界面效果展示](https://github.com/elysia395/dsh-wallpaper-engine/releases/download/media-v1/main-interface.gif)
+把本机 **Wallpaper Engine** 的场景、网页与视频壁纸带到 DSH 对话界面，再配上液态玻璃、字体、吉祥物与可分享的外观预设。插件不向 agent 注册工具或注入提示文本，**不增加模型 token 开销**。
 
-> 上方版本、下载量、Stars、Forks、贡献者数量与 CI 状态由 Shields.io 动态获取，受服务缓存影响，并非秒级实时；平台与 Node.js 徽章是兼容信息。没有手填测试通过数量或第三方榜单排名。
+> [!NOTE]
+> 本页描述当前源码。[YV3507 维护分支](https://github.com/YV3507/dsh-wallpaper-engine) 中的修复和桌宠联动可能尚未进入 npm 或上游 Release。发行徽章、历史演示图与贡献链接指向 [上游项目](https://github.com/elysia395/dsh-wallpaper-engine)，不代表本地改动已发布；动态徽章受 Shields.io 缓存影响。
 
-## 快速开始
+<h2 id="界面预览"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/section-preview-dark.png"><img src="assets/readme/section-preview-light.png" alt="界面预览" width="1440" height="83"></picture></h2>
+
+<img src="https://github.com/elysia395/dsh-wallpaper-engine/releases/download/media-v1/main-interface.gif" alt="DSH 对话界面中的壁纸、液态玻璃与吉祥物演示" width="960">
+
+<p align="center"><sub>真实界面演示；历史素材与当前安装版本可能略有不同。</sub></p>
+
+<h2 id="快速开始"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/section-start-dark.png"><img src="assets/readme/section-start-light.png" alt="快速开始" width="1440" height="83"></picture></h2>
 
 ```sh
 dsh plugin --profile web add dsh-plugin-wallpaper-engine
@@ -42,20 +61,20 @@ dsh plugin --profile web add dsh-plugin-wallpaper-engine
 
 没用过命令行？从 [新手指南](README.beginner.md) 开始。
 
-## 目录
+<h2 id="目录"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/section-index-dark.png"><img src="assets/readme/section-index-light.png" alt="目录" width="1440" height="83"></picture></h2>
 
 <table>
   <tr>
     <td width="64%" valign="middle">
       <ul>
         <li><a href="#能做什么">能做什么</a> · <a href="#支持哪些壁纸类型">支持哪些壁纸类型</a> · <a href="#安装">安装</a> · <a href="#使用">使用</a></li>
-        <li><a href="#配置与数据">配置与数据</a> · <a href="#兼容与限制">兼容与限制</a> · <a href="#开发与贡献">开发与贡献</a></li>
+        <li><a href="#可选桌宠联动">可选桌宠联动</a> · <a href="#内置桌宠副本">内置桌宠副本</a> · <a href="#配置与数据">配置与数据</a> · <a href="#兼容与限制">兼容与限制</a> · <a href="#开发与贡献">开发与贡献</a></li>
         <li><a href="#联系方式">联系方式</a> · <a href="#致谢">致谢</a> · <a href="#支持与赞赏">支持与赞赏</a> · <a href="#star-history">Star History</a></li>
       </ul>
     </td>
     <td width="36%" align="center" valign="middle">
-      <a href="https://github.com/elysia395/dsh-wallpaper-engine/blob/main/assets/about/sponsor-fish.png">
-        <img src="https://raw.githubusercontent.com/elysia395/dsh-wallpaper-engine/main/assets/about/sponsor-fish.png" alt="生鱼的微信赞赏码；点击查看原图" width="320">
+      <a href="assets/about/sponsor-fish.png">
+        <img src="assets/about/sponsor-fish.png" alt="生鱼的赞赏码" width="320" height="320">
       </a>
       <br><strong>生鱼的赞赏码</strong>
       <br><sub>“大肥鱼的白饭告急，收到的赞赏将统统用于本插件的维护与更新”</sub>
@@ -64,7 +83,7 @@ dsh plugin --profile web add dsh-plugin-wallpaper-engine
   </tr>
 </table>
 
-## 能做什么
+<h2 id="能做什么"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/section-features-dark.png"><img src="assets/readme/section-features-light.png" alt="能做什么" width="1440" height="83"></picture></h2>
 
 | 方向 | 能力 |
 |---|---|
@@ -81,7 +100,7 @@ dsh plugin --profile web add dsh-plugin-wallpaper-engine
 
 场景渲染失败时会逐级降级，首帧准备期间使用可用的预览图。不同壁纸使用的资源与脚本不同，**不能保证每张工坊壁纸都与 Wallpaper Engine 本体完全一致**。渲染与降级规则见 [工作原理](https://github.com/elysia395/dsh-wallpaper-engine/blob/main/docs/HOW-IT-WORKS.md)。
 
-## 支持哪些壁纸类型
+<h2 id="支持哪些壁纸类型"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/section-formats-dark.png"><img src="assets/readme/section-formats-light.png" alt="支持哪些壁纸类型" width="1440" height="83"></picture></h2>
 
 | 类型 | 在 DSH 中的路径 | 支持情况 |
 |---|---|---|
@@ -91,7 +110,7 @@ dsh plugin --profile web add dsh-plugin-wallpaper-engine
 | **Application（应用）** | 需要启动第三方可执行程序 | **不支持**，不进入壁纸库与轮播候选 |
 | **自定义图片 / 视频** | 上传本地 JPG / PNG / MP4 | 支持，文件保存在本机 |
 
-## 安装
+<h2 id="安装"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/section-install-dark.png"><img src="assets/readme/section-install-light.png" alt="安装" width="1440" height="83"></picture></h2>
 
 ### 普通用户
 
@@ -111,6 +130,27 @@ dsh plugin --profile desktop add dsh-plugin-wallpaper-engine
 
 版本要求以 npm 包声明和 [升级指南](https://github.com/elysia395/dsh-wallpaper-engine/blob/main/docs/UPGRADING.md) 为准。历史桌面端版本号与 DSH 内核版本号不是同一个概念，不要混用。
 
+### 从源码体验本分支
+
+npm 安装获取的是已发布版本，不会自动包含此目录中的未发布改动。开发者请按 [贡献指南](CONTRIBUTING.md) 构建并链接源码；本地开发还需运行子包链接工具，让目标 profile 能解析各个子包。不要用裸 `github:` 地址代替构建，源码仓库不跟踪生成的客户端产物。
+
+```sh
+npm ci
+npm run build
+node scripts/dev-link-subpackages.mjs --profile <目标profile>
+```
+
+链接工具会修改所选 profile 的包链接，先确认目标，桌面端应先完全退出。主包的 `link:` 安装和重启步骤见贡献指南；这里只展示构建与子包准备，不会替你执行安装。
+
+### 插件行与启停
+
+插件管理器中的主包、关于、吉祥物与头像、媒体联动、桌宠联动、特效、视差和字体分别由对应行管理。**行级开关需要重新加载或重启对应宿主，不是即时切换**。
+
+- 关于、吉祥物与头像行停用后，相应宿主能力及浏览器区块一起退出；不会隐藏无关的整个设置页签。
+- 特效、视差和字体由各自子包提供；桌宠联动可独立停用，不影响壁纸主体。
+- 媒体联动行是例外：停用会撤下媒体路由，当前没有与其他组件完全相同的界面整块隐藏语义。
+- 主包关闭后不再提供整套壁纸界面。各行以插件管理器和 [行清单](cordis.patch.yml) 为准。
+
 ### macOS / Linux
 
 三平台使用同一个包。系统媒体链路分别使用 Windows 的 GSMTC、macOS 的 MediaRemote、Linux 的 MPRIS。
@@ -121,7 +161,7 @@ macOS 没有 Wallpaper Engine 官方客户端。可以上传图片 / 视频，�
 
 `ERR_PNPM_UNEXPECTED_VIRTUAL_STORE` 等安装错误的处理见 [故障排查](https://github.com/elysia395/dsh-wallpaper-engine/blob/main/docs/TROUBLESHOOTING.md)。
 
-## 使用
+<h2 id="使用"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/section-usage-dark.png"><img src="assets/readme/section-usage-light.png" alt="使用" width="1440" height="83"></picture></h2>
 
 1. 打开 **设置 → Wallpaper Engine**，或向下拉聊天顶部的吉祥物拉绳，展开「壁纸仓库」抽屉。
 2. 在「壁纸库」中点 **选择壁纸**，进入页内库视图。它不是额外的模态弹窗。
@@ -155,8 +195,9 @@ macOS 没有 Wallpaper Engine 官方客户端。可以上传图片 / 视频，�
 
 ### 液态玻璃、字体与预设
 
-- 设置窗口玻璃当前恒开；可调整颜色、透明度和雾化，没有恢复原生纯色的总开关。
-- **额外补雾化的选择器**：第三方插件面板自身没有 `backdrop-filter`，全局「雾化」到不了它们 —— 在这里填它们的 CSS 选择器即可补上毛玻璃（逗号或换行分隔，最多 8 条、每条最多 120 字；超长的单条与超出 8 条的都**整条丢弃**，绝不截断成半截选择器；目标元素需自己已定位 `fixed` / `absolute`，载体挂在它的 `::before` 上，所以不影响面板内部的定位弹层。留空 = 关；[#200](https://github.com/elysia395/dsh-wallpaper-engine/issues/200)）。
+- 本分支采用统一表面所有权：已知设置 / 侧栏安全接管，未知插件背景保留原生。高级设置可分别将左栏、右栏、设置窗、内容、声明式面与额外选择器切为 `auto` / `native`；这是逐面回退，不是全局四态总开关。
+- **额外补雾化的选择器**：逗号或换行分隔，最多 8 条、每条最多 120 字；超长或超量项整条丢弃。只有目标已有安全定位与层叠上下文、装饰伪元素空闲时才补玻璃，否则保留原生，不强制清空未知背景。留空关闭此通道。
+- 兼容适配不会通过抬高其他插件的 `z-index` 抢层；外部可见模态打开时，本插件拉绳、公告和引导让路。实现边界与显式接入方式见 [共存文档](docs/COEXISTENCE.md)。专项门禁、独立验证与独立审查已闭环；这仍不代表所有第三方插件已认证，共存以显式接入与逐面回退为准。
 - 设置页与侧栏均可调整外观，各节支持折叠；侧栏的圆角、全局 UI 配色与全局字体默认收起。
 - **主题随壁纸默认关闭**。开启后才按作者配色与画面取色切换深浅主题；本张壁纸下手动改过主题后，自动切换会让位。
 - 字体支持按角色 / 组件细调、系统字体枚举与字体集管理。终端里的 Nerd Font 图标需要对应字体。
@@ -180,7 +221,54 @@ macOS 没有 Wallpaper Engine 官方客户端。可以上传图片 / 视频，�
 - Now Playing 提供歌名、歌手、专辑、封面与播放进度；支持这些 WE API 的壁纸可显示它们。
 - **在线歌词默认关闭**。开启后，本地歌词不可用时才向 [LRCLIB](https://lrclib.net) 查询，请求会发送歌名、歌手和专辑。
 
-## 配置与数据
+<h2 id="可选桌宠联动"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/section-pet-dark.png"><img src="assets/readme/section-pet-light.png" alt="可选桌宠联动" width="1440" height="83"></picture></h2>
+
+本源码分支提供与 [dsh-pet](https://github.com/PC2005-cloud/dsh-pet) 的可选联动：侧栏后拉、跳抓吉祥物、踢侧栏后原生弹飞、哈气抖屏。运行时、维护面板、安装器、必要素材和回归测试集中在 [pet-link 子包](packages/pet-link/README.md)。
+
+> [!IMPORTANT]
+> 桌宠联动需要手动准备桥接，不会自动安装桌宠。安装器会备份并局部修改桌宠客户端与宿主代码；请先阅读 [体验步骤与兼容边界](packages/pet-link/README.md)。这是供两边作者体验、评审的桥接实现，不是桌宠上游的官方控制 API。
+
+| 你需要知道 | 当前行为 |
+|---|---|
+| 桌宠版本 | **`dsh-pet >=0.3.6` 稳定版本，不设上限**；预发行版本不支持。首次准备会检查代码结构，未来版本不保证直接兼容 |
+| 首次准备与升级 | 需要显式操作；结构不兼容时在写入前拒绝。升级桌宠后重新检查、准备，再重新加载对应插件与网页 |
+| 不使用桌宠时 | 不硬依赖桌宠；未准备、未显示或联动关闭时，吉祥物保留原生行为 |
+| 吉祥物侧栏 | 联动使用**官方侧栏模式**，默认抽屉行为不变；运行中的隐藏、停用与恢复由资格检查处理 |
+| 维护面板 | **`Ctrl+Shift+D`** 打开可拖动面板，支持分逻辑调参、气泡节点、重置和 JSON 导出 |
+| 参数与试跑 | 没有运行资格时可维护参数，但不能试跑。参数只在当前运行时生效，刷新前请导出 |
+
+内置副本方案（不再依赖给外部安装打补丁）见下节[内置桌宠副本](#内置桌宠副本)；两条路线并行，上游接口可用后优先迁移。
+
+### 内置桌宠副本（实装中，未发布）
+
+> [!IMPORTANT]
+> 本节描述的内置桌宠副本已随源码落盘（子包 `packages/pet`，包名 `dsh-we-pet-builtin`），但**尚未发布、未在活动宿主中实机验证**。下文区分「已证实的设计事实」「待确认项」与「未验证项」；实装确认与真机验证完成前，本节不冒认可用。
+
+**它是什么**：把一份受控的桌宠源码副本作为本仓独立命名的可选子包内置。副本派生自 [PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet) 的 0.3.7 源码（MIT 授权代码），随包保留原作者 LICENSE 与文件头归属声明，自带被控对象与控制面；[pet-link 子包](packages/pet-link/README.md) 仍是唯一的桥接与排播层，不重复造桥。副本与外部 dsh-pet 安装使用完全分离的身份：
+
+| 项 | 内置副本 | 外部 dsh-pet（可选联动，见上节） |
+|---|---|---|
+| 包名 | `dsh-we-pet-builtin` | `dsh-pet` |
+| 页内路由 | `/dsh-we-pet-builtin` | `/dsh-pet-7340` |
+| 控制面全局 | `__dshWePetCtl`（表：`__dshWePetCtrls`） | `__dshPetCtl`（表：`__dshPetCtrls`） |
+| 动作锁 / 气泡锁 | `__dshWePetLock` / `__dshWePetBubbleLock` | `__dshPetLock` / `__dshPetBubbleLock` |
+| 数据根 | `$DSH_HOME/dsh-we-pet-builtin/` | `$DSH_HOME/dsh-pet/` |
+| 宿主命令 | `we-pet-balance` / `we-pet-pet` / `we-pet-chat` | `balance` / `pet` / `chat` |
+| 桌面 helper | `dsh-we-pet-builtin-electron-helper` | `dsh-pet-electron-helper` |
+
+**完整功能与素材**：副本完整保全上游功能面（93 个 src 文件与 49 个 types、桌面透明窗、AI 对话、pet pack 能力、多实例支持），并随包携带与上游逐字节一致的 143 个媒体文件——106 段动画（webm）、27 张气泡表情包、8 张通知 / 光标图标、1 个 logo 与 1 款字体。动作池按内容互动分为小动作、玩耍、吃什么、时节、文字五类。**wallpaper 联动只控制网页 `main` 一只宠物**——这是联动控制目标的限定，不是副本功能删减。联动所需的九段特殊动画与五张气泡图在内置副本自有数据根的资源面保持可达：`main-animation/webm/` 九段 + `memes/` 五张，`main` 动画池只追加、不覆盖既有描述。
+
+**互斥与并存（单侧保证）**：内置副本与外部桌宠不应同时驱动主宠物。内置侧只保证自己这一侧：启动前检查，运行中按检测窗口持续检查，发现外部桌宠接管主宠物即主动停止、释放锁并交还主宠物并说明原因；检测量级由宿主请求超时与调度延迟决定，**不承诺毫秒级**，两次检测之间可能与外部短暂并存，且内置侧**不能阻止**外部桌宠随后启动。内置侧不会自动停用、修改或删除外部 dsh-pet 的安装与数据；是否停用外部桌宠由你决定。
+
+**你的数据**：内置副本使用自己的数据根，不迁移、不读取外部 dsh-pet 的既有配置与数据。停用或卸载子包行不会自动删除 `$DSH_HOME/dsh-we-pet-builtin/` 下的数据；需要彻底移除时由你显式操作。
+
+**许可与发行（三轨，禁止合并）**：代码 MIT——上游 LICENSE 原文随包保留，派生部分归本仓 MIT 并带归属声明；素材（动画 / 表情包 / 图标）为上游明示的「允许开源使用、禁止商用」，随包分发仅限非商用，商用需上游权利人授权；字体「上首软糖体」为第三方商业字库，再分发授权未证，是发行阻断级未决项（取得授权 / 更换可证字体 / 排除该字体并回退系统字体，三选一）。**本轮不发布。**
+
+**上游接口仍是长期方向**：完整联动依赖的播放回执、独立动作与气泡占用、位置交还、原生抛掷等能力，上游尚无公开的版本化接口（[issue #122](https://github.com/PC2005-cloud/dsh-pet/issues/122) 已提交并在等待）。上游给出公开接口后，内置副本与外部补丁链都应迁移并退出。未启用内置副本时，吉祥物保留原生行为，本插件不硬依赖桌宠。
+
+**未验证项**：内置链在活动宿主中的真实运行、九段动画与五张气泡的端到端触发、以及与本页其它功能（玻璃、扩展效果、媒体联动）的组合表现，均未实测；上述能力以实装后的回归与真机验证为准。
+
+<h2 id="配置与数据"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/section-config-dark.png"><img src="assets/readme/section-config-light.png" alt="配置与数据" width="1440" height="83"></picture></h2>
 
 全部设置保存在宿主端 `~/.dsh-wallpaper-engine/config.json`，不依赖浏览器端口。重启、换端口或清浏览器数据不影响这份配置；旧 localStorage 配置可自动迁移。
 
@@ -190,6 +278,7 @@ macOS 没有 Wallpaper Engine 官方客户端。可以上传图片 / 视频，�
 | 可再生成缓存 | `~/.dsh-wallpaper-engine/cache/` | 系统 → 高级 → 缓存位置；或 `DSH_WE_CACHE_DIR` |
 | 上传的壁纸 | `~/.dsh-wallpaper-engine/uploads/` | 壁纸库 → 自定义壁纸 → 存储位置；或 `DSH_WE_UPLOAD_DIR` |
 | 按需下载的运行时 | 数据目录下的 `bin/` 等子目录 | 由插件管理 |
+| 内置桌宠副本数据 | `$DSH_HOME/dsh-we-pet-builtin/` | 由内置副本管理（实装中）；与外部 `dsh-pet` 数据互不混用 |
 
 修改缓存 / 上传位置时会迁移对应的插件文件，不移动目标目录中不认识的文件。环境变量优先于面板中的路径设置。
 
@@ -212,7 +301,7 @@ macOS 没有 Wallpaper Engine 官方客户端。可以上传图片 / 视频，�
 
 插件不向模型注册工具，不上传你的壁纸；但下载运行时、查询仓库 Stars 和主动开启在线歌词会访问外部服务。它不是「完全离线」插件。
 
-## 兼容与限制
+<h2 id="兼容与限制"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/section-compat-dark.png"><img src="assets/readme/section-compat-light.png" alt="兼容与限制" width="1440" height="83"></picture></h2>
 
 - **三平台可安装不等于 WE 官方三平台可用**。没有 WE 客户端的平台通过项目目录或自定义上传使用壁纸。
 - 场景渲染依赖浏览器的 WebGL 能力和显卡驱动。失败会降级，复杂工坊项目可能存在兼容差异。
@@ -221,10 +310,11 @@ macOS 没有 Wallpaper Engine 官方客户端。可以上传图片 / 视频，�
 - 桌面壳最小化 / 还原仍可能出现短暂白帧；窗口底板属于宿主能力，插件不能完全消除。
 - `dsh-better-sidebar` 可选；插件为它的侧栏提供独立玻璃参数与字体适配。不支持 `backdrop-filter` 的浏览器回退实色。
 - 与其他皮肤同时启用时，查看 [共存说明](https://github.com/elysia395/dsh-wallpaper-engine/blob/main/docs/COEXISTENCE.md)，避免让多个插件同时接管同一表面。
+- 内置桌宠副本与外部 dsh-pet 不应同时驱动主宠物；内置侧按检测窗口单侧让位，不承诺毫秒级，也不阻止外部随后启动（见[内置桌宠副本](#内置桌宠副本)）。
 
 ![侧栏玻璃与字体适配](https://github.com/elysia395/dsh-wallpaper-engine/releases/download/media-v1/better-sidebar-font.png)
 
-## 开发与贡献
+<h2 id="开发与贡献"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/section-develop-dark.png"><img src="assets/readme/section-develop-light.png" alt="开发与贡献" width="1440" height="83"></picture></h2>
 
 欢迎提交 Bug 复现、平台兼容反馈、文档修正和功能 PR。反馈时请附宿主 / 插件版本、操作系统、壁纸类型、复现步骤与相关日志；不要附带 API Key 等凭据。
 
@@ -237,16 +327,22 @@ macOS 没有 Wallpaper Engine 官方客户端。可以上传图片 / 视频，�
 
 > npm 包不包含 `docs/`。上面的技术资料使用源码仓库地址、演示图使用 Release 资产地址（`media-v1`），避免在 npm 页面中出现无效的相对路径。
 
-## 联系方式
+<h2 id="联系方式"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/section-community-dark.png"><img src="assets/readme/section-community-light.png" alt="联系方式" width="1440" height="83"></picture></h2>
 
 Bug 与功能建议优先提交到 [GitHub Issues](https://github.com/elysia395/dsh-wallpaper-engine/issues)，方便追踪与复现。交流也可以加入以下群组；插件「关于」页使用同一份二维码。
 
-| QQ 群 | 抖音群 |
-|---|---|
-| <img src="lib/about/qq-group.png" alt="QQ 群二维码" width="260"> | <img src="lib/about/douyin-group.png" alt="抖音群二维码" width="260"> |
-| **DSHWE \| LLM 讨论群** | **dshwe 交流 2 群**（群号 917001335502） |
+<p align="center">
+  <a href="lib/about/qq-group.png"><img src="lib/about/qq-group.png" alt="QQ 群：DSHWE | LLM 讨论群" width="260" height="259"></a>
+  &nbsp;
+  <a href="lib/about/douyin-group.png"><img src="lib/about/douyin-group.png" alt="抖音群：dshwe 交流 2 群" width="260" height="260"></a>
+</p>
 
-## 致谢
+| 交流入口 | 群组 |
+|---|---|
+| QQ 群 | **DSHWE \| LLM 讨论群** |
+| 抖音群 | **dshwe 交流 2 群**，群号 `917001335502` |
+
+<h2 id="致谢"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/section-credits-dark.png"><img src="assets/readme/section-credits-light.png" alt="致谢" width="1440" height="83"></picture></h2>
 
 感谢所有提交代码、维护文档、反馈问题和帮助验证的朋友。以下按贡献方向整理，不按提交数量排名；历史方案的贡献同样保留。
 
@@ -285,9 +381,11 @@ Bug 与功能建议优先提交到 [GitHub Issues](https://github.com/elysia395/
 
 本项目基于 [MIT License](https://github.com/elysia395/dsh-wallpaper-engine/blob/main/LICENSE) 开源。感谢 [DeepSeek Harness](https://github.com/deepseek-ai/DeepSeek-Harness) 提供插件宿主，以及 WebWallGL、media-bridge 等上游项目提供基础能力。Wallpaper Engine 与工坊壁纸的版权归各自权利人，本插件不是 Wallpaper Engine 官方产品。
 
-## 支持与赞赏
+README 首屏与分节横条的复古窗口视觉复刻自 [MaiBot](https://github.com/Mai-with-u/MaiBot)，项目图标与菲比使用本仓原始素材，像素字体采用 Jersey 20。详细来源与授权见 [素材说明](assets/readme/SOURCES.md)；未沿用对方的人物、统计数据或排名。
 
-项目保持开源，赞赏完全自愿，不影响安装、使用或问题反馈。给仓库点 Star、提交可复现的 Issue、补充文档与参与测试，同样是在支持项目。
+<h2 id="支持与赞赏"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/section-support-dark.png"><img src="assets/readme/section-support-light.png" alt="支持与赞赏" width="1440" height="83"></picture></h2>
+
+项目保持开源，赞赏完全自愿，**不影响安装、使用或问题反馈**。给仓库点 Star、提交可复现的 Issue、补充文档与参与测试，同样是在支持项目。
 
 **生鱼的赞赏码**：赞赏用于本插件的维护与更新。以下是生鱼个人的赞赏入口，不代表全部贡献者的收款账户。
 
@@ -295,6 +393,13 @@ Bug 与功能建议优先提交到 [GitHub Issues](https://github.com/elysia395/
 
 赞赏码展示在 [目录](#目录) 右侧，点击图片可查看原图。感谢每一份支持。
 
-## Star History
+<h2 id="star-history"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/section-stars-dark.png"><img src="assets/readme/section-stars-light.png" alt="Star History" width="1440" height="83"></picture></h2>
 
-[![Star History Chart](https://api.star-history.com/svg?repos=elysia395/dsh-wallpaper-engine&type=Date)](https://star-history.com/#elysia395/dsh-wallpaper-engine&Date)
+<a href="https://star-history.com/#elysia395/dsh-wallpaper-engine&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=elysia395/dsh-wallpaper-engine&amp;type=Date&amp;theme=dark">
+    <img src="https://api.star-history.com/svg?repos=elysia395/dsh-wallpaper-engine&amp;type=Date" alt="上游项目 Star History 趋势图" width="960">
+  </picture>
+</a>
+
+<p align="center"><a href="#">回到顶部</a> · <a href="https://github.com/YV3507/dsh-wallpaper-engine">当前维护分支</a> · <a href="https://github.com/elysia395/dsh-wallpaper-engine">上游项目</a></p>

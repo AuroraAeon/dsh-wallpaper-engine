@@ -152,7 +152,10 @@ const SURFACES = [
   },
   {
     id: 'better-sidebar', label: 'dsh-better-sidebar 侧栏面板',
-    anchors: ['[data-dsh-better-sidebar]', '[data-dsh-panel]'], tier: 'private',
+    // ⚠️ 只有 [data-dsh-better-sidebar]：表面所有权重构后 better-sidebar 的内部布局
+    //    **刻意保留原生**（见 src/styles-sidebar.js 的「未知 better-sidebar 内部布局保留原生」），
+    //    样式表里不再有 [data-dsh-panel] 规则头 ⇒ 把它登记成锚点就是"登记了没实现"。
+    anchors: ['[data-dsh-better-sidebar]'], tier: 'private',
     // 两个配置面名：chrome 面板本身，以及它内部的"内容面"（编辑器 / 终端）。
     // 后者是同一个 CSS 面里的**子面** —— 它今天另有自己的透明度与底色键，
     // 所以在玻璃配置里也是一个可独立控制的条目。
@@ -1947,11 +1950,13 @@ console.log('\n⑬ CSS 契约（按面变量零兜底 / 门控许可证 / 双向
   };
   const gate = gateCheck(STYLES_TEXT);
   // 覆盖面地板 = **防"解析器静默返回空表"**（本文件头注释的纪律），不是紧贴实测值：
-  // 实测 13 条，地板取 10 —— 留出正常重构的余量，同时"一条都没扫到"必红。
+  // 实测 9 条（设置窗的令牌声明已从「会画东西的 ::before」挪回对话框本体 ⇒ 那一族
+  // 不再是本判据口径下的"画东西"规则），地板取 8 —— 留出正常重构的余量，
+  // 同时"一条都没扫到"必红。
   check('门控许可证：凡**画东西**且读按面变量的规则，选择器里都必须有 JS 写出的门控属性（' + jsGates.length + ' 个候选门控）',
-    gate.bad.length === 0 && gate.checked >= 10,
+    gate.bad.length === 0 && gate.checked >= 8,
     gate.bad.length ? '无门控：' + gate.bad.slice(0, 3).join(' · ')
-      : gate.checked + ' 条规则全部带门控（覆盖面地板 10）');
+      : gate.checked + ' 条规则全部带门控（覆盖面地板 8）');
 
   // 双向对账：effects.js 写出的每个按面变量，都必须被样式表读到（防"写了没人读"的死写入）
   const written = [...new Set([...GLASS_SRC.matchAll(/setProperty\("(--we-[a-z0-9-]+)"/g)]
@@ -2380,6 +2385,114 @@ console.log('\n⑱ 宿主模糊令牌覆盖（#156①：值本身必须真的模
       && maskBlurOk('body{--dsw-mask-blur: blur(var(--we-blur, 16px))}') === false
       && maskBlurOk('body[data-we-glass-page]{color:red}') === false
       && maskBlurOk('body[data-we-glass-page]{--dsw-mask-blur: blur(var(--we-blur, 16px)) saturate(var(--we-saturate, 1.8)) brightness(var(--we-glass-brightness, 1.04)) contrast(1.01)}') === true);
+}
+
+console.log('\n⑲ 标记值跟走 resolver（t9-001 运行级断言：真跑 weSurfaceRefresh 的 stub DOM）');
+{
+  // 真 `src/glass-surfaces.js` 装进 `new Function` + with-scope 替身 DOM，把
+  // weSurfaceRefresh 真正跑起来 —— 源码子串断言看不见运行期的标记值漂移
+  // （t9-001：resolver 返回 extra-fallback 时标记仍停留 "extra"，CSS 规则全不匹配）。
+  const SURF_SRC = readFileSync(join(ROOT, 'src', 'glass-surfaces.js'), 'utf8');
+  const runSurfaces = (src) => {
+    const elAttrs = new Map();
+    const bodyAttrs = new Map([['data-we-glass-page', '']]);
+    const mkRect = () => ({ left: 0, top: 0, right: 100, bottom: 100, width: 100, height: 100, x: 0, y: 0, toJSON() { return this; } });
+    const elStyle = () => ({
+      display: 'block', visibility: 'visible', opacity: '1',
+      backdropFilter: 'none', webkitBackdropFilter: 'none',
+      transform: 'none', perspective: 'none', filter: 'none',
+      isolation: 'normal', mixBlendMode: 'normal', contain: 'none',
+      willChange: 'auto', translate: 'none', rotate: 'none', scale: 'none',
+      overflow: 'visible', overflowX: 'visible', overflowY: 'visible',
+      position: 'relative', zIndex: '5', borderRadius: '0px',
+    });
+    const win = {
+      innerWidth: 1000, innerHeight: 1000,
+      CSS: { supports: () => true },
+      ResizeObserver: class { observe() {} unobserve() {} disconnect() {} },
+      MutationObserver: class { observe() {} disconnect() {} },
+      requestAnimationFrame: () => 0, cancelAnimationFrame: () => {},
+      addEventListener: () => {}, removeEventListener: () => {},
+      getComputedStyle: (target, pseudo) => (pseudo ? { content: 'normal' } : elStyle()),
+    };
+    const el = {
+      nodeType: 1, isConnected: true, scrollTop: 0, scrollLeft: 0,
+      ownerDocument: null, parentElement: null,
+      getAttribute: (k) => (elAttrs.has(k) ? elAttrs.get(k) : null),
+      setAttribute: (k, v) => { elAttrs.set(k, String(v)); },
+      removeAttribute: (k) => { elAttrs.delete(k); },
+      hasAttribute: (k) => elAttrs.has(k),
+      closest: () => null, matches: () => false,
+      querySelector: () => null, querySelectorAll: () => [],
+      getBoundingClientRect: mkRect,
+      getAnimations: () => [],
+    };
+    const body = {
+      nodeType: 1, isConnected: true, parentElement: null, style: elStyle(),
+      getAttribute: (k) => (bodyAttrs.has(k) ? bodyAttrs.get(k) : null),
+      setAttribute: (k, v) => { bodyAttrs.set(k, String(v)); },
+      removeAttribute: (k) => { bodyAttrs.delete(k); },
+      hasAttribute: (k) => bodyAttrs.has(k),
+      closest: () => null, matches: () => false,
+      querySelector: () => null, querySelectorAll: () => [],
+      getBoundingClientRect: () => ({ left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0, x: 0, y: 0, toJSON() { return this; } }),
+    };
+    const doc = {
+      hidden: false, defaultView: win, body,
+      documentElement: { nodeType: 1, closest: () => null },
+      querySelector: (sel) => (sel === '#plugin-card' ? el : null),
+      querySelectorAll: (sel) => (sel === '#plugin-card' ? [el] : []),
+      addEventListener: () => {}, removeEventListener: () => {},
+    };
+    el.ownerDocument = doc;
+    const scope = new Proxy({
+      document: doc,
+      sanitizeExtraGlassSelectors: (v) => (typeof v === 'string' ? v : ''),
+    }, {
+      has: (t, k) => (k in t) || !(k in globalThis),
+      get: (t, k) => (k in t ? t[k] : () => undefined),
+      set: () => true,
+    });
+    const mod = new Function('__scope', 'with (__scope) { ' + stripExportBlocks(src)
+      + '\nreturn { syncGlassSurfaces, disposeGlassSurfaces, weGlassSurfaceStatus }; }')(scope);
+    const selection = {};
+    return {
+      el, body, status: mod.weGlassSurfaceStatus,
+      sync: (patch) => { Object.assign(selection, patch); mod.syncGlassSurfaces(selection); },
+      dispose: mod.disposeGlassSurfaces,
+    };
+  };
+  const app = runSurfaces(SURF_SRC);
+  app.sync({ extraGlassSelectors: '#plugin-card' });
+  check('① 正常档 extra 首打标记为 "extra"',
+    app.el.getAttribute('data-we-surface-runtime') === 'extra',
+    '实际: ' + String(app.el.getAttribute('data-we-surface-runtime')));
+  app.body.setAttribute('data-we-glass-fallback', '');
+  app.sync({ extraGlassSelectors: '#plugin-card' });
+  check('② 软渲档标记跟走为 "extra-fallback"（t9-001 运行级先红点）',
+    app.el.getAttribute('data-we-surface-runtime') === 'extra-fallback',
+    '实际: ' + String(app.el.getAttribute('data-we-surface-runtime')));
+  check('②b status() 观测量同步反映 extra-fallback',
+    (app.status()[0] || {}).mode === 'extra-fallback');
+  app.body.removeAttribute('data-we-glass-fallback');
+  app.sync({ extraGlassSelectors: '#plugin-card' });
+  check('③ 软渲解除后标记切回 "extra"',
+    app.el.getAttribute('data-we-surface-runtime') === 'extra',
+    '实际: ' + String(app.el.getAttribute('data-we-surface-runtime')));
+  app.dispose();
+  check('④ dispose 摘除跟走后的标记（unmark 判值随写入值走）',
+    app.el.getAttribute('data-we-surface-runtime') === null);
+  // 负对照：把写入值改回 entry.id（t9-001 的旧形态）必须被②同款场景复现，证明②有牙。
+  const legacyMark = 'const markValue = resolved.mode === "extra-fallback" ? "extra-fallback" : entry.id;';
+  const patched = SURF_SRC.replace(legacyMark, 'const markValue = entry.id;');
+  check('负对照前件：修复行在源里唯一存在（替换锚点没漂移）',
+    SURF_SRC.split(legacyMark).length === 2 && patched !== SURF_SRC);
+  const legacy = runSurfaces(patched);
+  legacy.sync({ extraGlassSelectors: '#plugin-card' });
+  legacy.body.setAttribute('data-we-glass-fallback', '');
+  legacy.sync({ extraGlassSelectors: '#plugin-card' });
+  check('negative control: 旧形态（标记只写 entry.id）在软渲档停留 "extra" 被②判出',
+    legacy.el.getAttribute('data-we-surface-runtime') === 'extra');
 }
 
 console.log('');

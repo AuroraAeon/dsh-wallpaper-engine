@@ -1,83 +1,61 @@
-# Coexistence — running alongside the skin centre / the sidebar plugin / other UI plugins
+# Coexistence: Glass Surfaces and Other UI Plugins
 
-> **Chinese**: [`../COEXISTENCE.md`](../COEXISTENCE.md) (same source: change one side, sync the other)
->
-> This page answers two questions: **① you installed another UI plugin and something on screen
-> looks wrong — how do you check, and what can you work around; ② can I keep the wallpaper and
-> drop the glass (or vice versa) today?** Decisions and the target shape live in
-> [`../adr/0010-glass-off-revisit-four-states.md`](../adr/0010-glass-off-revisit-four-states.md)
-> (Chinese only); the full ledger of which host design tokens we rewrite is
-> [`../TOKEN-CONTRACT.md`](../TOKEN-CONTRACT.md) (a generated artifact — `test/verify-token-contract.mjs`
-> compares it byte-for-byte against the code).
+> **Chinese**: [../COEXISTENCE.md](../COEXISTENCE.md). This page describes the source branch; published releases may differ.
 
-## The current state in four sentences
+## Ownership Boundaries
 
-1. **Wallpaper off, glass kept: supported today** — current-wallpaper card → 「关闭」 (close).
-   The glass is unaffected (a guard pins exactly that).
-2. **Glass off, wallpaper kept: no master switch yet** — glass is closed **per surface**
-   (sidebar / thinking block / left sidebar each have their own master switch); the page-level
-   token recipe (dialogues, panels, elevated buttons) sits on the page-glass anchor and stays —
-   a single-surface switch does not govern it. The decision and its preconditions for adding
-   that master switch are in [`../adr/0010-glass-off-revisit-four-states.md`](../adr/0010-glass-off-revisit-four-states.md).
-3. **We yield automatically when the skin centre takes over** — once the skin centre's public
-   marker (`html[data-dsh-skin]`) is detected, this plugin clears the wallpaper, removes the
-   whole glass-gating family and stops rotation; it restores after the other side stays away.
-   This is currently the **only** cross-plugin negotiation channel, and it is one-directional
-   (we yield; nobody can make us yield).
-4. **Third-party plugins that colour by the host spec "inherit" our glass** — the DSH spec tells
-   plugin authors to colour with the `--dsw-alias-*` design tokens, and those tokens are
-   rewritten into the glass recipe while glass is on ⇒ any spec-compliant plugin picks up the
-   glass look automatically, **we cannot turn that off and the other author has no idea**.
-   This is known behaviour: the ledger and the stop-loss line (the closed allowlist of ungated
-   rewrites) are in [`../TOKEN-CONTRACT.md`](../TOKEN-CONTRACT.md).
+Wallpaper and glass remain independent. Turning wallpaper off does not disable glass. The skin-centre marker `html[data-dsh-skin]` still makes the plugin yield as a whole and restore after the skin leaves.
 
-## Conflict matrix: symptom → suspect mechanism → three-step self-check
+The **page-level background-layer token mapping** (`--dsw-alias-bg-layer-1/2/3`, `--dsw-alias-button-elevated-fill`, `--dsw-alias-bg-overlay`, …) applies on `body[data-we-glass-page]` to the **whole page**: the host's own sidebar buttons, right-panel tab strip and settings-window cards all read that family, so scoping it to the chat flow alone makes those surfaces fall back to the host's solid fills. Every mapping still carries the readability floor (`--we-readability-floor`), so it is not unbounded transparency. Frost and backing plates for the settings window, sidebars and declared surfaces are still claimed per surface by the shared ownership runtime; unknown third-party panels keep their own background declarations, button semantics, syntax colours and terminal ANSI colours.
 
-| Symptom | Suspect mechanism | Three-step self-check |
+| Surface | Adaptation | Fallback |
 |---|---|---|
-| After installing a UI plugin, its panels / buttons turn glassy or translucent | **Token-layer takeover** — it reads `--dsw-alias-*` per spec and receives the glass recipe | ① Turn the wallpaper off and see if it persists (it persists ⇒ it is the token layer, unrelated to the wallpaper) ② Look the token up in [`../TOKEN-CONTRACT.md`](../TOKEN-CONTRACT.md) to see which gate it sits under ③ Turn the matching glass surface off and see whether it retreats |
-| Buttons / popovers misplaced, whole blocks shifted | **Containing-block hijack** — a non-`none` `backdrop-filter` or any `transform` makes an ancestor the containing block for its `position: fixed` descendants | ① In DevTools check whether the misplaced element's containing block ancestor is one of our glass carriers ② Turn that glass surface's blur off and see if it recovers ③ Recall whether the newly installed plugin planted a fixed seat inside a card |
-| Turning the skin centre on changes everything; turning it off doesn't restore it | **Yield protocol** — detecting the skin marker clears the wallpaper and removes glass gating; restoration happens only after the other side stays away for a while | ① Turn the skin centre off and wait a few seconds ② If still not restored, refresh the page ③ If it reproduces, send feedback with diagnostics |
-| The settings page looks different from others (the sidebar-glass section appears and disappears) | **The config surface deforms with the installed plugin set** — that whole section renders only when `dsh-better-sidebar` is installed | ① Check whether the sidebar plugin is installed ② Install / uninstall once each to reproduce ③ This is deliberate tailoring, not a defect |
-| A font set for a terminal plugin has no effect | **Cross-plugin delivery seam** — xterm reads the font exactly once at construction, so a renamed hook or moved read location fails silently | ① Restart that terminal plugin and look again ② Check the font lines in diagnostics ③ Include the plugin name and version in feedback |
+| Native sidebars | Geometry-checked decorative leaves behind the page | Native background; no ancestor positioning or layer escalation |
+| Settings window | Unused `::before` in an existing positioned stacking context | Native if blur, an occupied pseudo-element or unsafe structure prevents adaptation |
+| Right-sidebar CodeMirror / xterm | Known canvases inside the expanded native sidebar | Ownership removed on native policy, preserve or sidebar close |
+| Declared third-party surfaces | Explicit declaration and carrier safety checks | No guessing for undeclared or unsafe content |
+| Extra selectors | Frost in an unused pseudo-element within an existing context | No new context or forced content-background removal |
 
-> A self-diagnostics "coexistence" section and attribute-level opt-out are planned
-> (D3 in [`../adr/0010-glass-off-revisit-four-states.md`](../adr/0010-glass-off-revisit-four-states.md)) —
-> until they land, use the table above manually.
+Outer host-shell wallpaper transparency is separate from glass adaptation. These boundaries are not certification of every third-party plugin.
 
-## The truth about "glass cannot be turned off"
+## Per-Surface Fallback
 
-- The conclusion "closing a surface yields half-glass ⇒ retire the whole layer, always wear glass"
-  ([`../adr/0008-glass-config-two-state.md`](../adr/0008-glass-config-two-state.md)) is premised on
-  **a batch of ungated token rewrites in the token layer**; that premise **no longer holds**
-  (re-counted and revised in
-  [`../adr/0010-glass-off-revisit-four-states.md`](../adr/0010-glass-off-revisit-four-states.md)):
-  the ungated rewrites are down to a **closed allowlist**
-  (`body[data-we-thinking-native]` — the thinking block's own switch — and `.we-layer`, the
-  plugin's own element), so "the token layer can retreat as a whole" already holds —
-  what is missing is a master switch and a batch of guard rewrites, not an architecture.
-- So what **"closing a glass surface"** actually does today: the frost / blur this plugin paints
-  directly onto that surface retreats as a family; while **the token-level recipe sits on the
-  page-glass anchor** and is not governed by a single-surface switch — surfaces that read tokens
-  by spec still receive the glass recipe. That is the "half-glass", and exactly the problem the
-  `wallpaper-only` mode is meant to solve.
+**Glass compatibility** in appearance settings offers **Automatic** and **Keep native** for each surface. `glassSurfacePolicy` controls adaptation eligibility; existing inherited/custom `glassMode` parameters keep their meaning. Missing policies mean automatic. Policies participate in settings and profile preset persistence, import and export.
 
-## The four coexistence modes (target shape; the last two land in batches per ADR-0010)
+Surface IDs: `left-sidebar`, `right-sidebar`, `settings-window`, `content`, `declared`, `extra`. The advanced list shows ownership records as `id / mode / reason`, without collecting plugin text or arbitrary styles. It is a panel-render snapshot, not compatibility certification.
 
-| Mode | Glass glaze | Wallpaper shows through the page | Today |
-|---|---|---|---|
-| `full` glass + wallpaper | on | on | ✅ default |
-| `glass-only` wallpaper off | on | off | ✅ supported right now (just turn the wallpaper off) |
-| `wallpaper-only` glass off | off | on | ❌ no master switch yet (the render layer is ready — see ADR-0010) |
-| `off` yield state | off | off | ⚙️ exists internally (the skin-centre yield path), to be promoted to a declarable state |
+This is not a global glass-off switch. Chat, title-bar and other independent gates are outside this table. See [ADR-0010](../adr/0010-glass-off-revisit-four-states.md).
 
-> Want "wallpaper only, no glass" right now? Today you can only close surfaces one by one
-> (the sidebar / thinking-block / left-sidebar master switches); the page-level token recipe
-> cannot be switched off — that is exactly the pending `wallpaper-only` mode.
+## Author Declarations
 
-## Further reading
+```html
+<section data-we-surface="v1" style="position:relative;z-index:1">
+  <div data-we-surface-layout>Layout allowed to lose its background</div>
+  <div data-we-surface-preserve>Content that must stay native</div>
+</section>
+```
 
-- [`../TOKEN-CONTRACT.md`](../TOKEN-CONTRACT.md) — which host tokens we rewrite and under which gates (generated; do not hand-edit)
-- [`../adr/0008-glass-config-two-state.md`](../adr/0008-glass-config-two-state.md) & [`../adr/0010-glass-off-revisit-four-states.md`](../adr/0010-glass-off-revisit-four-states.md) — from "giving up on glass-off" to "re-adjudicated as feasible"
-- [`../DSH-UI-INTERFACES.md`](../DSH-UI-INTERFACES.md) — which DSH UI interfaces we depend on (incl. the third-party private-class-name ledger)
-- [`../TROUBLESHOOTING.md`](../TROUBLESHOOTING.md) — general troubleshooting quick table
+- `data-we-surface="v1"` requests adaptation, not guaranteed ownership. Do not add a stacking context to shared ancestors merely for glass; the example assumes this positioning already exists.
+- `data-we-surface-layout` permits background removal inside an owned declared surface, without crossing nested ownership boundaries.
+- `data-we-surface-preserve` opts a node and descendants out, taking precedence over built-in adapters and extra selectors.
+- Runtime attributes such as `data-we-surface-runtime` and `data-we-layout-runtime` are private. Third-party plugins must not set or depend on them.
+
+No third-party nodes are moved, no third-party z-index is changed, and no top-layer escalation is used. While an external modal is visible, WE's rope, repository panel, update notice and automatic introduction hide. Ordinary non-modal `role="dialog"` does not trigger yielding.
+
+## Troubleshooting
+
+| Symptom | Check |
+|---|---|
+| A surface stays opaque | Inspect policy and reason; preserving unknown content can be intentional fallback. |
+| Extra frost does not appear | Check existing positioning, non-auto z-index, blur, occupied `::before` and preserve. |
+| A popup is covered or fixed content moves | Compare geometry and actual hit targets with WE disabled. Inspect transform, filter, contain and stacking ancestors, rather than raising z-index. |
+| A plate survives sidebar collapse | Record sidebar mode, policy and reason; closing should revoke ownership and decorative leaves. |
+| Glass does not restore after a skin leaves | Allow yield observation to settle; include versions, reproduction and diagnostics if it persists. |
+
+## Verification and Limits
+
+`node test/verify-glass-runtime-browser.mjs` runs actual bundle CSS and runtime in isolated Chromium. It checks themes, narrow screens, hit testing, focus, fixed geometry, pixels, fallback and cleanup. Set `WE_TEST_BROWSER` to an executable when necessary. A missing browser fails rather than silently skipping. This regression is in `npm run verify`.
+
+Host-structure fixtures do not replace testing each real third-party window, prove a native crash fix, or establish long-term stability. Untested platforms and independent-review status must be reported separately.
+
+Further reading: [surface ownership](../adr/0015-glass-surface-ownership.md), [token ledger](../TOKEN-CONTRACT.md), [troubleshooting](../TROUBLESHOOTING.md).

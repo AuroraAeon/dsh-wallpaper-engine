@@ -395,6 +395,26 @@ function panelGlassPair(sel) {
   return { light, dark };
 }
 
+function renderGlassSurfaceControls(ctx) {
+  const surfaces = [
+    ["left-sidebar", weT("左侧栏")], ["right-sidebar", weT("右侧栏")],
+    ["settings-window", weT("设置窗口")], ["content", weT("编辑与终端")],
+    ["declared", weT("声明式表面")], ["extra", weT("额外选择器")],
+  ];
+  return React.createElement("details", { className: "we-picker__surface-policy" },
+    React.createElement("summary", null, weT("玻璃兼容")),
+    ...surfaces.map(([id, label]) => React.createElement("label", { className: "we-picker__ctl", key: id },
+      React.createElement("span", null, label),
+      React.createElement("select", { className: "we-picker__select", "data-we-policy": id,
+        value: ctx.sel.glassSurfacePolicy?.[id] || "auto",
+        onChange: event => ctx.onGlassSurfacePolicy(id, event.target.value) },
+      React.createElement("option", { value: "auto" }, weT("自动适配")),
+      React.createElement("option", { value: "native" }, weT("保留原生"))))),
+    React.createElement("ul", null, ...(ctx.surfaceStatus || []).map(({ id, mode, reason }, index) =>
+      React.createElement("li", { key: id + index }, id + ": " + mode + " · " + reason))),
+  );
+}
+
 function renderAppearanceGlassSection(ctx) {
   const {
     onBlur, onGlassAlpha, onGlassChildParam, onGlassColor, onGlassDarkSeparate, onExtraGlassSelectors, onGlassFidelity,
@@ -631,24 +651,20 @@ function renderAppearanceGlassSection(ctx) {
     advRows.push(...childRows);
   }
   // ── 内容面（阅读文件页 / 编辑器 / 终端）的底色与透明度 ──────────────────────
-  //    **不在 `detailOpen` 块里**（这刀从侧栏折叠块里提出来的唯一一组）：用户口径
-  //    "侧边栏阅读文件页面的背景底色的设置被删除了，需要找回" —— 它此前只在
-  //    侧栏「详细玻璃调节」展开 + 「内容面玻璃·独立配置」打开后才可达，设置页一行都不画，
-  //    于是在两条路径上都像"没了"。这一面是**阅读密集**的表面（看的正是正文），
-  //    调它的期望远高于其余独立配置 ⇒ 提到本节常规行，两档都画。
-  //    仍然保留「独立配置」开关（`glassMode.sidebarContent`）而不是直接摊两个旋钮：
+  //    **不在 `detailOpen` 块里**：用户口径「侧边栏阅读文件页面的背景底色的设置被删除了，
+  //    需要找回」—— 它此前只在侧栏「详细玻璃调节」展开 + 「内容面玻璃·独立配置」打开后
+  //    才可达，设置页一行都不画，于是在两条路径上都像"没了"。这一面看的是正文（阅读
+  //    文件页 / 编辑器 / 终端），调整期望远高于其余独立配置 ⇒ 提到本节常规行，两档都画。
+  //    仍保留「独立配置」开关（`glassMode.sidebarContent`）而不是直接摊两个旋钮：
   //    `applyGlass` 的 `glassValue()` 只在 mode='custom' 时读这两个键，mode 停在 inherit
   //    时写进去的值**不会被消费** —— 直接摊旋钮就是一对死旋钮（本仓专门防这一类）。
   //    ⚠️ **门只有 `sidebarGlass`，不含 `sidebarPresent`**（2026-10-18 用户实测修正）：
   //    `sidebarPresent` 是"装没装 dsh-better-sidebar"，而这一面真正作用的对象是
   //    **宿主原生右栏**（`[data-sidebar-right-panel]`，阅读文件页就长在那里）——
   //    没装 better-sidebar 的机器上它同样存在、同样吃 `data-we-sidebar-glass` 那张底板。
-  //    挂上 `sidebarPresent` 的后果实测过一次：没装该插件的用户整组行**一行都不画**，
-  //    于是"阅读页底色"又一次变成够不着的设置（与用户这次报的是同一个症状）。
-  //    CSS 侧的门也是 `data-we-sidebar-glass`（由 `sidebarGlass` 写，默认开）⇒ 与本门同源，
-  //    所以这里不会画死旋钮：`sidebarGlass` 关掉时那一族规则整组不匹配，行也一起收。
-  //    另跟本节折叠（`open`）—— 它与别的常规行同属"节内内容"，收起节时一起收起。
-  if (open && sel.sidebarGlass !== false) {
+  //    挂上 `sidebarPresent` 的后果实测过一次：没装该插件的用户整组行一行都不画。
+  //    CSS 侧的门也是 `data-we-sidebar-glass`（由 `sidebarGlass` 写，默认开）⇒ 与本门同源。
+  if (open && sel.sidebarGlass === true) {
     advRows.push(switchRow(weT("内容面玻璃·独立配置"),
       !!(childIndependentOn && childIndependentOn("sidebarContent")),
       (e) => onToggleChildIndependent("sidebarContent", e.target.checked), {
@@ -707,6 +723,7 @@ function renderAppearanceGlassSection(ctx) {
     //    ⚠️ 包一层 Fragment 是刻意的：本节约有 80 个并列 children，逐个挂门既啰嗦又容易漏；
     //    而 React 的 Fragment 不产生 DOM 节点 ⇒ 观感与无障碍树都没有多出来的层级。
     open && React.createElement(React.Fragment, null,
+      !sidebarSurface && typeof ctx.onGlassSurfacePolicy === "function" && renderGlassSurfaceControls(ctx),
       // ── 全局四件套 ──
       // 玻璃颜色: the settings-window glass BASE tint. Defaults keep the stock
       // look (white light / deep navy dark); picking any preset or a custom
@@ -747,7 +764,7 @@ function renderAppearanceGlassSection(ctx) {
       React.createElement("div", { className: "we-picker__ctl we-picker__ctl--wrap", key: "extra-glass-selectors" },
         ctlText(weT("额外补雾化的选择器"),
           weT("给第三方插件自己的面板补上毛玻璃（它们自身没有模糊，全局「雾化」对它们无效）"),
-          weT("写这些面板的 CSS 选择器，逗号或换行分隔，最多 8 条、每条最多 120 字；超长的单条或超出 8 条的整条丢弃（不是截断，存活下来的前 8 条全量生效）。目标元素要自己已定位（fixed / absolute）；载体挂在它的 ::before 上，所以不会影响它内部的定位弹层。留空 = 关。")),
+          weT("写这些面板的 CSS 选择器，逗号或换行分隔，最多 8 条、每条最多 120 字；超长的单条或超出 8 条的整条丢弃（不是截断，存活下来的前 8 条全量生效）。目标需已有定位和非 auto 层级，且 ::before 空闲；无法安全接管时保留原生。留空 = 关。")),
         React.createElement("input", {
           className: "we-picker__text", type: "text",
           value: sel.extraGlassSelectors || "",
@@ -844,4 +861,4 @@ function renderAppearanceGlassSection(ctx) {
   );
 }
 
-export { renderAppearanceGlassSection };
+export { renderAppearanceGlassSection, renderGlassSurfaceControls };

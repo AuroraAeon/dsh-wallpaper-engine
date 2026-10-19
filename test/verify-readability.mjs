@@ -363,10 +363,9 @@ function main() {
     ['markdown tag token (dark)', '--dsw-alias-markdown-tag', 'body[data-ds-dark-theme][data-we-glass-page]'],
     ['code segment token (dark)', '--dsw-alias-markdown-code-segment-unselected', 'body[data-ds-dark-theme][data-we-glass-page]'],
     ['selected code segment token (dark)', '--dsw-alias-markdown-code-segment-selected', 'body[data-ds-dark-theme][data-we-glass-page]'],
-    ['sidebar panel (light)', 'background-color', 'body[data-we-sidebar-glass] [data-dsh-better-sidebar] [data-dsh-panel]'],
-    ['sidebar panel (dark)', 'background-color', 'body[data-ds-dark-theme][data-we-sidebar-glass] [data-dsh-better-sidebar] [data-dsh-panel]'],
-    ['native right decorative plate (light)', 'background-color', 'body[data-we-sidebar-glass] [data-sidebar-right-panel][data-sidebar-right-open]::before'],
-    ['native right decorative plate (dark)', 'background-color', 'body[data-ds-dark-theme][data-we-sidebar-glass] [data-sidebar-right-panel][data-sidebar-right-open]::before'],
+    ['declared base', 'background-color', 'body[data-we-glass-page] [data-we-surface-runtime="declared"]::before'],
+    ['native right panel (light)', 'background-color', 'body[data-we-sidebar-glass] [data-sidebar-right-panel]'],
+    ['native right panel (dark)', 'background-color', 'body[data-ds-dark-theme][data-we-sidebar-glass] [data-sidebar-right-panel]'],
     // 左侧栏液态玻璃（leftSidebarGlass，默认关）：那一列同样是文字面（会话列表 / 工作区），
     // 一旦接管成玻璃就必须过同一条下限 —— 而且它是**唯一**能直接看到壁纸的大块区域，
     // 少了这条声明就是"整列文字直接压在花壁纸上"。
@@ -385,17 +384,6 @@ function main() {
     veilMisses.length === 0,
     surfaceSpecs.length + ' surface(s) checked · missing/broken=' + veilMisses.length
       + (veilMisses.length ? ' · ' + JSON.stringify(veilMisses) : ''));
-
-  // The shell carries the floor once; transparent inner chrome must not add another veil.
-  const chromeSelector = 'body[data-we-sidebar-glass] [data-dsh-better-sidebar] [data-dsh-panel] :is(';
-  const chromeRule = ruleFor('background-color', chromeSelector);
-  const clearChrome = rule => !!rule && declValue(rule.body, 'background-color') === 'transparent !important';
-  check('F2a2 legacy sidebar chrome is transparent above the single floored panel',
-    clearChrome(chromeRule)
-      && ['_pane_', '_tabBar_', '_paneCard_', '_editorHeader_', '_explorerHeader_', '_gitHeader_', '_browserBar_', '_terminalWrap_']
-        .every(name => chromeRule.header.includes(name)));
-  check('negative control F2a2: a second inner readability floor is rejected',
-    !!chromeRule && !clearChrome({ ...chromeRule, body: 'background-color: var(--we-readability-base);' }));
 
   // The user's chat surfaces must transmit wallpaper at the slider alpha.
   // Keep protected host-token floor checks above; test the actual overrides
@@ -631,10 +619,17 @@ function main() {
   // ── F3: the content plate uses a literal max() clamp on its own alpha ──────
   const contentProp = 'background-color';
   const contentRules = rulesWithProp(contentProp)
-    .filter((r) => /\.cm-editor|xterm|\.dshDesktopSidebarSurface/.test(r.header));
+    // [data-document-preview] = 阅读文件页（宿主 sidebar-documentpreview 的根），
+    // 它同样吃这张内容面底板（issue 现场：那一页的底色设置"被删了"）⇒ F3 也要护它。
+    .filter((r) => /data-we-surface-runtime="content"|\.dshDesktopSidebarSurface|\[data-document-preview\]/.test(r.header));
   const CONTENT_TOKEN = 'max(calc(var(--we-readability-floor) * 100%), var(--we-content-surface-alpha, 88%))';
+  const protectedContent = r => r.body.includes(CONTENT_TOKEN);
   check('F3 the editor/terminal content plate clamps its own alpha with max()',
-    contentRules.length >= 3 && contentRules.every((r) => r.body.includes(CONTENT_TOKEN)),
+    // 门槛 = 实测条数（内容面底板在本分支上实测 4 条：表面策略的 content 规则 +
+    // 阅读文件页那条兜底 + 软件回退的两条同族规则）。⚠️ 曾按旧分支写死 >=3 而动过口径；
+    // 现在按"每条都必须带钳制"做判据，条数只做"不是空转"的下限（留一条余量）。
+    contentRules.length >= 3 && contentRules.every(protectedContent)
+      && !protectedContent({ body: contentRules[0].body.replace(CONTENT_TOKEN, '0%') }),
     contentRules.length + ' content rule(s), all carrying ' + CONTENT_TOKEN);
 
   // ── F4: the software-render fallback plate still clears the floor ─────────
@@ -957,20 +952,6 @@ function main() {
       && rp.body.includes('background-color: transparent !important')
       && rp.body.includes('background-image: none !important'),
       rp ? rp.header.slice(0, 100) : '规则缺失');
-    const rootClearSelector = 'body[data-we-wallpaper][data-we-sidebar-fullclear] [data-sidebar-right-panel][data-sidebar-right-open]';
-    const clearsBothCarriers = rule => {
-      if (!rule) return false;
-      const selectors = rule.header.split(',').map(selector => selector.trim());
-      return selectors.includes(rootClearSelector) && selectors.includes(rootClearSelector + '::before')
-        && rule.body.includes('background-color: transparent !important')
-        && rule.body.includes('background-image: none !important');
-    };
-    check('F7c2 full-clear clears the root fallback and decorative glass plate', clearsBothCarriers(rp));
-    check('negative control F7c2: losing either full-clear carrier fails', !!rp
-      && [rootClearSelector, rootClearSelector + '::before'].every(removed => !clearsBothCarriers({
-        ...rp, header: rp.header.split(',').map(selector => selector.trim())
-          .filter(selector => selector !== removed).join(', '),
-      })));
     // 左栏：一条规则两个选择器（浅 + 深）—— 按**选择器**数，不按规则条数。
     const leftRule = fcRules.find((r) => r.header.includes('data-we-left-sidebar'));
     const leftSels = leftRule ? leftRule.header.split(',').filter((h) => h.includes('data-we-left-sidebar')) : [];

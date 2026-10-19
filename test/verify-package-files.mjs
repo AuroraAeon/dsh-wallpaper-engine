@@ -355,9 +355,24 @@ async function main() {
     // `* text=auto eol=lf` 契约此前**零判据**，实害已发生过一次整轮改动被 CRLF 污染；硬档依据 =
     // 后果是"`test/**` 里按行锚定的字面替换负对照假红、整条 verify 链在 Windows 上短路"，同 ⑧ 的
     // 发布面口径 —— 它坏的时候没有任何一条别的判据会红）。
-    // No-pet test build: remove twelve pet guards, add no-pet / native rope / glass lifecycle.
-    // Floors count ALL runner steps, including the verify soft step and all's build step.
-    const CHAIN_FLOOR = { verify: 77, docs: 6, smoke: 6, all: 90 };
+    //  再：verify 73→85 / all 86→98 —— 新增十二组可选桌宠联动离线回归（PR #5；`verify-pet-package` /
+    // `-hotplug-host` / `-hotplug-client` / `-rope-entry` / `-tuner` / `-bubble-timing` / `-mascot-motion` /
+    // `-egg1-motion` / `-egg1-rebound` / `-sidebar-rebound` / `-egg2-motion` / `-follow`，见 run-guards.mjs
+    // 的 VERIFY_STEPS 清单）。合并时按实测重取：原 PR 基于 P-F 批 1c 之前的树，写的是 84/97。
+    // 统一表面层新增策略、生命周期与真实浏览器三项硬档回归。
+    //  再：verify 88→90 / all 101→103 —— CI 分流第一阶段挂两硬档：`test/tools/ci-routing-red.mjs`
+    //（⑩ 固定 ci/result + 真跑 scripts/ci-routing.mjs 的最小接线守卫）与 `test/verify-ci-routing.mjs`
+    //（⑪ 隔离 git 库端到端：staged/unstaged/untracked 三通道、full 误调 docs exit 3、judgeResult 汇总）。
+    //  再：verify 90→91 / all 103→104 —— P1 内置桌宠挂一硬档 `test/verify-pet-builtin.mjs`
+    //（⑫ 内置 provider 装配/消费链与阶段诊断）。它的静态兼容姊妹 `test/verify-pet-eslint-compat.mjs`
+    // 有意脱链（`import { ESLint } from 'eslint'` ⇒ 违反本段 P5 的零裸依赖口径），理由在
+    // `test/tools/guard-chain.mjs` 的 OFF_CHAIN_WHY 里，与 `verify-static.mjs` 同族。
+    //  再：verify 91→92 / all 104→105 —— 移植上游 PR#1 ① 挂一硬档
+    // `test/verify-avatar-interval-and-rotation.mjs`（助手头像间隔旋钮 / 轮播间隔取值域与
+    // 「视频播完就换」档 / 壁纸库缩略图链路）。地板按**本树**实测重取：上游那棵树写 89/102，
+    // 因为它没有前两批的 ⑩⑪⑫；照抄会把地板调低三步，删一步就不再变红。
+    // 补齐表情广播、侧栏诊断与玻璃几何三条离线硬门禁。
+    const CHAIN_FLOOR = { verify: 95, docs: 6, smoke: 6, all: 108 };
     /** 地板表与 GROUPS 的对齐体检：键名必须与**组名**逐一对齐（纯函数 ⇒ 负对照可直接喂）。 */
     const floorGaps = (groups, floors) => groups.map(([, g]) => g).filter((g) => !Number.isInteger(floors[g]));
     const problems = floorGaps(GROUPS, CHAIN_FLOOR).map((g) => '地板表缺组 ' + g

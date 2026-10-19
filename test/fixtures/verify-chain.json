@@ -193,6 +193,30 @@
         {
           "kind": "guard",
           "npm": null,
+          "file": "test/verify-glass-compat.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-glass-runtime.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-glass-runtime-browser.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
           "file": "test/verify-extra-glass.mjs",
           "args": [],
           "tier": "hard",
@@ -617,6 +641,14 @@
         {
           "kind": "guard",
           "npm": null,
+          "file": "test/verify-pet-meme-broadcast.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
           "file": "test/verify-pet-mascot-motion.mjs",
           "args": [],
           "tier": "hard",
@@ -649,6 +681,22 @@
         {
           "kind": "guard",
           "npm": null,
+          "file": "test/verify-pet-sidebar-diag.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-pet-sidebar-glass.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
           "file": "test/verify-pet-egg2-motion.mjs",
           "args": [],
           "tier": "hard",
@@ -658,6 +706,14 @@
           "kind": "guard",
           "npm": null,
           "file": "test/verify-pet-follow.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-pet-builtin.mjs",
           "args": [],
           "tier": "hard",
           "probe": false
@@ -694,6 +750,22 @@
           "kind": "guard",
           "npm": null,
           "file": "test/verify-ci-steps.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/tools/ci-routing-red.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-ci-routing.mjs",
           "args": [],
           "tier": "hard",
           "probe": false
@@ -1006,6 +1078,30 @@
         {
           "kind": "guard",
           "npm": null,
+          "file": "test/verify-glass-compat.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-glass-runtime.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-glass-runtime-browser.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
           "file": "test/verify-extra-glass.mjs",
           "args": [],
           "tier": "hard",
@@ -1430,6 +1526,14 @@
         {
           "kind": "guard",
           "npm": null,
+          "file": "test/verify-pet-meme-broadcast.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
           "file": "test/verify-pet-mascot-motion.mjs",
           "args": [],
           "tier": "hard",
@@ -1462,6 +1566,22 @@
         {
           "kind": "guard",
           "npm": null,
+          "file": "test/verify-pet-sidebar-diag.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-pet-sidebar-glass.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
           "file": "test/verify-pet-egg2-motion.mjs",
           "args": [],
           "tier": "hard",
@@ -1471,6 +1591,14 @@
           "kind": "guard",
           "npm": null,
           "file": "test/verify-pet-follow.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-pet-builtin.mjs",
           "args": [],
           "tier": "hard",
           "probe": false
@@ -1507,6 +1635,22 @@
           "kind": "guard",
           "npm": null,
           "file": "test/verify-ci-steps.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/tools/ci-routing-red.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-ci-routing.mjs",
           "args": [],
           "tier": "hard",
           "probe": false

@@ -34,20 +34,12 @@ const CSS_SIDEBAR = `  /* ── 左侧栏液态玻璃（宿主原生左栏的�
      **不生成盒子**，背景 / 模糊 / 边框全都画不出来。
      ⚠️ 子选择器（>）是刻意的：写宽一档会连带匹配到"任何祖先链里有该锚点"的元素。
 
-     ── 修正（issue #131）：fixed 包含块 ─────────────────────────────────────
-     CSS 规范：非 none 的 backdrop-filter 会让该元素成为**其后代 position:fixed 元素的
-     包含块**。宿主在 Windows 标题栏模式下把「收起 / 展开侧边栏」按钮与收起态的「新建会话」
-     按钮设成 position:fixed ⇒ 若 blur 画在列自身，它们改为相对这一列定位（列上边被
-     [data-windows-titlebar] 的 padding-top 推下去，收起时列宽 0 又带 overflow:hidden）
-     ⇒ 按钮被整块裁掉、展开按钮「不可见」。
-     修法：玻璃配方里**只把 backdrop-filter 那一对声明**搬到本列的 ::before（伪元素没有
-     后代，永不成为 fixed 的包含块），列自身加 position:relative（只影响 absolute 的包含块
-     选择），不再给宿主列制造层叠上下文：该围栏会把列内的模态困在输入区后面。
-     底色 / 釉光 / 边框 / 令牌留在列上：模糊作用在「底色 + 壁纸」的合成结果上，与「先滤
-     壁纸再压底色」数学等价（模糊与滤镜都是线性算子，而这一列底色是中性色）。 */
-  body[data-we-glass-page][data-we-left-sidebar] div:has(> [data-slot="sidebar"]) {
-    position: relative; /* 只为给下面 ::before 那条规则提供定位参照（不影响 fixed） */
-    /* Do not fence in viewport-fixed modal descendants behind the composer. */
+     ── 兼容层：独立装饰载体 ─────────────────────────────────────────────
+     旧版为负层伪元素给宿主列增加定位和 z-index:0，虽避开 fixed 包含块，仍会把
+     第三方模态困在侧栏层叠上下文。现在只有管理器验证区域后才接管底色；模糊移到
+     根级装饰叶节点，宿主列不新增定位、层叠或包含块。不安全区域不盖运行标记，保留原生。 */
+  body[data-we-glass-page][data-we-left-sidebar] div:has(> [data-slot="sidebar"]):where([data-we-surface-runtime="left-sidebar"]) {
+    /* 宿主列不再承担定位或层叠；模糊只由根级装饰叶节点承担。 */
     background-color: color-mix(in srgb,
       var(--we-readability-base) calc(var(--we-readability-floor) * 100%),
       color-mix(in srgb, var(--we-surface-tint-light, #ffffff) calc(var(--we-left-sidebar-alpha) * 100%), transparent) calc((1 - var(--we-readability-floor)) * 100%));
@@ -57,8 +49,7 @@ const CSS_SIDEBAR = `  /* ── 左侧栏液态玻璃（宿主原生左栏的�
       rgba(255, 255, 255, var(--we-panel-sheen-a)) 0%,
       rgba(255, 255, 255, var(--we-panel-sheen-b)) 38%,
       rgba(255, 255, 255, var(--we-panel-sheen-c)) 100%);
-    /* 模糊不在这里：backdrop-filter 会把这列变成 fixed 后代的包含块（见上），
-       已移交给本列 ::before 的那条规则。 */
+    /* 模糊由根级装饰叶节点承担，不改变这一列的 fixed 包含块。 */
     /* 边框：这一列**内部**的描边（「新建会话」按钮、焦点环等）读 --dsw-alias-border-l3 ——
        壁纸令牌映射只接管了 l1/l2，故「边框」滑杆只作用于这一列里面的描边（这一条**保留**）。
        ⚠️ 这一列**自己的竖分割线不画**（现场口径："左侧边栏右边框线不要显示，即使全局设置了
@@ -77,24 +68,28 @@ const CSS_SIDEBAR = `  /* ── 左侧栏液态玻璃（宿主原生左栏的�
     --dsw-alias-brand-primary: var(--we-accent, #4f8cff);
     --dsw-alias-brand-text: var(--we-accent, #4f8cff);
   }
-  /* 玻璃的模糊层（issue #131）：::before 铺满这一列、压在内容之下（z-index:-1），
-     不改变宿主列的层叠关系，只负责 backdrop-filter。它没有后代 ⇒ 不会成为任何
-     fixed 元素的包含块，宿主那两个 fixed 按钮（收起/展开侧边栏、收起态新建会话）于是
-     继续相对视口定位。深浅两色共用这一条（模糊配方本身不随主题分叉）。 */
-  body[data-we-glass-page][data-we-left-sidebar] div:has(> [data-slot="sidebar"])::before {
-    content: "";
-    position: absolute;
+  /* 根级容器只含本插件的装饰叶节点，永远位于内容下方，不包裹宿主组件。 */
+  [data-we-surface-root] {
+    position: fixed;
     inset: 0;
-    /* 圆角继承（外观 → 侧边栏圆角）：伪元素铺满整列，不给它 inherit 的话，列被改成圆角
-       后这一层仍然方角外溢。列没有圆角时 inherit 得到 0，等于没有这条声明。 */
-    border-radius: inherit;
     z-index: -1;
     pointer-events: none;
+    -webkit-app-region: initial !important;
+  }
+  [data-we-surface-plate] {
+    position: absolute;
+    pointer-events: none;
+  }
+  body[data-we-glass-page][data-we-left-sidebar] [data-we-surface-plate="left-sidebar"] {
     -webkit-backdrop-filter: blur(var(--we-left-sidebar-blur)) saturate(var(--we-saturate, 1.8)) brightness(var(--we-glass-brightness, 1.04)) contrast(1.01);
     backdrop-filter: blur(var(--we-left-sidebar-blur)) saturate(var(--we-saturate, 1.8)) brightness(var(--we-glass-brightness, 1.04)) contrast(1.01);
   }
+  body[data-we-glass-page][data-we-sidebar-glass] [data-we-surface-plate="right-sidebar"] {
+    -webkit-backdrop-filter: blur(var(--we-sidebar-blur)) saturate(var(--we-sidebar-saturate)) brightness(var(--we-glass-brightness, 1.04)) contrast(1.01);
+    backdrop-filter: blur(var(--we-sidebar-blur)) saturate(var(--we-sidebar-saturate)) brightness(var(--we-glass-brightness, 1.04)) contrast(1.01);
+  }
   /* 深色：同一张表、同一组层权重，只有玻璃色缺省与高亮mix 不同（与设置窗口深色那条同形）。 */
-  body[data-ds-dark-theme][data-we-glass-page][data-we-left-sidebar] div:has(> [data-slot="sidebar"]) {
+  body[data-ds-dark-theme][data-we-glass-page][data-we-left-sidebar] div:has(> [data-slot="sidebar"]):where([data-we-surface-runtime="left-sidebar"]) {
     background-color: color-mix(in srgb,
       var(--we-readability-base) calc(var(--we-readability-floor) * 100%),
       color-mix(in srgb, var(--we-surface-tint-dark, #0d1524) calc(var(--we-left-sidebar-alpha) * 100%), transparent) calc((1 - var(--we-readability-floor)) * 100%));
@@ -107,11 +102,11 @@ const CSS_SIDEBAR = `  /* ── 左侧栏液态玻璃（宿主原生左栏的�
   /* 无 backdrop-filter：同一政策 —— 近不透明玻璃，文字绝不直接落在壁纸上
      （模糊被关掉后，半透明 + 无霜等于把左侧栏文字放到花壁纸上）。 */
   @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-    body[data-we-glass-page][data-we-left-sidebar] div:has(> [data-slot="sidebar"]) {
+    body[data-we-glass-page][data-we-left-sidebar] div:has(> [data-slot="sidebar"]):where([data-we-surface-runtime="left-sidebar"]) {
       background-color: color-mix(in srgb, var(--we-surface-tint-light, #ffffff) 92%, transparent);
       background-image: none;
     }
-    body[data-ds-dark-theme][data-we-glass-page][data-we-left-sidebar] div:has(> [data-slot="sidebar"]) {
+    body[data-ds-dark-theme][data-we-glass-page][data-we-left-sidebar] div:has(> [data-slot="sidebar"]):where([data-we-surface-runtime="left-sidebar"]) {
       background-color: color-mix(in srgb, var(--we-surface-tint-dark, #0d1524) 92%, transparent);
     }
   }
@@ -317,54 +312,7 @@ const CSS_SIDEBAR = `  /* ── 左侧栏液态玻璃（宿主原生左栏的�
      or tinted however you like without touching the 玻璃 / 玻璃透明度 sliders.
      Inner chrome surfaces that paint the same opaque tokens get a translucent
      base too; the blur lives on the root panels (one blur per shell). */
-  body[data-we-sidebar-glass] [data-dsh-better-sidebar] [data-dsh-panel] {
-    /* 侧栏面板同样承载文字 → 同一层可读性下限（--we-sidebar-tint 是这里的
-       玻璃色权重，只在另一项上生效）。 */
-    background-color: color-mix(in srgb,
-      var(--we-readability-base) calc(var(--we-readability-floor) * 100%),
-      color-mix(in srgb, var(--we-sidebar-color) var(--we-sidebar-tint), transparent) calc((1 - var(--we-readability-floor)) * 100%)) !important;
-    /* Specular sheen + refraction highlights follow --we-sidebar-sheen
-       (= min(1, alpha/0.2236)): at default (12%) and any MORE solid setting
-       the sheen keeps the ORIGINAL design strength (0.14/0.04/0.01,
-       0.32/0.08/0.06); only toward transparency does the white glaze fade,
-       so 100% is truly near-transparent instead of pale white. */
-    background-image: linear-gradient(180deg,
-      rgba(255, 255, 255, var(--we-sidebar-sheen-a)),
-      rgba(255, 255, 255, var(--we-sidebar-sheen-b)) 38%,
-      rgba(255, 255, 255, var(--we-sidebar-sheen-c))) !important;
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, calc(var(--we-sidebar-sheen) * 0.32)),
-      inset 0 -1px 0 rgba(255, 255, 255, calc(var(--we-sidebar-sheen) * 0.08)),
-      inset 0 0 0 0.5px rgba(255, 255, 255, calc(var(--we-sidebar-sheen) * 0.06));
-  }
-  body[data-we-sidebar-glass] [data-dsh-better-sidebar] [data-dsh-panel]::before {
-    content: ""; position: absolute; inset: 0; z-index: -1;
-    pointer-events: none; border-radius: inherit;
-    -webkit-backdrop-filter: blur(var(--we-sidebar-blur)) saturate(var(--we-sidebar-saturate)) brightness(var(--we-glass-brightness, 1.04)) contrast(1.01);
-    backdrop-filter: blur(var(--we-sidebar-blur)) saturate(var(--we-sidebar-saturate)) brightness(var(--we-glass-brightness, 1.04)) contrast(1.01);
-  }
-  body[data-we-sidebar-glass] [data-dsh-better-sidebar] [data-dsh-panel] :is([class*="_pane_"], [class*="_tabBar_"], [class*="_paneCard_"], [class*="_editorHeader_"], [class*="_explorerHeader_"], [class*="_gitHeader_"], [class*="_browserBar_"], [class*="_terminalWrap_"]) {
-    background-color: transparent !important;
-  }
-  body[data-ds-dark-theme][data-we-sidebar-glass] [data-dsh-better-sidebar] [data-dsh-panel] {
-    background-color: color-mix(in srgb,
-      var(--we-readability-base) calc(var(--we-readability-floor) * 100%),
-      color-mix(in srgb, var(--we-sidebar-color) calc(var(--we-sidebar-tint) * 0.65), transparent) calc((1 - var(--we-readability-floor)) * 100%)) !important;
-  }
-  /* No backdrop-filter support: fall back to near-opaque tinted surfaces so
-     sidebar text never sits directly on a busy wallpaper (same policy as the
-     settings-window glass). The tint still applies. */
-  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-    body[data-we-sidebar-glass] [data-dsh-better-sidebar] [data-dsh-panel] {
-      background-color: color-mix(in srgb, var(--we-sidebar-color) 92%, transparent) !important;
-      backdrop-filter: none !important;
-      -webkit-backdrop-filter: none !important;
-    }
-    body[data-we-sidebar-glass] [data-dsh-better-sidebar] [data-dsh-panel]::before {
-      -webkit-backdrop-filter: none !important;
-      backdrop-filter: none !important;
-    }
-  }
+  /* 未知 better-sidebar 内部布局保留原生，官方停靠区域由统一表面管理识别。 */
 
   /* ── Official right sidebar ────────────────────────────────────────────────
      The right column lives in the NATIVE sidebar: better-sidebar registers its
@@ -397,16 +345,18 @@ const CSS_SIDEBAR = `  /* ── 左侧栏液态玻璃（宿主原生左栏的�
        --dsw-alias-bg-layer-* 在壁纸下已被改写成玻璃配方 ⇒ 这里读插件自己的面板色。 */
     background-color: var(--we-panel-color, #1e1f26);
   }
-  /* Keep the dock's native stacking and fixed containing blocks. Only the
-     empty decorative leaf uses the native dock layer (#150). Its background
-     must live there too, or overlapping conversation content covers it. */
-  body[data-we-sidebar-glass] [data-sidebar-right-panel][data-sidebar-right-open] {
-    background: transparent !important;
-  }
-  body[data-we-sidebar-glass] [data-sidebar-right-panel][data-sidebar-right-open]::before {
-    content: ""; position: absolute; inset: 0;
-    z-index: var(--dsh-dockkit-dock-layer, 10);
-    pointer-events: none; border-radius: inherit;
+  /* #150（dockkit 层级体系）：backdrop-filter 让本面板自成层叠
+     上下文（z=auto 档）。宿主的层级设计是「面板内部的 dock 单元消费
+     --dsh-dockkit-dock-layer（常态 10 / 右栏全屏 40）」——层叠上下文一成，这个 z
+     被困在面板内部，整个面板作为原子跌回 z=auto，被会话列里宿主自己的更高层内容
+     （hero 输入卡 z=1 / composerSeat z=7，同为根层叠上下文里的 flex 项）反压：
+     push / 收起态没有空间重叠所以看不出来，唯独「右栏全屏」面板与对话列重叠时，
+     输入卡与 hero 标题会穿透玻璃面板叠在侧栏上（issue #150 截图形态）。
+     修法 = 玻璃开着时把面板本身抬到宿主为它设计的同一层——该 var 就声明在面板上，
+     全屏时自动解析为 40，与内部 dock 单元原生取得的层完全一致；玻璃关着（主开关
+     兜底只上不透明底色）与软件光栅回退档（backdrop-filter 显式 none）都不成层叠
+     上下文，保持原生绘制顺序，无需此抬升。 */
+  body[data-we-sidebar-glass] [data-sidebar-right-panel][data-sidebar-right-open]:where([data-we-surface-runtime="right-sidebar"]) {
     background-color: color-mix(in srgb,
       var(--we-readability-base) calc(var(--we-readability-floor) * 100%),
       color-mix(in srgb, var(--we-sidebar-color) var(--we-sidebar-tint), transparent) calc((1 - var(--we-readability-floor)) * 100%)) !important;
@@ -414,17 +364,20 @@ const CSS_SIDEBAR = `  /* ── 左侧栏液态玻璃（宿主原生左栏的�
       rgba(255, 255, 255, var(--we-sidebar-sheen-a)),
       rgba(255, 255, 255, var(--we-sidebar-sheen-b)) 38%,
       rgba(255, 255, 255, var(--we-sidebar-sheen-c))) !important;
+    /* 模糊在独立叶节点，宿主 dock 内容仍按其原生层级绘制。 */
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, calc(var(--we-sidebar-sheen) * 0.32)),
       inset 0 -1px 0 rgba(255, 255, 255, calc(var(--we-sidebar-sheen) * 0.08)),
       inset 0 0 0 0.5px rgba(255, 255, 255, calc(var(--we-sidebar-sheen) * 0.06));
-    -webkit-backdrop-filter: blur(var(--we-sidebar-blur)) saturate(var(--we-sidebar-saturate)) brightness(var(--we-glass-brightness, 1.04)) contrast(1.01);
-    backdrop-filter: blur(var(--we-sidebar-blur)) saturate(var(--we-sidebar-saturate)) brightness(var(--we-glass-brightness, 1.04)) contrast(1.01);
   }
-  body[data-ds-dark-theme][data-we-sidebar-glass] [data-sidebar-right-panel][data-sidebar-right-open]::before {
+  body[data-ds-dark-theme][data-we-sidebar-glass] [data-sidebar-right-panel][data-sidebar-right-open]:where([data-we-surface-runtime="right-sidebar"]) {
     background-color: color-mix(in srgb,
       var(--we-readability-base) calc(var(--we-readability-floor) * 100%),
       color-mix(in srgb, var(--we-sidebar-color) calc(var(--we-sidebar-tint) * 0.65), transparent) calc((1 - var(--we-readability-floor)) * 100%)) !important;
+  }
+  /* fullscreen 是宿主明确声明的前景 dock 模式；只抬面板自身，不改共享祖先或第三方节点。 */
+  body[data-we-glass-page] [data-sidebar-right-panel="fullscreen"][data-sidebar-right-open]:where([data-we-surface-runtime="right-sidebar"]) {
+    z-index: var(--dsh-dockkit-dock-layer, 40);
   }
   /* Closed state: the host's own container carries no background — keep ours
      off too, whatever the master-switch state (#107). */
@@ -438,7 +391,7 @@ const CSS_SIDEBAR = `  /* ── 左侧栏液态玻璃（宿主原生左栏的�
   /* No backdrop-filter support: near-opaque tinted plate, same policy as the
      better-sidebar glass above. */
   @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-    body[data-we-sidebar-glass] [data-sidebar-right-panel][data-sidebar-right-open]::before {
+    body[data-we-sidebar-glass] [data-sidebar-right-panel][data-sidebar-right-open]:where([data-we-surface-runtime="right-sidebar"]) {
       background-color: color-mix(in srgb, var(--we-sidebar-color) 92%, transparent) !important;
       backdrop-filter: none !important;
       -webkit-backdrop-filter: none !important;
@@ -465,21 +418,15 @@ const CSS_SIDEBAR = `  /* ── 左侧栏液态玻璃（宿主原生左栏的�
      The editor / preview tabs render inside the NATIVE right sidebar
      ([data-sidebar-right-panel]) — extend the same plate to content surfaces
      there, or 内容面透明度 / 内容面底色 stop responding for those tabs. */
-  body[data-we-sidebar-glass] [data-dsh-better-sidebar] .cm-editor,
-  body[data-we-sidebar-glass] [data-dsh-better-sidebar] .xterm,
-  body[data-we-sidebar-glass] [data-sidebar-right-panel][data-sidebar-right-open] .cm-editor,
-  body[data-we-sidebar-glass] [data-sidebar-right-panel][data-sidebar-right-open] .xterm,
-  /* ── 阅读文件页（issue 现场："侧边栏阅读文件页面的背景底色设置被删除了"）───────
-     那一页是宿主的 dsh-client-ui-sidebar-documentpreview，它的根是
-     [data-document-preview]（实测自 asar：TextPreview 的 preview 节点），
-     **原本不在上面这条内容面列表里** ⇒ 「内容面透明度 / 内容面底色」两个旋钮
-     在阅读页上从来不生效（用户因此以为设置被删了）。这里把它接进同一张底板：
-     同一条 --we-content-surface-* 配方、同一条可读性地板。
-     ⚠️ 只作用于**打开态**的右栏（与上面两条同一纪律，见上方 #107 的注释）；门户型
-     预览（图片灯箱等）不在 [data-sidebar-right-open] 里，不受影响。
-     ⚠️ 本段不许出现反引号：整套样式文本是模板字符串（构建期拼接）。 */
-  body[data-we-sidebar-glass] [data-sidebar-right-panel][data-sidebar-right-open] [data-document-preview],
-  body[data-we-sidebar-glass] [data-dsh-better-sidebar] [data-document-preview] {
+  body[data-we-sidebar-glass] :where([data-we-surface-runtime="content"]) {
+    background-color: color-mix(in srgb, var(--we-content-surface-color, var(--we-panel-color, #1e1f26)) max(calc(var(--we-readability-floor) * 100%), var(--we-content-surface-alpha, 88%)), transparent) !important;
+  }
+  /* 阅读文件页的**兜底底板**（同一张内容面配方）：表面策略系统在"认领失败"时会把
+     data-we-surface-runtime 撤掉（preserve / hidden / 多实例不猜），那时这一页就完全
+     没有底色 —— 而它是最需要稳定阅读底的一张。这条规则按**锚点**直接给底，
+     与上面那条策略规则同配方、同可读性地板 ⇒ 两套都在时观感一致，策略接管时覆盖它。
+     ⚠️ 只作用于打开态右栏（与官方右栏那组同一纪律，见上方 #107 的注释）。 */
+  body[data-we-sidebar-glass] [data-sidebar-right-panel][data-sidebar-right-open] [data-document-preview] {
     background-color: color-mix(in srgb, var(--we-content-surface-color, var(--we-panel-color, #1e1f26)) max(calc(var(--we-readability-floor) * 100%), var(--we-content-surface-alpha, 88%)), transparent) !important;
   }
 
