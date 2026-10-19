@@ -298,14 +298,14 @@ export function subpackageModules() {
 
 /**
  * 子包行的宿主入口**双向对账**（纯函数，供守卫做负对照 —— 合成输入必须喂**同一个**判据）：
- *   · patch 里每条子包行（`<主包名>-<pkg>`，裸名）都必须在
+ *   · patch 里每条独立子包行（排除主包与子路径行）都必须在
  *     `packages/<dir>/package.json` 里被 `name` 逐字认领（否则是死行）；
  *   · 每个包都必须有行（只看磁盘 ⇒ 还没登记的包会被当成"运行时会注册的行"，§2.2 的静默失效）；
  *   · 认领到的 `main` 必须解析到**磁盘上存在**的文件（缺入口 = 行装不起来，`MAIN_MODULES` 会静默少一行）。
  * `fileExists(rel)` 注入 ⇒ 合成 "main 指向不存在的路径" 也能走同一条判据。返回违规清单（空 = 干净）。
  */
 export function subpackageModuleViolations(rows, packages, fileExists) {
-  const rowSet = new Set(rows.filter((n) => n.startsWith(PKG_NAME + '-') && !n.includes('/')));
+  const rowSet = new Set(rows.filter((n) => n !== PKG_NAME && !n.includes('/')));
   const bad = [];
   const claimed = new Set();
   for (const p of packages) {
