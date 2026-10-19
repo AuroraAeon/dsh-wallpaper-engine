@@ -3,7 +3,7 @@
 「关于」页签里那两张二维码与「更新公告」配图的**运行时字节**。与本目录并列的 `lib/fontsets/`（随包预设）、
 `lib/webwallgl/`（随包渲染页）同一口径：**随包发布、由插件自己的路由提供**。
 
-- 提供方：`lib/routes/about-qr.js`（`GET/HEAD <BASE>/about-qr/<文件名>`，白名单 + ETag/304）。
+- 提供方：`packages/about-notice/lib/routes/about-qr.js`（`GET/HEAD <BASE>/about-qr/<文件名>`，白名单 + ETag/304）。
   客户端只存路径（`src/about-assets.js`），`<img src>` 直接指过来。
 - **为什么不用内联 base64**：那版把两张图压进 `lib/client.js`（+240KB，每次冷启动都要解析这串
   字符），而它们与面板逻辑毫无关系 —— 拆成静态文件后 bundle 回到原大小，换码也只需要替换这里的
@@ -18,7 +18,7 @@
 | 文件 | 内容 | 派生自 |
 |---|---|---|
 | `qq-group.png` | QQ 群「DSHWE \| LLM 讨论群」二维码（520×517） | `assets/about/qq-group-dshwe-llm-702x852.png` |
-| `douyin-group.png` | 抖音群「dsh 交流群」（群号 252729465001）二维码（520×520） | `assets/about/douyin-group-dsh-1044x1026.png` |
+| `douyin-group.png` | 抖音群「dshwe 交流 2 群」（群号 917001335502）二维码（520×519） | `assets/about/douyin-group-dshwe-2-748x748.png` |
 | `update-notice.jpg` | v1.3.0 更新公告配图「求个 star 喵！」GitHub 求星插画（720×720） | `assets/about/update-notice-star-1254x1254.png` |
 
 派生口径（只取码区 + 缩到 520px 宽 + 128 色调色板）与验证方式（逐像素比对 + macOS Vision 扫码）

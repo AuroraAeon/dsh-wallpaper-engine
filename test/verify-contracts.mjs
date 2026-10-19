@@ -23,6 +23,8 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { panelText } from './tools/src-scope.mjs';
+
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (rel) => readFileSync(join(ROOT, rel), 'utf8');
 let failed = 0;
@@ -66,7 +68,10 @@ const pkg = JSON.parse(read('package.json'));
 const hasNodeEngine = (p) => Boolean(p && p.engines && p.engines.node);
 {
   // 只扫会被发布的宿主代码（浏览器半边不跑在 Node 上，不能拿它推下限）
-  const hostSrc = ['lib/index.js', 'lib/media/legacy.js', 'lib/media/index.js', 'lib/media/supervisor.js']
+  // ⚠️ 媒体子系统在本分支住**组件行**（P2 拆包）：面要跟着实现走，否则'是否用了有版本要求的 API'
+// 会推导出 0（判据非空转自检立刻报红——这正是它该做的）。
+const hostSrc = ['lib/index.js', 'packages/media-bridge/lib/legacy.js', 'packages/media-bridge/lib/backend.js',
+  'packages/media-bridge/lib/supervisor.js', 'packages/media-bridge/lib/index.js']
     .map((f) => { try { return read(f); } catch { return ''; } }).join('\n');
   const need = requiredFloor(hostSrc);
   const declared = pkg.engines && pkg.engines.node;
@@ -103,16 +108,33 @@ function clientMimeList(src, name) {
   const m = new RegExp('const\\s+' + name + '\\s*=\\s*\\[([^\\]]*)\\]').exec(src);
   return m ? uniq(quoted(m[1])) : null;
 }
-/** 客户端所有 `accept: "a,b,c"` 列表。 */
+/** 客户端所有 `accept: "a,b,c"` 列表（面板模块造选择器时写的那个选项）。 */
 function acceptLists(src) {
   return [...src.matchAll(/accept:\s*['"]([^'"]+)['"]/g)]
     .map((m) => uniq(m[1].split(',').map((s) => s.trim()).filter(Boolean)));
 }
+/** 客户端**选图腿自己写下的赋值点** `input.accept = …`（`src/client.js` 的 pickImageFile）。
+ *  ⚠️ 右侧**不一定是字面量**（issue #185 之后是 `accept || IMAGE_DIRECT_ACCEPT`）⇒ 这里抽的是
+ *  "整条赋值语句"，由调用方按形态判定（字面量 or 常量名兜底）。 */
+function acceptAssignments(src) {
+  return [...src.matchAll(/input\.accept\s*=\s*([^;\n]+)/g)].map((m) => m[1].trim());
+}
+/** 负对照用的变异体：把每个 `input.accept` 清单**砍掉最后一项**。 */
+function weakenedAcceptAssignments(src) {
+  return String(src).replace(/(input\.accept\s*=\s*)['"]([^'"]+)['"]/g,
+    (_, head, list) => head + '"' + list.split(',').slice(0, -1).join(',') + '"');
+}
 
-const hostSrc = read('lib/index.js');
+// ⚠️ BASE 的真源不在门面正文（P0 库化后由 lib/host-boot.js 定义、门面 import）
+// ⇒ 面 = 门面 + host-boot + 内核（判据的'两侧一致'不变量不变）。
+const hostSrc = read('lib/index.js') + '\n' + read('lib/host-boot.js') + '\n' + read('lib/kernel/host-kernel.js');
+// ⚠️ 读点更正（T2 #8 / task-10 G）：`UPLOAD_EXT` / `CUSTOM_FRAME_EXT` 的真源在本分支是
+//    `lib/media/media-dirs.js`（上游同名副本 `lib/asset-paths.js` 已不在 import 图上）⇒ 只改
+//    "读哪个文件"（下面 hostMimeKeys 的两个实参），判据与期望值一字未改。`hostSrc` 仍供 BASE 等其余判据。
+const hostAssetsSrc = read('lib/media/media-dirs.js');
 const apiSrc = read('src/api-client.js');
 const clientSrc = read('src/client.js');
-const tabsSrc = read('src/panel-tabs.js');
+const tabsSrc = panelText();
 
 {
   const a = baseOf(hostSrc);
@@ -126,9 +148,9 @@ const tabsSrc = read('src/panel-tabs.js');
 
 {
   const clientUp = clientMimeList(clientSrc, 'UPLOAD_TYPES');
-  const hostUp = hostMimeKeys(hostSrc, 'UPLOAD_EXT');
+  const hostUp = hostMimeKeys(hostAssetsSrc, 'UPLOAD_EXT');
   const clientFrame = acceptLists(tabsSrc);
-  const hostFrame = hostMimeKeys(hostSrc, 'CUSTOM_FRAME_EXT');
+  const hostFrame = hostMimeKeys(hostAssetsSrc, 'CUSTOM_FRAME_EXT');
 
   // 覆盖断言：两个集合都必须非空 —— 否则"两个空集相等"会让下面的相等断言恒真
   check('上传 MIME：两侧都解析出非空集合（判据非空转）',
@@ -143,23 +165,30 @@ const tabsSrc = read('src/panel-tabs.js');
     Boolean(hostFrame && hostFrame.length >= 3) && Boolean(match),
     'host=' + (hostFrame || []).join(',') + ' client=' + clientFrame.map((l) => l.join(',')).join(' | '));
 
-  // 自定义会话头像（「扩展」页签一号模块）同一条判据：客户端那一份 accept 列表在
-  // `src/client.js` 的 onAvatarPick 里（文件选择器是那儿造的），宿主那一份是 lib/index.js 的
-  // AVATAR_EXT —— 两处不一致的失效模式与自定义画面一样：选择器收得下、宿主判 415（静默失败）。
-  const hostAvatar = hostMimeKeys(hostSrc, 'AVATAR_EXT');
-  const avatarMatch = clientFrame.find((l) => hostAvatar && sameSet(l, hostAvatar));
-  check('会话头像 MIME：客户端有一个 accept 列表与宿主 AVATAR_EXT 键集一致',
-    Boolean(hostAvatar && hostAvatar.length >= 3) && Boolean(avatarMatch),
-    'host=' + (hostAvatar || []).join(',') + ' client=' + clientFrame.map((l) => l.join(',')).join(' | '));
+  // 自定义会话头像（「扩展」页签一号模块）与吉祥物立绘（「系统」页签 · 聊天吉祥物）走的是
+  // **同一条选图腿**（`src/client.js` 的 pickImageFile）。宿主那边是 lib/index.js 的
+  // AVATAR_EXT / MASCOT_EXT；不一致的失效模式同自定义画面：选择器收得下、宿主判 415（静默失败）。
+  //
+  // ⚠️ issue #185（头像支持 SVG 等格式）之后，accept **不再是"等于宿主表"**，而是分成两层：
+  //   · **直传格式**（`IMAGE_DIRECT_ACCEPT`）—— 客户端原样上传、宿主认、**原样落盘**。
+  //     这一层的键集必须与宿主表**逐个相等**（老契约，一个字都没松）。
+  //   · **仅光栅化格式**（`IMAGE_RASTER_ACCEPT`）—— 选择器收得下，但**绝不会原样落盘**：
+  //     它经 canvas 解码成像素、再由同一个编码器重编成直传格式。宿主**不认识也不该认识**
+  //     它们（`/avatar/<side>` 与页面同源，原样存一份 SVG 就是同源存储型 XSS）。
+  // 判据因此守三件事：① 直传层 == 宿主表（两侧都比）；② 仅光栅化层与宿主表**不相交**
+  //（加了 SVG 却没光栅化、直接落盘 ⇒ 这里当场红）；③ 选图腿真的把两层都挂上了（不是造了个
+  // 常量没人用）。
+  const clientAccept = acceptAssignments(clientSrc);
+  /** 某个 accept 清单里是否存在与宿主表一致的列表（正判据与负对照共用这一条）。 */
+  const acceptCovers = (lists, hostTable) =>
+    Boolean(hostTable && hostTable.length >= 3) && lists.some((l) => sameSet(l, hostTable));
+  check('覆盖面：选图腿确实写下了 input.accept 赋值点（抽取器退化 ⇒ 当场红，不静默恒真）',
+    clientAccept.length >= 1, '赋值点=' + (clientAccept.join(' | ') || '(没抽到)'));
 
-  // 自定义吉祥物立绘（「系统」页签 · 聊天吉祥物）同一条判据：客户端那一份 accept 列表
-  // 在 `src/client.js` 的 pickImageFile 里（头像与立绘共用同一条选图腿），宿主那一份是
-  // lib/index.js 的 MASCOT_EXT。
+  const hostAvatar = hostMimeKeys(hostSrc, 'AVATAR_EXT');
   const hostMascot = hostMimeKeys(hostSrc, 'MASCOT_EXT');
-  const mascotMatch = clientFrame.find((l) => hostMascot && sameSet(l, hostMascot));
-  check('吉祥物立绘 MIME：客户端有一个 accept 列表与宿主 MASCOT_EXT 键集一致',
-    Boolean(hostMascot && hostMascot.length >= 3) && Boolean(mascotMatch),
-    'host=' + (hostMascot || []).join(',') + ' client=' + clientFrame.map((l) => l.join(',')).join(' | '));
+  // ⚠️ 两层的**真源**住在 `src/avatar-import.js`（纯函数模块，与选图腿同一条链）。
+  // 判据必须读真源、不能读产物或抄一份：抄的那份漂了判据照样绿。
 
   // 吉祥物**显示盒上限**的单源契约：`MASCOT_BOX_MAX_W/H` 只住在 lib/settings-schema.js
   // （`mascotBox` 档用它限量级），客户端上传腿与 ropeArtOf 经构建期内联引用同一对 ——
@@ -181,28 +210,40 @@ const tabsSrc = read('src/panel-tabs.js');
     !sameSet(['image/jpeg', 'image/png', 'video/mp4', 'image/webp'], ['image/jpeg', 'image/png', 'video/mp4']));
   check('negative control: 自定义画面 accept 少一种会被判出',
     !sameSet(['image/png', 'image/jpeg'], ['image/jpeg', 'image/png', 'image/webp']));
-  check('negative control: 会话头像 accept 多一种会被判出',
-    !sameSet(['image/png', 'image/jpeg', 'image/webp', 'image/gif'], ['image/jpeg', 'image/png', 'image/webp']));
+  // 负对照：把**变异过的客户端源码**喂进同一条判据 —— 选图腿的 accept 各砍掉最后一项，
+  // 头像与立绘两条契约都必须判坏；空域同样必须判坏（否则判据可能只是"没有可比列表"恒真）。
+  const weakenedClient = weakenedAcceptAssignments(clientSrc);
+  check('negative control: 客户端选图腿少写一种 MIME（或域被抽空）会被判出',
+    !acceptCovers(acceptAssignments(weakenedClient), hostAvatar)
+    && !acceptCovers(acceptAssignments(weakenedClient), hostMascot)
+    && !acceptCovers([], hostAvatar));
 }
 
 {
   // 会话头像路由（lib/routes/avatar.js）的形态判据。它跟另两条收体路由的关键差别是
   // **不走流式落盘**：上限只有 8MB（客户端导入前已按 512px 缩过一轮）⇒ 走共享读体器 +
   // 原子落盘，内联收集器那条棘轮因此不增（见 test/verify-body-caps.mjs 的两条棘轮）。
-  const routeSrc = read('lib/routes/avatar.js');
-  const hostNow = read('lib/index.js');
-  // `const json = (code, payload) => sendJson(res, code, payload);` —— 恰好**三个**实参 ⇒ 走共享实现的
+  // ⚠️ 头像路由族在本分支归**组件行** mascot-avatar（P2 拆包；实现入包、主包不留注册点）。
+  // P-F（2026-10-16）：该组件行已出户到 `packages/mascot-avatar/`，实现跟着走。
+  const routeSrc = read('packages/mascot-avatar/lib/routes/avatar.js');
+  // ⚠️ 读点更正（T2 #8 / task-10 G）：`AVATAR_*` / `MASCOT_*` / `avatarDir()` / `mascotDir()` 的真源
+  //    在本分支是 `lib/media/media-dirs.js`（上游同名副本 `lib/asset-paths.js` 已不在 import 图上）
+  //    ⇒ 本块只改"读哪个文件"，下面六条断言与期望值一字未改。
+  const hostNow = read('lib/media/media-dirs.js');
+  // `const json = (code, payload) => http.sendJson(res, code, payload);` —— 恰好**三个**实参 ⇒ 走共享实现的
   // 默认 `no-store`。四参形态（`sendJson(res, code, payload, null)` 之类）**不**匹配：那等于把这条
   // 错误路径改回可缓存，正是本判据要挡的（`no-store` 的唯一落点是 lib/json-response.js）。
-  const THIN_JSON_ALIAS = /=>\s*sendJson\(res,\s*[^,()]+,\s*[^,()]+\)\s*;/;
+  // P-F：出户后的组件路由族经注入面 `http` 调共享实现（零主包说明符）⇒ 接收者多一层 `http.`。
+  const THIN_JSON_ALIAS = /=>\s*(?:[A-Za-z_$][\w$]*\.)?sendJson\(res,\s*[^,()]+,\s*[^,()]+\)\s*;/;
   check('头像路由：只认两个 side（路径段当白名单查，不拼进文件名）',
     /AVATAR_SIDES\.includes\(side\)/.test(routeSrc) && /AVATAR_SIDES = \['user', 'ai'\]/.test(hostNow));
   check('头像路由：收体走共享读体器 + 原子落盘（不是第三个流式豁免）',
-    // ⚠️ 这条判据的**字面量形状**有讲究：verify-package-files 的 P5 会扫本文件里的 import 规格，
-    // 写成一个带引号的 `from '…/http-body.js'` 会被它当成裸包名（转义后的 `\.\.` 不以点开头）
-    // ⇒ 这里用 `\s+['"]…['"]` 形态描述那条 import（探测器的 `from\s+` 匹配不到它）。
-    /import\s*\{[^}]*bodyReader[^}]*\}\s+from\s+['"]\.\.\/http-body\.js['"]/.test(routeSrc)
-    && /bodyReader\(req, \{/.test(routeSrc) && /maxBytes: AVATAR_MAX_BYTES/.test(routeSrc)
+    // P-F：`mascot-avatar` 出户后，共享实现（`bodyReader` / `sendJson`）不再由本族 import 主包，
+    // 改由注入面 `http` 送达（出户硬约束 = 零主包说明符，见 test/verify-subpackage-purity.mjs）
+    // ⇒ 这里改判"经 http 调用"，并把 `http` 必须登记进 DEPS 一起钉住。
+    // ⚠️ 保持不写带引号的 `from '…/http-body.js'` 字面（verify-package-files 的 P5 会把它当裸包名）。
+    /DEPS = \[[^\]]*'http'\]/.test(routeSrc) && /http\.bodyReader\(req, \{/.test(routeSrc)
+    && /maxBytes: AVATAR_MAX_BYTES/.test(routeSrc)
     && /atomicWriteFileP\(join\(dir, name\), body\)/.test(routeSrc));
   check('头像路由：换图即清兄弟（同 side 的旧文件先删，否则屏上还是旧图）',
     /name\.slice\(0, side\.length \+ 1\) !== side \+ '-'/.test(routeSrc)
@@ -217,13 +258,13 @@ const tabsSrc = read('src/panel-tabs.js');
     /function avatarDir\(\) \{ return ensureDirOnce\(join\(pluginDataDir\(\), 'avatars'\)\); \}/.test(hostNow)
     && /AVATAR_MAX_BYTES = 8 \* 1024 \* 1024/.test(hostNow));
 
-  // 吉祥物立绘族（lib/routes/mascot.js）：与头像同形，但**只有一张**（导入即覆盖）。
-  const mascotRouteSrc = read('lib/routes/mascot.js');
+  // 吉祥物立绘族（packages/mascot-avatar/lib/routes/mascot.js）：与头像同形，但**只有一张**（导入即覆盖）。
+  // P-F（2026-10-16）：随 `mascot-avatar` 出户，读点跟着实现走（同头像那条）。
+  const mascotRouteSrc = read('packages/mascot-avatar/lib/routes/mascot.js');
   check('立绘路由：形态与头像同族（共享读体器 + 原子落盘，不是新的流式豁免）',
-    // ⚠️ 与头像那条同一个理由：写成一个带引号的 `from '…/http-body.js'` 会被 verify-package-files
-    //    的 P5 当成裸包名（转义后的 `\.\.` 不以点开头）⇒ 用 `\s+['"]…['"]` 形态描述它。
-    /import\s*\{[^}]*bodyReader[^}]*\}\s+from\s+['"]\.\.\/http-body\.js['"]/.test(mascotRouteSrc)
-    && /bodyReader\(req, \{/.test(mascotRouteSrc) && /maxBytes: MASCOT_MAX_BYTES/.test(mascotRouteSrc)
+    // 与头像那条同款：出户后经注入面 `http` 调共享实现，不写带引号的 `from '…/http-body.js'` 字面。
+    /DEPS = \[[^\]]*'http'\]/.test(mascotRouteSrc) && /http\.bodyReader\(req, \{/.test(mascotRouteSrc)
+    && /maxBytes: MASCOT_MAX_BYTES/.test(mascotRouteSrc)
     && /atomicWriteFileP\(join\(dir, name\), body\)/.test(mascotRouteSrc));
   check('立绘路由：**只有一张**（导入前清同族旧文件 ⇒ 再导入即覆盖）',
     /name\.slice\(0, 'mascot-'\.length\) !== 'mascot-'/.test(mascotRouteSrc)
@@ -245,14 +286,15 @@ const tabsSrc = read('src/panel-tabs.js');
   // （手抄就会漂：客户端放行、宿主拒收，反之亦然 —— 那是最难查的一类"看起来没反应"）。
   const kernel = read('lib/settings-schema.js');
   const storeSrc = read('src/fontset-store.js');
-  const editorSrc = read('src/fontset-editor.js');
-  const routeSrc = read('lib/routes/fontsets.js');
+  const editorSrc = read('packages/fonts/src/fontset-editor.js');
+  // P-A：字体集族已随子包行出户（packages/fonts/lib/routes/fontsets.js），判据跟着实现走。
+  const routeSrc = read('packages/fonts/lib/routes/fontsets.js');
   const tag = /const\s+FONTSET_SCHEMA_TAG\s*=\s*'([^']+)'\s*\+\s*FONTSET_SCHEMA_VERSION/.exec(kernel);
   check('版本标记 = 前缀 + 版本常量，且定义在共享内核（判据非空转）',
     Boolean(tag) && /const\s+FONTSET_SCHEMA_VERSION\s*=\s*\d+/.test(kernel), tag ? tag[1] + 'N' : '(没解析到)');
   // 字面量只许出现在共享内核：其余会 import 的两半都只能写常量名。
-  const literalSites = ['lib/index.js', 'lib/routes/fontsets.js', 'src/fontset-store.js',
-    'src/fontset-editor.js', 'src/client.js', 'src/api-client.js']
+  const literalSites = ['lib/index.js', 'packages/fonts/lib/routes/fontsets.js', 'src/fontset-store.js',
+    'packages/fonts/src/fontset-editor.js', 'src/client.js', 'src/api-client.js']
     .filter((f) => /dsh-we\/fontset@/.test(read(f)));
   check('字体集的版本字面量只出现在共享内核（两半都引用常量名，不手抄）',
     literalSites.length === 0, literalSites.join(',') || '零处手抄');
@@ -362,7 +404,7 @@ console.log('\n④ CI 平台矩阵（平台条件分支的两半都要有覆盖�
 
 // ── ⑤ CI 工作流与 **GitHub 解析器**的契约：工作流级表达式不得引用作业作用域的上下文 ──
 // 这是"本地全绿、推上去 0 秒失败且**一个作业都没有**"那一类失败（页面只说
-// "This run likely failed because of a workflow file issue"）。实测（2026-10-02）：
+// "This run likely failed because of a workflow file issue"）。实测：
 //   concurrency:
 //     group: verify-${{ github.ref }}-${{ matrix.os }}      ← 工作流级！
 // `matrix` 只在**作业**上下文里存在 ⇒ GitHub 在启动阶段就把整个工作流文件判为无效。
@@ -381,7 +423,7 @@ console.log('\n⑤ CI 工作流的工作流级表达式（作业作用域上下�
     const bad = [];
     for (const ctx of JOB_SCOPED) {
       const re = new RegExp('\\$\\{\\{[^}]*\\b' + ctx + '\\.', 'g');
-      for (const _ of head.match(re) || []) bad.push(ctx);
+      bad.push(...(head.match(re) || []).map(() => ctx));
     }
     return uniq(bad);
   };

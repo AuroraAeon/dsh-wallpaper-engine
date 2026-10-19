@@ -54,6 +54,8 @@
 //   The optional argument points the parser at another bundle; the negative
 //   control uses it to prove the assertions fail on a mutated copy.
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { cssBodyOf } from './tools/src-scope.mjs';
 
 const results = [];
 function check(name, ok, detail) {
@@ -61,7 +63,7 @@ function check(name, ok, detail) {
   console.log((ok ? 'PASS' : 'FAIL') + ' | ' + name + (detail ? ' | ' + detail : ''));
 }
 
-const CLIENT = process.argv[2] || new URL('../lib/client.js', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
+const CLIENT = process.argv[2] || fileURLToPath(new URL('../lib/client.js', import.meta.url));
 const SRC = readFileSync(CLIENT, 'utf8');
 
 // ── source → the stylesheet the plugin injects ──────────────────────────────
@@ -70,8 +72,10 @@ const FLOOR = {
   dark: Number((SRC.match(/const READABILITY_FLOOR_DARK = ([\d.]+);/) || [])[1]),
 };
 // ⚠️ 锚点锚在行首且容忍缩进（产物把内联模块整段缩进过）：散文里出现同样的声明字面量会把锚点带偏。
-const CSS_BODY_MATCH = SRC.match(/^\s*const CSS = `([^`]*)`;/m);
-const CSS_BODY = CSS_BODY_MATCH ? CSS_BODY_MATCH[1] : '';
+// （刀3）：样式表由单个 CSS 模板拆成 8 个域模板 + 组装点 ⇒ 取文改走 cssBodyOf
+// （按声明顺序把族内每个域模板拼回一份 CSS 体）。与旧单模板取文**逐字节相同**（实测 276,804 B），
+// 且一个模板都取不到时会**抛错**，不再像旧写法那样静默返回空串让本文件全部判据恒真。
+const CSS_BODY = cssBodyOf(SRC);
 let CSS = '';
 let cssError = null;
 try {
@@ -463,7 +467,7 @@ function main() {
       && declValue(x.body, 'background-color'));
     return r ? declValue(r.body, 'background-color') : '';
   };
-  const panelBg = bgOf('[class*="_panel"]', 'data-dsh-better-sidebar');
+  const panelBg = bgOf('[data-sidebar-right-panel]', 'data-we-surface-runtime="right-sidebar"');
   const leftBg = bgOf('div:has(> [data-slot="sidebar"])');
   // ⚠️ 合并 #132 对本判据的口径修正：WIP 原版要求两侧**色染权重**也逐字相等 ——
   //    那是 WIP 时代左栏读 `--we-glass-alpha` 的实现。#132 把左栏改成按面独立的
@@ -526,39 +530,29 @@ function main() {
     Boolean(leftColRule) && /--dsw-alias-border-l3:\s*rgba\(180, 180, 180, var\(--we-border-alpha/.test(leftColRule.body),
     leftColRule ? '映射在场' : '取不到左栏规则');
 
-  // ── S2c: 左栏的模糊必须在 ::before 上（issue #131：fixed 包含块）────────────
-  // CSS 规范：非 none 的 backdrop-filter 会让元素成为**其后代 position:fixed 元素的
-  // 包含块**。宿主在 Windows 标题栏模式下把「收起 / 展开侧边栏」按钮设成 fixed ——
-  // 模糊画在列自身上时，按钮改成相对列定位（列被标题栏 padding 推下去 + 收起时
-  // overflow:hidden 裁切）⇒ 按钮下移 / 不可见。修法：模糊只留在 ::before（无后代，
-  // 永远不会成为任何 fixed 元素的包含块），列自己拿 position:relative + z-index:0。
-  // 判据 = 三条声明形态 + 负对照（把模糊种回列自身必须判红）。谓词与主判据同源
-  // （先剥注释再找声明）—— 否则「注释里提到 backdrop-filter」会被误判，负对照失去意义。
-  // ⚠️ 本块**自足**：左栏规则的取用在本块内自己算一遍（不依赖别处同名 const ——
-  //    本块要能独立成立，便于按 issue 拆分提交与单独回归）。
+  // 根级装饰叶节点承担模糊，宿主列不增加定位和层叠上下文。
   const s2cLeftColRule = rules.find((r) => r.header.includes('div:has(> [data-slot="sidebar"])')
     && declValue(r.body, 'background-color'));
   const blurDeclaredOn = (body) => /(^|[;\s])backdrop-filter\s*:/.test(String(body).replace(/\/\*[\s\S]*?\*\//g, ''));
   const leftColBlurOnSelf = s2cLeftColRule ? blurDeclaredOn(s2cLeftColRule.body) : null;
-  const leftBeforeRule = rules.find((r) => r.header.includes('div:has(> [data-slot="sidebar"])::before'));
-  const leftBeforeBlur = leftBeforeRule ? declValue(leftBeforeRule.body, 'backdrop-filter') : null;
+  const plateRule = rules.find((r) => r.header.includes('[data-we-surface-plate="left-sidebar"]') && !r.header.includes('fallback'));
+  const plateBlur = plateRule ? declValue(plateRule.body, 'backdrop-filter') : null;
   const leftColPosition = s2cLeftColRule ? declValue(s2cLeftColRule.body, 'position') : null;
   const leftColZ = s2cLeftColRule ? declValue(s2cLeftColRule.body, 'z-index') : null;
-  check('S2c 左栏的 backdrop-filter 只画在 ::before（fixed 包含块修复，issue #131）',
-    leftColBlurOnSelf === false
-      && Boolean(leftBeforeRule) && /blur\(/.test(String(leftBeforeBlur))
-      && String(leftColPosition).trim() === 'relative' && String(leftColZ).trim() === '0',
-    'self-blur=' + leftColBlurOnSelf + ' ::before=' + (leftBeforeRule ? 'present' : 'MISSING')
+  check('S2c 左栏模糊只由装饰叶节点承担，不改变宿主定位或新增围栏',
+    leftColBlurOnSelf === false && Boolean(plateRule) && /blur\(/.test(String(plateBlur))
+      && leftColPosition === null && leftColZ === null,
+    'self-blur=' + leftColBlurOnSelf + ' plate=' + Boolean(plateRule)
       + ' position=' + String(leftColPosition) + ' z-index=' + String(leftColZ));
   check('S2c 负对照：把 backdrop-filter 种回列自身，同一条判据必须判红（注释里的提及不算）',
     blurDeclaredOn('background-color: red; backdrop-filter: blur(4px);') === true
       && blurDeclaredOn('background-color: red; /* backdrop-filter: blur(4px); */') === false);
-  check('S2c2 软件光栅器回退把 ::before 的模糊也显式关掉（不留不会生效的声明）',
-    rules.some((r) => r.header.includes('[data-we-glass-fallback][data-we-glass-page][data-we-left-sidebar]')
-      && r.header.includes('::before')
+  check('S2c2 软件光栅器回退将根级叶节点模糊显式关掉',
+    rules.some((r) => r.header.includes('[data-we-glass-fallback]')
+      && r.header.includes('[data-we-surface-plate]')
       && /backdrop-filter:\s*none\s*!important/.test(r.body)));
 
-  // ── TB: 标题栏玻璃的锚点与两层结构（2026-10-06 回归）──────────────────────────
+  // ── TB: 标题栏玻璃的锚点与两层结构（回归）──────────────────────────
   // 三条故障的来龙去脉（死类名锚点 / 嵌套 :has() 让逗号列表**整条**失效 / 底色与模糊同层
   // 导致的色差）**只写在 src/styles.js 的标题栏注释块**，此处不复述 —— 判据只钉结论：
   //   TB1 死锚点 · TB2a/TB2b 两层互斥 · TB3 壳层门 · TB4 六条同色声明 · TB4a 恒定釉光 ·
@@ -623,15 +617,34 @@ function main() {
   const tbNorm = (s) => String(s).replace(/--we-titlebar-alpha/g, 'ALPHA')
     .replace(/--we-left-sidebar-alpha/g, 'ALPHA').replace(/\s*!important/g, '')
     .replace(/\s+/g, ' ').trim();
-  const tbDiffs = COLOR_DECLS
-    .map((k) => [k, tbNorm(declValue(s2cLeftColRule && s2cLeftColRule.body, k)), tbNorm(declValue(tbLightRule && tbLightRule.body, k))])
-    .filter(([, a, b]) => a !== b);
+  // 判据本体：两条声明值同形（归一后逐字相等）。阳性判据与负对照**共用**它 —— 老写法
+  // 只拿 tbNorm 比两个自造字面量（拿归一器测字面量），判据本体根本没被喂过。
+  const sameDecl = (a, b) => tbNorm(a) === tbNorm(b);
+  // 真判据：取两份**规则体**，逐条经 declValue 读出声明值，返回不同形的清单（空 = 同形）。
+  const tbDiffs = (bodyA, bodyB) => COLOR_DECLS
+    .map((k) => [k, declValue(bodyA, k), declValue(bodyB, k)])
+    .filter(([, a, b]) => !sameDecl(a, b));
+  const tbLeftBody = s2cLeftColRule ? s2cLeftColRule.body : '';
+  const tbLightBody = tbLightRule ? tbLightRule.body : '';
+  const tbRealDiffs = tbDiffs(tbLeftBody, tbLightBody);
   check('TB4 顶栏与左栏**逐条同形**（决定颜色的六条声明逐字相等 ⇒ 不可能有色差）',
-    Boolean(tbLightRule) && Boolean(s2cLeftColRule) && tbDiffs.length === 0,
-    tbDiffs.length ? tbDiffs.map(([k, a, b]) => k + ': ' + a + ' ≠ ' + b).join(' | ')
+    Boolean(tbLightRule) && Boolean(s2cLeftColRule) && tbRealDiffs.length === 0,
+    tbRealDiffs.length ? tbRealDiffs.map(([k, a, b]) => k + ': ' + tbNorm(a) + ' ≠ ' + tbNorm(b)).join(' | ')
       : (COLOR_DECLS.length + ' colour declarations identical'));
-  check('TB4 负对照：给顶栏改一个字面量，同一条判据必须判红',
-    tbNorm('color-mix(in srgb, #fff 50%, transparent)') !== tbNorm('color-mix(in srgb, #eee 50%, transparent)'));
+  // 负对照：拿**真规则体**把一条声明的字面量改掉，把变异体喂回同一条判据 ⇒ 必须判红。
+  const tbMutantKey = COLOR_DECLS.find((k) => declValue(tbLightBody, k) !== null);
+  const tbMutantBody = tbMutantKey
+    ? tbLightBody.replace(new RegExp('(^|[\\s;{])' + tbMutantKey + ':\\s*[^;}]+', 'i'),
+      '$1' + tbMutantKey + ': rgb(1, 2, 3)')
+    : '';
+  const tbMutantDiffs = tbDiffs(tbLeftBody, tbMutantBody);
+  check('TB4 负对照：给顶栏真规则改一个字面量，同一条判据必须判红',
+    Boolean(tbMutantKey) && Boolean(tbLightRule) && tbMutantBody !== tbLightBody
+      && tbMutantDiffs.length > 0,
+    'mutated ' + String(tbMutantKey) + ' ⇒ diffs='
+      + (tbMutantDiffs.length
+        ? tbMutantDiffs.map(([k, a, b]) => k + ': ' + tbNorm(a) + ' ≠ ' + tbNorm(b)).join(' | ')
+        : 'none'));
   // ── TB4a: 釉光必须**恒定** sheen-a —— TB4 测不出这条（它比声明文本，三段渐变两面
   //   逐字相同却算出不同颜色）。理由与算术见 src/styles.js 的 ::before 注释。
   const tbSheen = tbLightRule ? String(declValue(tbLightRule.body, 'background-image') || '') : '';
@@ -643,7 +656,7 @@ function main() {
   check('TB4a 负对照：三段渐变要被判红（判据有牙）',
     sheenIsConstant('linear-gradient(180deg, rgba(255,255,255,var(--we-panel-sheen-a)) 0%,'
       + ' rgba(255,255,255,var(--we-panel-sheen-b)) 38%, rgba(255,255,255,var(--we-panel-sheen-c)) 100%)') === false);
-  // ── TB4b: 恒定釉光**暗档也要有** —— 2026-10-06 漏网：暗档照抄左栏那条三段渐变，而 TB4a
+  // ── TB4b: 恒定釉光**暗档也要有** —— 漏网：暗档照抄左栏那条三段渐变，而 TB4a
   //    早先的 tbLightRule 显式排除 data-ds-dark-theme ⇒ 那条恰好是 TB4a 定义的失败形态，
   //    却不在被测集合里（深色主题是日常默认档，这个空白比浅色那条更该钉）。理由与算术同 TB4a。
   const tbDarkRule = tbRules.find((r) => r.header.includes('::before')
@@ -662,7 +675,7 @@ function main() {
         === String(declValue(tbLightRule.body, 'background-image')).replace(/\s+/g, ' ').trim(),
     'light=' + (tbSheen.replace(/\s+/g, ' ').slice(0, 52) || '(MISSING)')
       + ' · dark=' + (tbDarkSheen.replace(/\s+/g, ' ').slice(0, 52) || '(MISSING)'));
-  // ── TB4d: 暗档也要有 TB4 —— 2026-10-06 缺口：TB4 只比了**浅档**顶栏与浅档左栏，
+  // ── TB4d: 暗档也要有 TB4 —— 缺口：TB4 只比了**浅档**顶栏与浅档左栏，
   //    TB4b 只管釉光（background-image），暗档的底色与 accent 映射一度无人钉。
   // 暗档与浅档**有意不同**的地方只有两处（此处归一掉、算"同形"，不是放过）：
   //   ① 面底色 --we-surface-tint-light ⇄ -dark
@@ -704,7 +717,7 @@ function main() {
   check('TB6 负对照：发丝线要被判红（判据有牙）',
     tbHasBorder('border-bottom: 1px solid rgba(180, 180, 180, 0.6)') === true);
 
-  // ── TB5: 禁止**嵌套** :has()，且标题栏每条规则只许一个元素锚（2026-10-06 回归）──
+  // ── TB5: 禁止**嵌套** :has，且标题栏每条规则只许一个元素锚（回归）──
   // 这次故障**完全隐形**：文本在、结构对、静态正则也匹配，但壳层 Chromium 拒绝嵌套
   // :has() ⇒ 逗号列表整条丢弃 ⇒ 与"锚点没选对"现象同形。测试环境没有壳层的 Chromium，
   // 无法直接验引擎接受度，所以退而钉住**已知会被它拒绝的写法**。完整经过见 styles.js。
@@ -757,9 +770,18 @@ function main() {
       && /var\(--we-accent-src/.test(String(dialogFill)));
   check('S3 我们自己的 picker 从 --we-accent-src 重新别名（自家消费面不变）',
     /var\(--we-accent-src/.test(String(pickerAlias)), 'alias=' + String(pickerAlias));
-  check('S3 负对照：自绘实色主按钮的墨也随 accent（不许写死 #fff）',
-    /var\(--we-accent-ink/.test(String(primaryBtnColor)) && !/^#fff/i.test(String(primaryBtnColor).trim()),
-    'color=' + String(primaryBtnColor));
+  // 判据：自绘实色主按钮的墨必须随 accent —— 写死 #fff 会在任意亮度的用户配色上失去对比。
+  // 阳性（真规则）与负对照（把墨改写成 #fff 的变异体）**共用**它。
+  const btnInkFollowsAccent = (raw) => /var\(--we-accent-ink/.test(String(raw))
+    && !/^#fff/i.test(String(raw).trim());
+  const primaryBtnBody = primaryBtnRule ? primaryBtnRule.body : '';
+  const primaryBtnMutated = primaryBtnBody.replace(/(^|[\s;{])color:\s*[^;}]+/i, '$1color: #fff');
+  check('S3 负对照：自绘实色主按钮的墨也随 accent（不许写死 #fff）；变异体写成 #fff 必须判红',
+    btnInkFollowsAccent(primaryBtnColor) === true
+      && Boolean(primaryBtnRule) && primaryBtnMutated !== primaryBtnBody
+      && btnInkFollowsAccent(declValue(primaryBtnMutated, 'color')) === false,
+    'color=' + String(primaryBtnColor)
+      + ' · 变异体=' + String(declValue(primaryBtnMutated, 'color')));
 
   // ── D1: Task-1 contract — saturation is decoupled from the blur slider ───
   const satTernary = SRC.match(
@@ -802,7 +824,7 @@ function main() {
       // 它们的浅深不对称是**有意**的（只覆盖需要改的那些，其余继承浅色块）—— 混进来
       // 会把"映射表必须是浅深双份"这条判据变成假红。
       const parts = header.split(',').map((p) => p.trim()).filter(Boolean);
-      const bodyLevel = parts.length > 0 && parts.every((p) => /^body(\[[^\]]*\])+$/.test(p));
+      const bodyLevel = parts.length > 0 && parts.every((p) => /^body(\[[^\]]*\])+(?: :where\(\[data-chat-flow\]\))?$/.test(p));
       if (!bodyLevel) continue;
       const hasDark = parts.some((p) => p.includes('data-ds-dark-theme'));
       const hasLight = parts.some((p) => !p.includes('data-ds-dark-theme'));

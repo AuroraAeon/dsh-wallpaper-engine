@@ -7,7 +7,8 @@
  * 规范就是「用 `--dsw-alias-*` 上色」⇒ **任何按规范写的第三方 UI 插件都会自动
  * 继承我们的玻璃** —— 这是全仓最大的隐式耦合面，但今天没有任何一份文件列出
  * 「我们到底改写了哪些 token、在哪个门控下」。手写清单一定会烂，所以本工具从
- * `src/styles.js` 的 CSS 模板**现算**出契约，`test/verify-token-contract.mjs`
+ * **样式族**（`src/styles-base.js` … `src/styles-ext.js`，刀3 由单一
+ * `src/styles.js` 按视觉域拆出）的 CSS 模板**现算**出契约，`test/verify-token-contract.mjs`
  * 重算并逐字节比对 `docs/TOKEN-CONTRACT.md`。
  *
  * 解析口径（与审计复算脚本同形，两处必须守住）：
@@ -27,46 +28,70 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { scopeFiles } from './src-scope.mjs';
+// 剥 CSS 注释的唯一真源（此前这里有一份私有实现，玻璃两处又各写了一行朴素正则 —— 三份各自演化）。
+import { stripCssComments } from './css-text.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const STYLES = join(ROOT, 'src', 'styles.js');
 const DOC = join(ROOT, 'docs', 'TOKEN-CONTRACT.md');
+/** 样式族：8 个域模块 + 组装点，顺序 = 构建期内联顺序（INLINE_MODULES 单一真源）。 */
+const STYLE_FAMILY = scopeFiles('src/styles');
 
 /**
- * 抽出 `const CSS = \`…\`` 模板体。模板里没有转义反引号（内容若含 `"` 会被当
- * 字符串处理，见下面 scan 的引号跟踪），`${…}` 插值只有两个只读下限常量且落在
- * `--we-*` 令牌的值位 —— 扫描前统一替换成字面量，避免 `}` 混进花括号栈。
+ * 抽出某个**样式域模板**的模板体（`const CSS` 或 `const CSS_<域> = \`…\``）。模板里没有
+ * 转义反引号（内容若含 `"` 会被当字符串处理，见下面 scan 的引号跟踪），`${…}` 插值只有
+ * 两个只读下限常量且落在 `--we-*` 令牌的值位 —— 扫描前统一替换成字面量，避免 `}` 混进花括号栈。
  */
 export function extractCss(src) {
-  const open = /const CSS = `/.exec(src);
-  if (!open) throw new Error('styles.js: 找不到 `const CSS = \\`` 模板');
+  const open = /const CSS(?:_[A-Z][A-Z0-9_]*)? = `/.exec(src);
+  if (!open) throw new Error('styles: 找不到样式域模板声明（const CSS[_域]）');
   const start = open.index + open[0].length;
   let i = start;
   for (; i < src.length; i++) {
     if (src[i] === '\\') { i++; continue; }
     if (src[i] === '`') break;
   }
-  if (i >= src.length) throw new Error('styles.js: CSS 模板没有闭合反引号');
+  if (i >= src.length) throw new Error('styles: CSS 模板没有闭合反引号');
   const raw = src.slice(start, i).replace(/\$\{[^{}]*\}/g, '0');
-  // 起始行号：模板开在 `const CSS = \`` 那一行；raw[0] 多半是它的换行符。
+  // 起始行号：模板开在声明那一行；raw[0] 多半是它的换行符。
   const baseLine = src.slice(0, start).split('\n').length;
   return { raw, baseLine };
 }
 
-/** 剥 `/* … *\/` 注释，等长替换（保换行 ⇒ 行号不漂移）。未配对的注释标记直接抛。 */
-function stripCssComments(css) {
-  const out = css.replace(/\/\*[\s\S]*?\*\//g, (s) => s.replace(/[^\n]/g, ' '));
-  if (/\/\*/.test(out) || /\*\//.test(out)) {
-    throw new Error('styles.js: 注释标记未配对（或注释体里有字面 `*/` 提前闭合）');
+/**
+ * 遍历样式族：把各域模板按构建序**拼成一份**（= 拆段前的单模板，逐字节等价）后扫一遍，
+ * 再按每段的偏移把行号映射回来源文件 —— 声明上是 `{ file, line }`（line = 该文件内的真实行号）。
+ *
+ * 为什么不能逐文件各扫一遍：切段边界按"视觉域分区注释"划，**允许落在 @media / 规则块内部**，
+ * 于是单个域模块的 CSS 花括号常常自己不配平（实测 `scanTokenDecls` 逐文件扫会抛
+ * `styles.js: 花括号栈没有归零（CSS 结构异常）`）。花括号配平是**整张样式表**的性质，
+ * 拼接后扫才是拆段前的原有口径。
+ */
+export function scanStyleFamily() {
+  const parts = [];
+  let concat = '';
+  for (const rel of STYLE_FAMILY) {
+    const src = readFileSync(join(ROOT, rel), 'utf8');
+    if (!/const CSS(?:_[A-Z][A-Z0-9_]*)? = `/.test(src)) continue;
+    const { raw, baseLine } = extractCss(src);
+    const startRawLine = concat.split('\n').length;   // 本段首行在拼接体里的行号（1 基）
+    parts.push({ file: rel, baseLine, startRawLine, lines: raw.split('\n').length });
+    concat += raw;
   }
-  return out;
+  if (parts.length === 0) throw new Error('styles: 样式族里一个域模板都没取到（锚点漂了？）');
+  const decls = [];
+  for (const d of scanTokenDecls('const CSS = `' + concat + '`;')) {
+    const part = parts.find((p) => d.line >= p.startRawLine && d.line < p.startRawLine + p.lines);
+    if (!part) throw new Error('styles: 行号 ' + d.line + ' 映射不到任何域模块（拼接口径漂了）');
+    decls.push({ ...d, file: part.file, line: part.baseLine + (d.line - part.startRawLine) });
+  }
+  return decls;
 }
 
 /**
  * 花括号栈扫描：返回全部 `--dsw-*` **属性位**声明。
  * 每条：{ token, value, line, chain }，chain = 选择器链（含 @media 前提）。
- */
-export function scanTokenDecls(src) {
+ */export function scanTokenDecls(src) {
   const { raw, baseLine } = extractCss(src);
   const clean = stripCssComments(raw);
   const decls = [];
@@ -129,7 +154,7 @@ export function scanTokenDecls(src) {
     buf += ch;
   }
   if (buf.trim()) flushDecl(); // 模板收尾时未闭合的最后一条
-  if (stack.length) throw new Error('styles.js: 花括号栈没有归零（CSS 结构异常）');
+  if (stack.length) throw new Error('styles: 花括号栈没有归零（CSS 结构异常）');
   return decls;
 }
 
@@ -140,10 +165,23 @@ export function bucketOf(chain) {
   return 'ungated';
 }
 
-/** 无门控声明的**封闭白名单**：只有思考块自己的开关与插件自有元素两处（审计 §三.3）。 */
+/** 无门控白名单的**插件自有 bare roots 封闭集**：整条选择器链必须是纯逗号列表、
+ * 每段 trim 后精确命中集合成员。改动集合（增删成员）= 一次可见评审（守卫锚点表钉死名单）。 */
+export const UNGATED_BARE_ROOTS = ['.we-layer', '.we-picker', '.we-picker__modal', '.we-qp'];
+
+/** 无门控声明的**封闭白名单**：思考块自带开关 + 插件自有 bare roots 封闭集（审计 §三.3）。
+ * strict 判据：不以 .we-* 前缀/子串识别；拒空段/未知根/:root/body/后代或组合器/
+ * @media 前提/伪类/合法+未知混组。thinking-native 判据保持在 bare-roots 之前
+ * （真实链 `body[data-we-thinking-native] [data-chat-flow], …` 本身是含后代选择器的逗号列表）。 */
 export function ungatedReason(chain) {
   if (/\[data-we-thinking-native\]/.test(chain)) return 'thinking-native（思考块自带开关）';
-  if (chain === '.we-layer') return '.we-layer（插件自有元素，卸载即消失）';
+  const parts = String(chain).split(',').map((s) => s.trim());
+  if (parts.length > 0 && parts.every((p) => UNGATED_BARE_ROOTS.includes(p))) {
+    // .we-layer 单根保留原文案（文档既有行不变）；其余集合成员给统一豁免理由。
+    return parts.length === 1 && parts[0] === '.we-layer'
+      ? '.we-layer（插件自有元素，卸载即消失）'
+      : '插件自有 bare roots 局部表面（' + parts.join(', ') + '）—— 令牌仅挂本插件根节点';
+  }
   return null; // 不在白名单 ⇒ 守卫红
 }
 
@@ -173,8 +211,7 @@ const BUCKET_LABEL = { glass: '玻璃', wallpaper: '壁纸', ungated: '无门控
 
 /** 生成契约全文（守卫逐字节比对的就是它）。 */
 export function buildContract() {
-  const src = readFileSync(STYLES, 'utf8');
-  const decls = scanTokenDecls(src);
+  const decls = scanStyleFamily();
 
   const buckets = { glass: [], wallpaper: [], ungated: [] };
   for (const d of decls) { d.bucket = bucketOf(d.chain); buckets[d.bucket].push(d); }
@@ -184,7 +221,7 @@ export function buildContract() {
   for (const d of decls) {
     let e = byToken.get(d.token);
     if (!e) { e = { token: d.token, decls: [], buckets: new Set(), lines: [] }; byToken.set(d.token, e); }
-    e.decls.push(d); e.buckets.add(d.bucket); e.lines.push(d.line);
+    e.decls.push(d); e.buckets.add(d.bucket); e.lines.push(d.file + ':' + d.line);
   }
   const tokens = [...byToken.values()].sort((a, b) => a.token.localeCompare(b.token));
   // `t.decls` 是**声明对象**数组（每个对象自带 `.bucket`）。旧版写成 `[...set].filter(x => x === b)`
@@ -198,8 +235,8 @@ export function buildContract() {
   L.push('> 生成：`node test/tools/token-contract.mjs --write`；核对：`node test/verify-token-contract.mjs`');
   L.push('> （守卫在契约与代码不一致时失败 —— 令牌集合因此不会烂掉）。');
   L.push('>');
-  L.push('> **口径**：只计 `src/styles.js` CSS 模板里**属性位**的 `--dsw-*` 声明（值里的');
-  L.push('> `var(--dsw-…)` 是读不是写，不计）；门控归属按花括号栈上的**选择器链**判定。');
+  L.push('> **口径**：只计样式族（`src/styles-base.js` … `src/styles-ext.js` 的 8 个域模板）里**属性位**的');
+  L.push('> `--dsw-*` 声明（值里的 `var(--dsw-…)` 是读不是写，不计）；门控归属按花括号栈上的**选择器链**判定。');
   L.push('> **玻璃** = 链上有 `[data-we-glass-*]`；**壁纸** = 只有 `[data-we-wallpaper]`；');
   L.push('> **无门控** = 两者都不挂（共存审计 M1 的全部暴露面 —— 白名单见下表，新增一条守卫即红）。');
   L.push('> JS 侧的令牌写入（`src/font/apply.js` 的 label 族等）不在本契约口径内，见 `docs/DSH-UI-INTERFACES.md`。');
@@ -209,13 +246,16 @@ export function buildContract() {
   L.push('');
   L.push('## 无门控声明（白名单 —— M1 的全部暴露面）');
   L.push('');
-  L.push('除下列两处封闭白名单外，**任何新的无门控 `--dsw-*` 声明都会让 `verify-token-contract` 变红**');
-  L.push('（按宿主规范消费 token 的第三方插件无法区分「玻璃开/关」，只能拿到配方本身 —— 见 `docs/COEXISTENCE.md`）。');
+  L.push('除下列封闭白名单外，**任何新的无门控 `--dsw-*` 声明都会让 `verify-token-contract` 变红**');
+  L.push('（白名单 = `body[data-we-thinking-native]` 思考块自带开关 + 插件自有 bare roots 封闭集');
+  L.push('`{.we-layer, .we-picker, .we-picker__modal, .we-qp}` —— 整条选择器链必须是纯逗号列表、');
+  L.push('每段 trim 后精确命中集合成员，不认 `.we-*` 前缀/子串，拒未知根/混组；');
+  L.push('按宿主规范消费 token 的第三方插件无法区分「玻璃开/关」，只能拿到配方本身 —— 见 `docs/COEXISTENCE.md`）。');
   L.push('');
   L.push('| 令牌 | 行 | 选择器链 | 归属 |');
   L.push('|---|---|---|---|');
   for (const d of buckets.ungated) {
-    L.push(`| \`${d.token}\` | styles.js:${d.line} | \`${d.chain}\` | ${ungatedReason(d.chain) || '⚠️ 不在白名单'} |`);
+    L.push(`| \`${d.token}\` | ${d.file}:${d.line} | \`${d.chain}\` | ${ungatedReason(d.chain) || '⚠️ 不在白名单'} |`);
   }
   if (!buckets.ungated.length) L.push('| （无） | | | |');
   L.push('');

@@ -253,7 +253,24 @@ check('B8 只带工坊内容目录的 Steam 根被认成库（安装夹不存在
 
 // ── Level D: 源码棘轮（带负对照） ───────────────────────────────────────────
 section('Level D — lib/index.js 源码棘轮');
-const hostSrc = stripComments(readFileSync(resolve(root, 'lib', 'index.js'), 'utf8'));
+// 判据作用面 = lib/index.js + lib/steam-discovery.js：Steam/WE 安装探测族已搬进后者
+// （宿主在模块加载期建立套件，见该文件头的不变量）。断言与判据函数一字未改，只是读点
+// 跟着被移动的代码走。
+const hostSrc = stripComments(
+  readFileSync(resolve(root, 'lib', 'index.js'), 'utf8') + '\n'
+    + readFileSync(resolve(root, 'lib', 'steam-discovery.js'), 'utf8'),
+);
+
+// ⚠️ D8 读点变更（内核化拆包）：清单载荷（`installDir` 的消费面）的组装族已从门面搬进
+//     `lib/inventory.js` —— 门面只剩路由注册，D8 的旧读点因此假红。断言字面量与期望值
+//     **一字未改**，只按真源读；缺文件回落到门面（上游布局）。注释一并剥掉，避免
+//     「注释里提过」就恒真（与 D1..D7 同款口径）。
+const inventorySrc = (() => {
+  for (const rel of ['lib/inventory.js', 'lib/index.js']) {
+    try { return stripComments(readFileSync(resolve(root, rel), 'utf8')); } catch { /* 试下一个 */ }
+  }
+  return '';
+})();
 
 check('D1 标记表同时容忍经典布局与 distribution/ 布局（含稳定标记 version.json）',
   /const WE_INSTALL_MARKERS = \[/.test(hostSrc)
@@ -270,12 +287,9 @@ check('D2 探测走 isWallpaperEngineRootP（逐标记探存在性），且返�
     // 独立安装（非 Steam）那条候选也没被删掉。
     && hostSrc.includes("candidates.push(wslPath('C:\\\\Program Files (x86)\\\\Wallpaper Engine'));"));
 
-// 负对照：下面 D3/D4 用到的两条「旧写法」字面量必须能认出旧写法本身，否则那两条判据恒真。
+// "字面量 contains 字面量"式判据一律不写：它对任何实现都真（覆盖点在 D4 / D5）。
 const STALE_TOPLEVEL_ONLY = "pathExistsP(join(dir, 'wallpaper32.exe'))";
 const STALE_OWNING_DIR = "pathExistsP(join(probe, 'steamapps', 'common', 'wallpaper_engine'))";
-check('D3 负对照：两条旧写法各自能被 D4/D5 的字面量判据认出来',
-  "if (await pathExistsP(join(dir, 'wallpaper32.exe'))) return dir;".includes(STALE_TOPLEVEL_ONLY)
-    && "if (await pathExistsP(join(probe, 'steamapps', 'common', 'wallpaper_engine'))) libs.push(probe);".includes(STALE_OWNING_DIR));
 
 check('D4 「只认顶层 exe」不再是安装判据',
   !hostSrc.includes(STALE_TOPLEVEL_ONLY));
@@ -293,7 +307,7 @@ check('D7 env 覆盖参与探测缓存键（改过的 override 不被 60s TTL �
     && hostSrc.includes('steamProbeCache = { t: Date.now(), key: envKey, dirs };'));
 
 check('D8 清单载荷仍把 installDir 作为消费面（客户端/播放列表读它）',
-  hostSrc.includes('locateWallpaperEngineP, owningLibrariesP, enumerateWallpapersAsync'));
+  inventorySrc.includes('locateWallpaperEngineP, owningLibrariesP, enumerateWallpapersAsync'));
 
 // ── 收尾 ───────────────────────────────────────────────────────────────────
 delete process.env.DSH_WE_STEAM_ROOT;

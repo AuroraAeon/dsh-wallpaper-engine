@@ -14,7 +14,8 @@
  * （消息是动态插入的）。这与 `src/nav-icon.js` 的设置导航图标补丁是同一条路子。
  *
  * 契约：
- *   需要的外界：扁平设置 store `selection`（**只读**）、`apiUrl`（拼宿主路由）。
+ *   需要的外界：扁平设置 store `selection`（**只读**）、`apiUrl`（拼宿主路由）、
+ *     `weComponentVisible`（组件行可见面判据，唯一实现在 src/client.js；内联后同作用域）。
  *   对外提供：`syncAvatarLayer()`（设置变了就调一次）、`disposeAvatarLayer()`（卸载清理）、
  *     `avatarImageUrl(side)`（面板预览与层共用同一条 URL 构造）、
  *     `avatarGlyphSvgString(side, size)` / `renderAvatarGlyph(side, size)`（内置默认头像的几何，
@@ -25,6 +26,11 @@
  *
  * 不变量：
  *   · **只读 `selection`**：一个字节都不写（写设置只发生在 src/client.js 的具名处理器里）。
+ *   · **组件行不可用 = 整层不挂**（ADR-0013 D3①/D3③）：`mascot-avatar` 那一行关掉时
+ *     `/avatar/<side>` 整族 404 ⇒ 装饰出来的必然是破图，所以与"用户关掉开关"同一条 stop 路径。
+ *     判据经 `weComponentVisible(selection.inventory.components, 'mascot-avatar')` 一处读入。
+ *   · **`<img>` 一族的兜底**（D3③）：图加载失败 ⇒ 就地换成内置默认头像（按 URL 记账，
+ *     同一张不重试），绝不留在"破图"上 —— 见 `avatarFillNode`。
  *   · **零顶层可执行语句**：本文件的顶层只有声明 —— 读 `selection` 的语句一律在函数里
  *     （内联后 prelude 早于 `src/client.js` 正文求值，顶层读它必撞 TDZ）。
  *   · **关掉 = 逐字节回到原生**：摘掉所有注入的头像节点、抹掉加在消息行上的标记属性、
@@ -41,6 +47,24 @@
  *     与「我 / 助手」的角色一一对应；导入的图片只是**替换**这张默认头像。
  */
 
+/**
+ * 可见面判据的**本地包装**（模块边界真实化）。
+ *
+ * ⚠️ 本文件必须能**单独 import**，且**导出面固定为四项**（判据钉死）；输入一律走 `globalThis`
+ * ——与 `selection` / `apiUrl` 同一契约。因此这里**不裸引用** `weComponentVisible`
+ *（它只在拼接后的作用域里存在，单独 import 会 ReferenceError，实测），
+ * 而是读宿主注入的全局：`src/client.js` 启动时设置 `globalThis.__weComponentVisible`。
+ *
+ * 缺省返回 `true`：与 ADR-0013 D3①「组件行不可用 ⇒ 整层不挂」**同向**（安全方向）。
+ */
+function avatarComponentVisible(components, name) {
+  const f = globalThis.__weComponentVisible;
+  // 缺省 **true**（未知 ⇒ 按可用渲染）：注入缺失只可能是接线疏漏或独立求值上下文，
+  // 那种情况下"把整个面板藏掉"是更坏的失败；生产侧 src/client.js 启动时必定注入。
+  return typeof f === 'function' ? f(components, name) : true;
+}
+
+
 /** 三种"消息行"的 kind（官方 ChatNodeSeat 的 `data-chat-flow-kind` 值）→ 头像属于哪一方。 */
 const AVATAR_FLOW_SIDES = { user: 'user', steering: 'user', 'assistant-step': 'ai' };
 /** 消息行的选择器（只扫这三种；`closest` 的早退判定用的也是它）。 */
@@ -49,10 +73,20 @@ const AVATAR_ROW_SELECTOR = '[data-chat-flow-kind="user"], [data-chat-flow-kind=
 const AVATAR_ROW_ATTR = 'data-we-avatar-row';
 const AVATAR_NODE_CLASS = 'we-avatar';
 const AVATAR_NODE_ATTR = 'data-we-avatar-node';
+/**
+ * 「连续同侧消息的后续行」标记（issue #191 问题 2）：加在**头像节点**上。
+ * CSS 里只做 `visibility: hidden` —— 节点与它的框都还在，缩进对齐与 flex 几何逐字节不变。
+ */
+const AVATAR_CONT_CLASS = 'we-avatar--cont';
 /** 开关属性与两个观感变量（styles.js 的「自定义会话头像」段读它们）。 */
 const AVATAR_ATTR = 'data-we-avatar';
 const AVATAR_VAR_SIZE = '--we-avatar-size';
 const AVATAR_VAR_ROUND = '--we-avatar-round';
+/**
+ * 「这张图试过、加载失败」的记账属性（值 = 失败时那个 URL）：失败后按"没设置过"画内置
+ * 头像，且**同一 URL 不再重试**（换图 ⇒ URL 变 ⇒ 自然重试）。见 `avatarFillNode`。
+ */
+const AVATAR_IMG_FAILED = 'data-we-avatar-imgfail';
 /** 两方在设置里对应的文件名键（**唯一**的 side → 设置键映射）。 */
 const AVATAR_IMAGE_KEYS = { user: 'avatarUserImage', ai: 'avatarAiImage' };
 /**
@@ -86,13 +120,15 @@ const AVATAR_GLYPH_VIEW_BOX = '0 0 16 16';
 /** 消息行的观察者与开关（模块级单例：这一层只有一份）。 */
 let avatarObserver = null;
 let avatarActive = false;
+/** 分组重算的 rAF 句柄（0 = 没有挂起的一次；见 avatarScheduleGrouping）。 */
+let avatarGroupRaf = 0;
 
 /* `weBody()` / `weClampTo()` 的唯一实现见 src/we-base.js（内联后同作用域）。 */
 
 /**
  * 头像图的 URL：`/avatar/<side>?v=<文件名>`。
  * 文件名进查询串既是"这一方到底设置过没有"的判据，也是**缓存键** —— 换图 ⇒ 换名 ⇒
- * URL 变（路由那边因此敢给长缓存，见 lib/routes/avatar.js 的不变量 ④）。
+ * URL 变（路由那边因此敢给长缓存，见 packages/mascot-avatar/lib/routes/avatar.js 的不变量 ④）。
  * 没设置过就返回空串（调用方画内置默认头像）。
  */
 function avatarImageUrl(side, selLike) {
@@ -140,7 +176,10 @@ function renderAvatarGlyph(side, size) {
  */
 function avatarFillNode(node, side) {
   const url = avatarImageUrl(side);
-  const want = url ? 'img' : 'glyph';
+  // 这一方这张图**试过且失败**（宿主行关了 / 导入的文件被删）⇒ 本轮按"没设置过"画内置头像；
+  // URL 不变就不再重试，URL 变了（换了一张图）自然重试。
+  const failed = url && node.getAttribute(AVATAR_IMG_FAILED) === url;
+  const want = url && !failed ? 'img' : 'glyph';
   if (node.getAttribute('data-we-avatar-kind') === want) {
     if (want === 'img') {
       const img = node.firstElementChild;
@@ -156,6 +195,13 @@ function avatarFillNode(node, side) {
     img.className = AVATAR_NODE_CLASS + '__img';
     img.setAttribute('alt', '');
     img.setAttribute('draggable', 'false');
+    // D3③ 的 `<img>` 兜底：图加载失败 ⇒ 记下这次失败（按 URL 记）并把节点**就地**改成内置
+    // 头像 —— 会话里绝不会停在"破图"上。走 `avatarFillNode` 自己那条就地更新路，
+    // 于是后续设置变化（大小 / 圆角 / 换图）照常生效，不需要第二个状态机。
+    img.onerror = () => {
+      try { node.setAttribute(AVATAR_IMG_FAILED, url); } catch { /* ignore */ }
+      avatarFillNode(node, side);
+    };
     img.setAttribute('src', url);
     node.appendChild(img);
   } else {
@@ -203,9 +249,53 @@ function avatarDecorateRow(row) {
 /** 扫一遍全文档，把还没补过的消息行补上（观察者只管新插入的，这一条管"已经在了的"）。 */
 function avatarSweep() {
   if (typeof document.querySelectorAll !== 'function') return;
-  let rows = [];
+  let rows;
   try { rows = document.querySelectorAll(AVATAR_ROW_SELECTOR); } catch { return; }
   for (const row of rows) avatarDecorateRow(row);
+  // 扫完立刻重算分组：`sweep` 本来就是一次全文档扫，分组复用同一次遍历的开销类别。
+  avatarApplyGrouping();
+}
+
+/**
+ * 分组：**连续的同侧消息只在第一条前面显示头像**（issue #191 问题 2）—— 主流聊天软件的
+ * 形态（微信 / Discord / Telegram 同款），免得"连着十条助手回复贴着十张一样的脸"。
+ *
+ * ⚠️ 做法是给后续同侧的**头像节点加一个 `--cont` 修饰类**（CSS 里 `visibility: hidden`），
+ * **绝不摘掉节点**：节点在、框还占着 ⇒ 缩进对齐与 flex 几何**逐字节不变**。
+ * 那正是 issue #154 那个坑的规避方式 —— 摘掉头像节点会让宿主那层 `display: contents`
+ * 锚点下的内容退回 `flex: 0 1 auto`，收起的思考行固有宽为 0 ⇒ 整条消息连入口一起消失
+ *（见 src/styles.js 头像段的血泪注释与 test/verify-scene-live.mjs 的假 DOM 判据）。
+ *
+ * 顺序判定：按**文档序**走一遍消息行，记住上一条的 side；同侧且不是第一条 ⇒ 标记为续行。
+ * 不同类型之间（助手 → 用户）自然断开。只认三种消息行（`AVATAR_FLOW_SIDES`）。
+ */
+function avatarApplyGrouping() {
+  if (!avatarActive || typeof document.querySelectorAll !== 'function') return;
+  let rows;
+  try { rows = document.querySelectorAll(AVATAR_ROW_SELECTOR); } catch { return; }
+  let prev = '';
+  for (const row of rows) {
+    const side = AVATAR_FLOW_SIDES[row.getAttribute('data-chat-flow-kind')];
+    if (!side) continue;
+    const node = row.firstElementChild;
+    if (node && node.classList && node.classList.contains(AVATAR_NODE_CLASS)) {
+      try { node.classList.toggle(AVATAR_CONT_CLASS, side === prev); } catch { /* ignore */ }
+    }
+    prev = side;
+  }
+}
+
+/**
+ * 分组重算的**限频**入口：流式输出时消息行会连续插入，每插一行就全文档扫一次是
+ * O(帧 × 行数)。合并到一帧一次（没有 rAF 的环境退化为同步 —— 验证沙箱走这条）。
+ */
+function avatarScheduleGrouping() {
+  if (avatarGroupRaf) return;
+  if (typeof requestAnimationFrame !== 'function') { avatarApplyGrouping(); return; }
+  avatarGroupRaf = requestAnimationFrame(() => {
+    avatarGroupRaf = 0;
+    avatarApplyGrouping();
+  });
 }
 
 /**
@@ -217,20 +307,26 @@ function avatarSweep() {
  */
 function avatarOnMutations(records) {
   if (!avatarActive) return;
+  let decorated = false;
   for (const r of records) {
     const added = r.addedNodes;
     if (!added || !added.length) continue;
     for (const n of added) {
       if (!n || n.nodeType !== 1) continue;
       try {
-        if (n.matches && n.matches(AVATAR_ROW_SELECTOR)) { avatarDecorateRow(n); continue; }
+        if (n.matches && n.matches(AVATAR_ROW_SELECTOR)) {
+          if (avatarDecorateRow(n)) decorated = true;
+          continue;
+        }
         if (n.closest && n.closest('[' + AVATAR_ROW_ATTR + ']')) continue; // 已在装饰过的行里
       } catch { continue; }
-      let inner = [];
+      let inner;
       try { inner = n.querySelectorAll ? n.querySelectorAll(AVATAR_ROW_SELECTOR) : []; } catch { inner = []; }
-      for (const row of inner) avatarDecorateRow(row);
+      for (const row of inner) { if (avatarDecorateRow(row)) decorated = true; }
     }
   }
+  // 补了新行 ⇒ 分组可能变了（新行算不算"续行"取决于它前面那条）⇒ 合并到一帧重算一次。
+  if (decorated) avatarScheduleGrouping();
 }
 
 function avatarStop() {
@@ -238,6 +334,11 @@ function avatarStop() {
   if (avatarObserver) {
     try { avatarObserver.disconnect(); } catch { /* ignore */ }
     avatarObserver = null;
+  }
+  // 挂起的分组重算要取消：它不属于 fiber，留着会在卸载后再扫一次 DOM。
+  if (avatarGroupRaf) {
+    try { if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(avatarGroupRaf); } catch { /* ignore */ }
+    avatarGroupRaf = 0;
   }
   if (typeof document === 'undefined' || !document) return;
   const body = weBody();
@@ -265,7 +366,13 @@ function avatarStop() {
  * 但换来的是"任何时刻屏上的形态都等于当前设置"这条不需要额外状态机的性质。
  */
 function syncAvatarLayer() {
-  const on = selection.avatarEnabled === true;
+  // 组件行 gate（ADR-0013 D3①/D3③）：`mascot-avatar` 行不可用 ⇒ 这一层**整层不挂** —— 它画的
+  // 头像走宿主 `/avatar/<side>` 直出，那一行关掉时路由整族没了，挂上去必然是破图。
+  // 判据只有一处实现：src/client.js 的 `weComponentVisible`（内联后同作用域）；状态面是宿主
+  // 行状态（`selection.inventory.components`），本层与别处一样**只读** selection。
+  // 不可用与"用户关掉开关"走**同一条 stop 路径**（幂等，不留痕）。
+  const componentOn = avatarComponentVisible(selection.inventory && selection.inventory.components, "mascot-avatar");
+  const on = componentOn && selection.avatarEnabled === true;
   const body = weBody();
   if (!on || !body || typeof MutationObserver !== 'function') {
     if (avatarActive || avatarObserver) avatarStop();
@@ -293,6 +400,8 @@ function disposeAvatarLayer() {
 }
 
 export {
-  syncAvatarLayer, disposeAvatarLayer,
-  avatarImageUrl, avatarGlyphSvgString, renderAvatarGlyph,
+  syncAvatarLayer,
+  disposeAvatarLayer,
+  avatarImageUrl,
+  renderAvatarGlyph,
 };

@@ -1,0 +1,31 @@
+import assert from 'node:assert/strict';
+import { readFileSync, existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { cssBodyOf } from './tools/src-scope.mjs';
+// 剥 CSS 注释走共享实现（此前这里是一行朴素正则 —— 模块布局守卫规则 ⑦ 的针眼）。
+import { stripCssComments } from './tools/css-text.mjs';
+
+const root = resolve('.');
+const bundle = readFileSync(resolve(root, 'lib/client.js'), 'utf8');
+const css = stripCssComments(cssBodyOf(bundle));
+const left = css.match(/body\[data-we-glass-page\]\[data-we-left-sidebar\] div:has\(> \[data-slot="sidebar"\]\)[^{]*\{([^}]+)\}/)?.[1] || '';
+assert.ok(left, '必须读取真实构建的左栏绘制规则');
+assert.ok(!/(?:^|[;\s])z-index:\s*0\b/.test(left), '左栏不得为负层载体新增 z-index:0 围栏');
+assert.ok(!/(?:^|[;\s])position:\s*relative\b/.test(left), '不得改变宿主 absolute 包含块');
+assert.ok(!/(?:^|[;\s])backdrop-filter:\s*(?!none)[^;]+/.test(left), '共享内容祖先不得承载模糊');
+const path = resolve(root, 'src/glass-surfaces.js');
+assert.ok(existsSync(path), '统一表面解析器必须存在，不能仅删除旧围栏');
+const { weResolveSurface } = await import(new URL('../src/glass-surfaces.js', import.meta.url));
+const safe = { enabled: true, visible: true, safeRoot: true };
+assert.equal(weResolveSurface('left-sidebar', {}, safe).mode, 'root');
+assert.equal(weResolveSurface('left-sidebar', { glassSurfacePolicy: { 'left-sidebar': 'native' } }, safe).reason, 'policy-native');
+assert.equal(weResolveSurface('left-sidebar', {}, { ...safe, preserve: true }).reason, 'preserve');
+assert.equal(weResolveSurface('left-sidebar', {}, { ...safe, visible: false }).reason, 'hidden');
+assert.equal(weResolveSurface('left-sidebar', {}, { ...safe, enabled: false }).reason, 'disabled');
+assert.equal(weResolveSurface('left-sidebar', {}, { ...safe, safeRoot: false }).mode, 'native');
+assert.equal(weResolveSurface('right-sidebar', {}, { ...safe, nativeBlur: true }).reason, 'native-blur');
+assert.equal(weResolveSurface('extra', {}, { ...safe, safeLocal: false }).mode, 'native');
+assert.equal(weResolveSurface('extra', {}, { ...safe, safeLocal: true }).mode, 'local');
+assert.equal(weResolveSurface('extra', {}, { ...safe, safeLocal: true, occupied: true }).reason, 'carrier-busy');
+assert.equal(weResolveSurface('left-sidebar', {}, { ...safe, software: true }).mode, 'plate');
+console.log('PASS | 真实构建无侧栏祖先围栏，解析器遵守策略、保留、可见性与安全回退');

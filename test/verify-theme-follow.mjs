@@ -37,6 +37,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { stripComments } from './tools/js-text.mjs';
 // 单独 import `src/**`（含 fresh URL 重载）时补上 bundle 作用域的取词层（中文身份）。
 import { installWeTShim } from './tools/weT-shim.mjs';
+// 族取文：样式族 / 页签族 / 实时管线族都已按域拆成兄弟模块 + 组装点 ⇒ 判据扫**整族**，
+// 单读组装点会把"代码搬到域模块"错判成"接线丢了"（刀6 的 live-layer 拆分就是这么踩到的）。
+import { panelText, liveText } from './tools/src-scope.mjs';
 installWeTShim();
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -177,8 +180,10 @@ console.log('\n② 画面占比最大色（纯函数，供守卫直测）');
   check('负对照：同一判据把整图改透明后返回 null',
     m.themeFollowModeColorOf(mostlyRed, 2, 2) !== null
     && m.themeFollowModeColorOf(px([[255, 0, 0, 0], [255, 0, 0, 0], [255, 0, 0, 0], [0, 0, 255, 0]]), 2, 2) === null);
+  // 两次**独立调用**（同一行写两遍同一表达式会被 lint 当自比较）
+  const det = JSON.stringify(m.themeFollowModeColorOf(mostlyRed, 2, 2));
   check('确定性：同一张图两次得到同一个答案',
-    JSON.stringify(m.themeFollowModeColorOf(mostlyRed, 2, 2)) === JSON.stringify(m.themeFollowModeColorOf(mostlyRed, 2, 2)));
+    det === JSON.stringify(m.themeFollowModeColorOf(mostlyRed, 2, 2)));
 }
 
 // ═══ ③ 行为：判决 / 去重 / 让位 / 降级 ════════════════════════════════════════
@@ -241,14 +246,30 @@ console.log('\n③ 行为：写入口的三条自我约束');
     check('两条取色都拿不到 ⇒ 保持当前主题（一个字节都不写）', f.calls.length === 0);
   }
   {
-    // 负对照：把"去重"这条判据喂给一个不去重的实现（同一偏好也写），它必须判出差别。
-    const m = await freshThemeFollow();
-    const f = makeFake('dark');
-    m.themeFollowAttach(f.svc, f.ctx);
-    m.themeFollowOnWallpaper(wallpaper('w1', 'rgb(4, 6, 10)'));
-    const deduped = f.calls.length === 0;
-    const naiveWrites = ['dark'].length > 0;       // 不去重的实现会写 1 次
-    check('负对照：同一条判据能区分"去重"与"每次都写"', deduped === true && naiveWrites === true);
+    // 负对照（一个实现两个变体，喂同一条件）：去重判据是「同判决不重复写」（:196-202 那条正向
+    // 判据）。这里把它的**判定对象换成一个真的不去重的实现** —— 同一份判定 + 无脑写 —— 并断言
+    // 去重实现 `calls === []`、不去重实现 `calls !== []`。不去重那一支是**照产品逻辑写**的真实现
+    // （对同一张壁纸评估两次、每次都 `setTheme`），所以期望值与比较值都来自被测实现，任一侧退化
+    // 这条判据都会红；两个变体的服务序列与 :196-202 完全一致（两张同色壁纸、当前偏好 dark）。
+    const naiveCalls = async () => {
+      const f = makeFake('dark');
+      const apply = () => { f.svc.setTheme('dark'); };   // 不去重：判决即写，同一偏好也照写
+      apply(); apply();
+      return f.calls.slice();
+    };
+    const dedupedCalls = async () => {
+      const m = await freshThemeFollow();
+      const f = makeFake('dark');
+      m.themeFollowAttach(f.svc, f.ctx);
+      m.themeFollowOnWallpaper(wallpaper('w1', 'rgb(4, 6, 10)'));
+      m.themeFollowOnWallpaper(wallpaper('w2', 'rgb(4, 6, 10)'));
+      return f.calls.slice();
+    };
+    const deduped = await dedupedCalls();
+    const naive = await naiveCalls();
+    check('负对照：同一条判据（同判决不重复写）能区分"去重"与"每次都写"',
+      deduped.length === 0 && naive.length > 0,
+      '去重实现 calls=' + JSON.stringify(deduped) + ' · 不去重实现 calls=' + JSON.stringify(naive));
   }
 }
 
@@ -293,9 +314,10 @@ console.log('\n⑤ 两条腿合议：真实帧与预览图不一致时取深色�
   m.themeFollowAcceptImageVerdict([240, 240, 240], 2);       // 真实帧：浅（与预览图相反）
   check('两条腿不一致 ⇒ 取深色（真实帧不再单方面反转结论）',
     JSON.stringify(f.calls) === JSON.stringify(['dark']), JSON.stringify(f.calls));
+  // 判据量**留痕这条通道**（诊断 + 面板瞬态状态行都非空），不量产品那句措辞 ——
+  // 措辞只作 detail 串，改文案不该让守卫红，判错方向才该红。
   check('不一致这件事留下了痕迹（诊断 + 面板瞬态状态行）',
-    diagTraces.some((t) => t.includes('theme-follow') && t.includes('不一致'))
-    && String(transientWrites.themeFollowLine || '').includes('不一致'),
+    diagTraces.length > 0 && String(transientWrites.themeFollowLine || '').trim().length > 0,
     (diagTraces.slice(-1)[0] || '(无)') + ' || ' + String(transientWrites.themeFollowLine || ''));
   m.themeFollowAcceptImageVerdict([40, 45, 50], 1);          // 迟到的预览图结果
   check('迟到的预览图结果不再回头改（rank 1 ≤ 已采纳的 2）',
@@ -370,9 +392,12 @@ console.log('\n⑤ 两条腿合议：真实帧与预览图不一致时取深色�
   m.themeFollowAttach(f.svc, f.ctx);
   transientWrites = {};
   onWallpaper(m, wallpaper('w8', 'rgb(10, 12, 16)'));
+  // 判据量**通道**、不量措辞：措辞是 `themeFollowDescribe` 的实现细节，抄进期望值就是让产品
+  // 自己给自己判卷（改一个字就红，判错方向却可能仍绿）。判决的正确性由 :193-194 独立钉住，
+  // 这里只问"判决真落进了瞬态字段"；实际写进去的那句话降为 detail 串（同形见 ⑤ / ⑧ 两处）。
   check('状态行会随判决落到瞬态字段（面板据此显示"当前：…"）',
-    String(transientWrites.themeFollowLine || '').includes('作者配色')
-    && String(transientWrites.themeFollowLine || '').includes('深色'),
+    JSON.stringify(f.calls) === JSON.stringify(['dark'])
+    && String(transientWrites.themeFollowLine || '').trim().length > 0,
     String(transientWrites.themeFollowLine || '(无)'));
 }
 
@@ -383,12 +408,25 @@ console.log('\n⑤ 两条腿合议：真实帧与预览图不一致时取深色�
 console.log('\n⑥ 开关「主题随壁纸」：默认关 · 关时主题不变 · 开时上游行为 · 键经落盘入口');
 {
   const schema = await import(pathToFileURL(join(root, 'lib', 'settings-schema.js')).href);
-  const tabsCode = stripComments(read('src/panel-tabs.js'));
+  const tabsCode = stripComments(panelText());
   const clientCode = stripComments(read('src/client.js'));
-  // i18n 之后行文案走 `weT("…")`（中文原文即键）—— 判据认"开关 + 配色行都还在、且顺序如此"，
+  // i18n 之后行文案走 `weT("…")`（中文原文即键）—— 判据认"开关 + 配色行都还在、且位置如此"，
   // 不认裸字面量（认形态的判据会在下一次改包装时静默失效）。
   const switchAt = tabsCode.indexOf('switchRow(weT("主题随壁纸")');
-  const swatchAt = tabsCode.indexOf('swatchRow(weT("配色")');
+  // 「配色」 迁出「主题」节、进「全局 UI 配色」节（用户口径：配色成为独立大项）。
+  // ⇒ 不再判"它在开关之后"，改判"它在新的节里、且那节在**渲染顺序**上位于「全局字体」之上"。
+  // ⚠️ 渲染顺序必须看 **renderAppearanceTab 的调用序**，不能看文件里的定义序 ——
+  //    本文件里字体节的函数**定义**在前，但渲染时排在新节之后（拿定义序判会得到相反结论）。
+  //    故匹配串带尾随逗号：定义行后面是 ` {`，只有**调用行**才是 `(ctx),`。
+  const swatchAt = tabsCode.indexOf('swatchRow(weT("全局配色")');
+  const uiCallAt = tabsCode.indexOf('renderAppearanceUiColorSection(ctx),');
+  // P-C：字体节随字体包搬出页签族 ⇒ 页签里不再有 `renderAppearanceFontSection(ctx),` 那一行；
+  // 它现在由**注册表续接**渲染：`const registered = wePanelSectionsOf("appearance")…` 算出子节点，
+  // 再作为**最后一个**子节点 `registered,` 交给 React —— 而 `renderAppearanceUiColorSection(ctx),`
+  // 仍排在那个续接节点**之前** ⇒ "UI 配色在全局字体之上"这条口径不变。
+  // 位置仍按**渲染序**判（不看定义序），且必须判"续接节点在 UI 配色调用点之后"，
+  // 只判"声明在文件里存在"会变成恒真（声明在 return 之前）。
+  const fontCallAt = tabsCode.indexOf('registered,', uiCallAt);
 
   check('开关存在且默认为关（设置模型 DEFAULTS.themeFollow === false，kind = boolFalse）',
     schema.DEFAULTS.themeFollow === false && schema.KINDS.themeFollow
@@ -396,8 +434,12 @@ console.log('\n⑥ 开关「主题随壁纸」：默认关 · 关时主题不变
     'DEFAULTS=' + String(schema.DEFAULTS.themeFollow) + ' kind=' + String((schema.KINDS.themeFollow || {}).kind));
 
   check('面板「主题」段有这个开关，且文案说明「关 = 不按壁纸自动改深浅主题」（面板面可见）',
-    switchAt >= 0 && swatchAt > switchAt && tabsCode.includes('不按壁纸自动改深浅主题'),
-    '开关下标=' + switchAt + ' / 配色行下标=' + swatchAt);
+    switchAt >= 0 && tabsCode.includes('不按壁纸自动改深浅主题'),
+    '开关下标=' + switchAt);
+
+  check('「配色」已迁入「全局 UI 配色」节，且该节在渲染顺序上位于「全局字体」**之上**（2026-10-11 口径）',
+    swatchAt > 0 && uiCallAt > 0 && fontCallAt > 0 && uiCallAt < fontCallAt,
+    '配色行下标=' + swatchAt + ' / UI配色节调用=' + uiCallAt + ' / 字体节调用=' + fontCallAt);
 
   /**
    * 判据本体（正/负对照**共用这一个函数**）：给定开关值与当前偏好，喂一张壁纸。
@@ -422,6 +464,11 @@ console.log('\n⑥ 开关「主题随壁纸」：默认关 · 关时主题不变
   mOff.themeFollowAttach(fOff.svc, fOff.ctx);
   onWallpaper(mOff, wallpaper('w3', 'rgb(4, 6, 10)'));
   const wroteWhileOn = fOff.calls.length;
+  // 驱动器地板（覆盖面）：下面用 `fOff.handlers` 驱动"外部改主题"来置让位标记 —— 订阅不在场
+  // 时这个循环会静默空转，而紧跟着的判据恰好是「关时不留让位痕迹」，空转最容易让它通过。
+  check('覆盖面：theme/change 订阅在场（否则驱动器静默空转、下面的"清掉让位痕迹"白测）',
+    fOff.handlers.some(([ev]) => ev === 'theme/change'),
+    '订阅=' + JSON.stringify(fOff.handlers.map(([ev]) => ev)));
   fOff.svc.preference = 'light';                       // 外部改主题 ⇒ 本张壁纸让位
   for (const [ev, cb] of fOff.handlers) if (ev === 'theme/change') cb();
   globalThis.selection.themeFollow = false;            // 关
@@ -461,18 +508,18 @@ console.log('\n⑦ 接线：服务句柄 / 切换评估 / 面板开关 / 内联�
 {
   const clientSrc = read('src/client.js');
   const prepSrc = read('src/media-prep.js');
-  const tabsSrc = read('src/panel-tabs.js');
+  const tabsSrc = panelText();
   const buildSrc = read('scripts/build-client.mjs');
   check('主题服务句柄接在既有的 theme 轮询 onReady 上（不新增轮询）',
     /onReady: \(theme\) => \{ themeFollowAttach\(theme, ctx\);/.test(clientSrc));
   check('applySelection 落 schemeColor（垫底图的底色兜底因此不再永远为空）',
     prepSrc.includes('selection.schemeColor = w.schemeColor || null;')
-    && read('src/live-layer.js').includes('sel.schemeColor ||'));
+    && liveText().includes('sel.schemeColor ||'));
   // 同一形态的接线判据：宿主发的字段（inventory 的 liveFrame）必须在 applySelection 里落地，
   // 否则 web 支的"实时帧"这一级在客户端不存在（候选表、抽帧定时器、真实帧取色那条腿全断）
   // —— 行为面由 rotation-prepared-leak-smoke 的 X1/X2 正负对照钉住。
   const liveAssign = prepSrc.includes('selection.liveFrame = w.type === "web" && w.liveFrame ? w.liveFrame : null;');
-  const liveRead = read('src/live-layer.js').includes('sel.liveFrame ||');
+  const liveRead = liveText().includes('sel.liveFrame ||');
   check('applySelection 落 liveFrame（web 支的实时帧候选因此才有入口）',
     liveAssign && liveRead, 'assign=' + liveAssign + ' read=' + liveRead);
   check('清空/被过滤两条早退分支也把实时帧清掉（不留上一张的残值）',
@@ -487,7 +534,7 @@ console.log('\n⑦ 接线：服务句柄 / 切换评估 / 面板开关 / 内联�
     buildSrc.includes("file: 'src/theme-follow.js'"));
   check('产物里确实带上了判定常量（构建期内联生效）',
     read('lib/client.js').includes('THEME_FOLLOW_LIGHT_ABOVE'));
-  const liveSrc = read('src/live-layer.js');
+  const liveSrc = liveText();
   check('两条真实抓帧路径都接上了：场景画布 + 网页 __wp.capture',
     liveSrc.includes('themeFollowOnFrameCanvas(canvas);')
     && liveSrc.includes('themeFollowOnFrameImage(dataUrl);'));
@@ -528,10 +575,14 @@ console.log('\n⑧ 皮肤互操作：退场放回 · 让路态不写 · 外部�
     m.themeFollowOnWallpaper(wallpaper('w1', 'rgb(4, 6, 10)'));   // light → dark
     const wrote = f.calls.length;
     m.themeFollowRelease();
+    // 判据量**放回这件事真的发生了**（偏好回到 light、瞬态状态行留痕），不量产品那句措辞；
+    // 「留痕」走面板瞬态通道独立观察，不拿 `diagTraces` 里的产品文案当判据。
     check('退场放回：我方改过的那份原样归还（dark → light）并留痕',
       wrote === 1 && JSON.stringify(f.calls) === JSON.stringify(['dark', 'light'])
-      && f.svc.preference === 'light' && diagTraces.some((t) => t.includes('放回')),
-      JSON.stringify(f.calls) + ' pref=' + f.svc.preference);
+      && f.svc.preference === 'light'
+      && String(transientWrites.themeFollowLine || '').trim().length > 0,
+      JSON.stringify(f.calls) + ' pref=' + f.svc.preference
+      + ' || ' + String(transientWrites.themeFollowLine || '') + ' || ' + (diagTraces.slice(-1)[0] || '(无)'));
     m.themeFollowRelease();
     check('放回是一次性的（没有改动痕迹后不再写）', f.calls.length === 2, JSON.stringify(f.calls));
   }
@@ -549,6 +600,11 @@ console.log('\n⑧ 皮肤互操作：退场放回 · 让路态不写 · 外部�
     m.themeFollowAttach(f.svc, f.ctx);
     m.themeFollowOnWallpaper(wallpaper('w1', 'rgb(4, 6, 10)'));   // 写 dark（before = light）
     f.svc.preference = 'light';                                   // 用户改浅色（外部，让位）
+    // 驱动器地板（覆盖面）：下面的循环要"通知让位"，订阅不在场时它会静默空转，
+    // 而紧接着的判据恰好是「不硬覆盖」—— 空转最容易让它通过。
+    check('覆盖面：theme/change 订阅在场（否则下面的让位通知空转、"不硬覆盖"白测）',
+      f.handlers.some(([ev]) => ev === 'theme/change'),
+      '订阅=' + JSON.stringify(f.handlers.map(([ev]) => ev)));
     for (const [ev, cb] of f.handlers) if (ev === 'theme/change') cb();
     f.svc.preference = 'dark';                                    // 又改回深色：现值回到我方写的那份
     for (const [ev, cb] of f.handlers) if (ev === 'theme/change') cb();

@@ -21,18 +21,41 @@ import { EventEmitter } from 'node:events';
 import { createHash } from 'node:crypto';
 // 剥注释：共享的字符串感知实现（test/tools/js-text.mjs）。
 import { stripComments } from './tools/js-text.mjs';
+// 路由族文件面（`lib/routes/*.js` ∪ `packages/<pkg>/lib/routes/*.js`）的**同一份**发现真源。
+import { routeModuleCandidates } from './tools/host-route-index.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 /**
- * 宿主半的**全部注册面** = `lib/index.js` + `lib/routes/*.js`。
+ * 宿主半的**全部注册面** = `lib/index.js` + `lib/routes/*.js` + `packages/<pkg>/lib/routes/*.js`
+ * （P-A 起路由族随子包走；面不跟着长 ⇒ 搬走的族静默掉出，相关断言变空真）。
  * 路由族拆出 `apply(ctx)` 之后 ⇒ 凡断言"宿主仍实现某契约"的判据都必须覆盖
  * 那个目录，否则"已搬走"会被误报成"契约丢了"（假红）。反之，断言"某路由**已不在正文**"的
  * 判据仍必须只读 `lib/index.js`。
  */
-const readHostHalf = () => ['lib/index.js',
-  ...readdirSync(resolve(root, 'lib', 'routes')).filter((f) => f.endsWith('.js')).map((f) => 'lib/routes/' + f)]
-  .map((f) => readFileSync(resolve(root, f), 'utf8')).join('\n');
+// ⚠️ 扫描面分两层（口径不同，别混成一份）：
+//   · `readHostHalf()` —— **锚点扫描面**：要能定位实现符号（`sceneFrameSlot` / `gpuFrameFileFor`
+//     随 P0 库化搬进 `lib/kernel/**` 与 `lib/media/*`）。
+//   · `readKeyDerivationSurface()` —— **键派生点计数面**：只数"缓存键在哪几处被拼出来"，
+//     历史口径 = 门面 + 路由族（对齐本文件头 30–31 行的约定：族里的派生点随族搬走）。
+/** P-A：路由族也会住在子包里（`packages/<pkg>/lib/routes/*.js`）⇒ 两个扫描面都必须走**同一份**发现真源
+ *  （`host-route-index.mjs` 的 `routeModuleCandidates()`），否则搬走的族会**静默掉出**"宿主半"面
+ *  （面塌陷 ⇒ 相关断言恒真）。组件目录里的直接子文件不属"宿主半路由族"面（那条面由
+ *  verify-component-face 守），故从这里剔除。 */
+const routeFamilyFiles = () => routeModuleCandidates().filter((rel) => !rel.startsWith('lib/components/'));
+const readHostHalf = () => [
+  'lib/index.js',
+  'lib/scene-probe.js',
+  ...routeFamilyFiles(),
+  ...readdirSync(resolve(root, 'lib', 'kernel')).filter((f) => f.endsWith('.js')).map((f) => 'lib/kernel/' + f),
+  ...readdirSync(resolve(root, 'lib', 'media')).filter((f) => f.endsWith('.js')).map((f) => 'lib/media/' + f),
+]
+  .map((f) => { try { return readFileSync(resolve(root, f), 'utf8'); } catch { return ''; } }).join('\n');
+const readKeyDerivationSurface = () => ['lib/index.js', 'lib/scene-probe.js',
+  ...routeFamilyFiles(),
+  ...readdirSync(resolve(root, 'lib', 'kernel')).filter((f) => f.endsWith('.js')).map((f) => 'lib/kernel/' + f),
+  ...readdirSync(resolve(root, 'lib', 'media')).filter((f) => f.endsWith('.js')).map((f) => 'lib/media/' + f)]
+  .map((f) => { try { return readFileSync(resolve(root, f), 'utf8'); } catch { return ''; } }).join('\n');
 // Point the cache **root** at a workspace-relative dir so the suite passes under
 // sandboxes that cannot write outside the workspace (the real host has no
 // such restriction). ⚠️ `DSH_WE_CACHE_DIR` 是缓存**根**（帧缓存落在 `<root>/frames`）——
@@ -60,22 +83,6 @@ function platformSkip(name, why) {
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
-
-/** Minimal PNG chunk writer for synthetic embedded-PNG tests. */
-function pngChunk(type, data) {
-  const out = Buffer.alloc(12 + data.length);
-  out.writeUInt32BE(data.length, 0);
-  out.write(type, 4, 'ascii');
-  data.copy(out, 8);
-  let crc = 0xffffffff;
-  const bytes = out.subarray(4, 8 + data.length);
-  for (let i = 0; i < bytes.length; i++) {
-    crc ^= bytes[i];
-    for (let k = 0; k < 8; k++) crc = (crc & 1) ? (0xedb88320 ^ (crc >>> 1)) : (crc >>> 1);
-  }
-  out.writeUInt32BE((crc ^ 0xffffffff) >>> 0, 8 + data.length);
-  return out;
-}
 
 /** Build a tiny packed scene.pkg with raw (uncompressed) entries. */
 function buildPkg(entries) {
@@ -185,6 +192,22 @@ const dispose = apply(mockCtx);
 const sceneRoute = routes.find((r) => r.path === '/wallpaper-engine/scene-frame');
 check('scene-frame route registered', Boolean(sceneRoute), sceneRoute ? 'kind=' + sceneRoute.kind : 'missing');
 
+// ── 组件行也要 boot（本分支的路由族归属：`/avatar` / `/mascot` 归 `mascot-avatar` 组件行）──
+// ⚠️ 这条**不是**"判据放宽"，而是夹具的 boot 段要跟上本分支的结构：本分支把实现搬进了组件目录
+// （ADR-0013 D14「实现入包、主包不留注册点」，由 test/verify-route-ownership.mjs 的 M10 钉住）。
+// 上游那条判据按"门面 apply 后 /avatar 就可用"写 —— 那是单包单行形态的假设。
+// 处置（Lead 裁决 (a)）：**连组件一起 boot**，保住组件边界；判据判什么一个字没改。
+if (typeof hostMod.applyComponent === 'function') {
+  for (const comp of ['mascot-avatar', 'about-notice']) {
+    try { hostMod.applyComponent(mockCtx, {}, comp); } catch (err) {
+      console.log('  · 组件行 boot 失败（' + comp + '）：' + String(err && err.message));
+    }
+  }
+}
+check('组件行 boot 后 /avatar 已注册（组件边界与判据口径一致）',
+  routes.some((r) => r.path === '/wallpaper-engine/avatar'),
+  'avatar routes=' + routes.filter((r) => r.path.includes('avatar')).length);
+
 // Route requires a token that mediaMap knows; tokens are minted during
 // inventory. Emulate by calling the inventory route first with a req shim.
 const invRoute = routes.find((r) => r.path === '/wallpaper-engine/inventory');
@@ -220,7 +243,7 @@ async function runHandler(route, url) {
 }
 
 let token = null;
-let invBody = null;
+let invBody;
 {
   const res = await runHandler(invRoute, '/wallpaper-engine/inventory');
   invBody = JSON.parse(res.__state.body.toString('utf8'));
@@ -228,7 +251,8 @@ let invBody = null;
   // workshop scene on this machine would still be listed alongside it.
   const scene = (invBody.wallpapers || []).find((w) => w.id === '990002' && w.frameUrl);
   token = scene ? scene.frameUrl.split('/').pop() : null;
-  check('inventory exposes the fixture scene frameUrl', Boolean(token), token ? 'frame token minted' : 'fixture scene missing from inventory');
+  const fx = (invBody.wallpapers || []).filter((w) => w.id === '990002');
+  check('inventory exposes the fixture scene frameUrl', Boolean(token), token ? 'frame token minted' : ('fixture scene missing from inventory（error=' + String(invBody.error || '-').slice(0,120) + '；清单共 ' + (invBody.wallpapers || []).length + ' 条；命中 ' + fx.length + ' 条；' + (fx[0] ? '字段=' + Object.keys(fx[0]).join('/') + ' frameUrl=' + String(fx[0].frameUrl) + ' type=' + String(fx[0].type) : '零命中') + '）'));
 }
 
 if (token) {
@@ -248,8 +272,17 @@ if (token) {
   // cache file written under the plugin data dir (env-overridden for tests)
   const cacheDir = TEST_FRAMES_DIR;
   // 缓存键版本从源码读（别写死：升版本时这里会静默测到旧文件，等于假通过）
-  const keyVersion = (/LIVE_FRAME_KEY_VERSION = '([^']+)'/.exec(
-    readFileSync(resolve(root, 'lib', 'index.js'), 'utf8')) || [])[1] || 'sf';
+  // ⚠️ 真源随 P0 库化搬到 `lib/media/frame-store.js`（门面已不持有实现）。**必须按声明处解析**：
+  // 固定在门面上时正则会落空并**静默回落到 `'sf'`** ⇒ 期望文件名与实际落盘名不符，
+  // 症状是"PUT 200 但盘上 missing"（实测就是这样骗过一轮排查的）。
+  const keyVersion = (() => {
+    const src = ['lib/media/frame-store.js', 'lib/index.js', 'lib/kernel/host-kernel.js']
+      .map((rel) => { try { return readFileSync(resolve(root, rel), 'utf8'); } catch { return ''; } })
+      .join('\n');
+    return (/LIVE_FRAME_KEY_VERSION = '([^']+)'/.exec(src) || [])[1] || '';
+  })();
+  check('缓存键版本可从源码解析（缺锚即红，不许回落默认值）', keyVersion.length > 0,
+    keyVersion ? 'keyVersion=' + keyVersion : '锚点缺失（LIVE_FRAME_KEY_VERSION 搬家了？）');
   // 只比较**本次请求前后**的差集：目录里可能有历史运行的残留（旧语义留下的静态帧），
   // 拿"目录为空"当判据会被那些残留绊倒。
   const addedNow = (existsSync(cacheDir) ? readdirSync(cacheDir) : []).filter((f) => !beforeList.includes(f));
@@ -308,10 +341,11 @@ if (token) {
     return res;
   };
   const runClear = async (url, method = 'DELETE') => {
+    // 单主帧契约：清除 = 裸 DELETE（删主帧）；POST ?clear=1 是等价别名。
     const req = { url, headers: {}, method };
     const res = fakeRes();
     gpuRoute.handler(req, res);
-    await new Promise((r) => setTimeout(r, 20));
+    await new Promise((r) => { setTimeout(r, 20); });
     return res;
   };
   const runHead = async (url) => {
@@ -326,6 +360,8 @@ if (token) {
     // 残留的其它 key 文件，不算失败。版本取自上面从源码读出的 keyVersion，
     // 写死字面量会在宿主升键后静默测到旧文件（第 514 行的注释即此意）。
     const curKey = keyVersion + '_' + token + '_' + Math.round(statSync(join(fixtureItemDir, 'scene.pkg')).mtimeMs);
+    // 主帧产物名：<key>_gpu.png（单槽，面积升级制 —— 只升不降，见 PUT 守卫）。
+    const gpuMasterFile = curKey + '_gpu.png';
     const head0 = await runHead('/wallpaper-engine/scene-frame/' + token);
     check('HEAD 空槽（无抓帧、无自定义画面）→ 404 且不发 X-WE-GPU',
       head0.__state.status === 404 && head0.__state.headers['X-WE-GPU'] === undefined,
@@ -339,11 +375,11 @@ if (token) {
     check('PUT 魔数正确但无 IHDR/IEND → 415', putNoChunks.__state.status === 415, 'status=' + putNoChunks.__state.status);
     const putTooSmall = await runPut('/wallpaper-engine/scene-frame-cache/' + token, makePng(10));
     check('PUT 结构合法但过小（< 1KB 地板）→ 415', putTooSmall.__state.status === 415, 'status=' + putTooSmall.__state.status);
-    check('以上三次拒绝都没有落盘', !existsSync(join(cacheDir, curKey + '_gpu.png')), 'ok');
+    check('以上三次拒绝都没有落盘', !existsSync(join(cacheDir, gpuMasterFile)), 'ok');
     const put1 = await runPut('/wallpaper-engine/scene-frame-cache/' + token, gpuPng);
     check('PUT 合法 PNG → 200', put1.__state.status === 200, 'status=' + put1.__state.status);
-    const gpuFiles = readdirSync(cacheDir).filter((f) => f === curKey + '_gpu.png');
-    check('GPU frame stored as <key>_gpu.png (文件名即标记，可直接打开)',
+    const gpuFiles = readdirSync(cacheDir).filter((f) => f === gpuMasterFile);
+    check('GPU frame stored as <key>_gpu.png（单主帧，文件名即标记）',
       gpuFiles.length === 1, gpuFiles.join(', ') || 'missing');
     // v=4（强制自定义画面）：**豁免** GPU 抓帧 —— 用户显式 pin 的来源不被一张抓帧顶掉（§6.2/§6.7）。
     const getV4 = await runHandler(sceneRoute, '/wallpaper-engine/scene-frame/' + token + '?v=4');
@@ -366,19 +402,34 @@ if (token) {
     check('HEAD ?v=3 → X-WE-GPU=1', headV3.__state.status === 204 && headV3.__state.headers['X-WE-GPU'] === '1',
       'status=' + headV3.__state.status + ' gpu=' + headV3.__state.headers['X-WE-GPU']);
     const put2 = await runPut('/wallpaper-engine/scene-frame-cache/' + token, gpuPng);
-    check('second PUT rejected → 409 (每壁纸一份)', put2.__state.status === 409, 'status=' + put2.__state.status);
-    // 并发写入（TOCTOU 的真复现装置）：同 key 串行 → 恰好一 200 一 409。
+    check('second PUT 等面积 → 200（换内容，是「重新截」不是降级）', put2.__state.status === 200,
+      'status=' + put2.__state.status);
+    const put2b = await runPut('/wallpaper-engine/scene-frame-cache/' + token, makePng(4096, 3, [32, 32]));
+    check('明显更小的 PUT → 409 frame-smaller（小帧覆盖不掉大帧，多窗竞态的最后一道闸）',
+      put2b.__state.status === 409 && /frame-smaller/.test(String(put2b.__state.body)),
+      'status=' + put2b.__state.status);
+    const put2c = await runPut('/wallpaper-engine/scene-frame-cache/' + token, gpuPng);
+    check('守卫拒写后等面积重写仍 → 200（守卫不烧槽）', put2c.__state.status === 200,
+      'status=' + put2c.__state.status);
+    // 并发写入（面积守卫的竞态复现装置）：一大两小同槽并发 —— 不论到达顺序，
+    // 结局必须是「大帧在盘上」。小帧若先到会先 200，大帧随后升级覆盖；大帧先到
+    // 则小帧们全被 409 拒掉。**任何顺序下磁盘终态 = 最大帧**，这就是"只升不降"。
     await runClear('/wallpaper-engine/scene-frame-cache/' + token);
     const raced = await Promise.all([
-      runPut('/wallpaper-engine/scene-frame-cache/' + token, makePng(4096, 1)),
-      runPut('/wallpaper-engine/scene-frame-cache/' + token, makePng(4096, 2)),
-      runPut('/wallpaper-engine/scene-frame-cache/' + token, makePng(4096, 3)),
+      runPut('/wallpaper-engine/scene-frame-cache/' + token, makePng(4096, 1, [1440, 900])), // 大帧
+      runPut('/wallpaper-engine/scene-frame-cache/' + token, makePng(4096, 2)),              // 小帧 64×64
+      runPut('/wallpaper-engine/scene-frame-cache/' + token, makePng(4096, 3)),              // 小帧 64×64
     ]);
     const codes = raced.map((r) => r.__state.status).sort().join(',');
-    check('三个并发 PUT 只有一个成功（唯一性闸串行化）', codes === '200,409,409', 'codes=' + codes);
-    const survivor = readdirSync(cacheDir).filter((f) => f === curKey + '_gpu.png').length;
-    check('并发后磁盘上仍只有一份 GPU 帧', survivor === 1, 'count=' + survivor);
-    const noTmpLeft = readdirSync(cacheDir).filter((f) => f.startsWith(curKey + '_gpu.png.tmp')).length;
+    const bigPng = makePng(4096, 1, [1440, 900]);
+    check('一大两小并发 PUT：面积守卫把小帧挡在盘外（无论到达顺序）',
+      (codes === '200,409,409' || codes === '200,200,409')
+      && readdirSync(cacheDir).filter((f) => f === gpuMasterFile).length === 1
+      && readFileSync(join(cacheDir, gpuMasterFile)).equals(bigPng),
+      'codes=' + codes);
+    const survivor = readdirSync(cacheDir).filter((f) => f === gpuMasterFile).length;
+    check('并发后磁盘上仍只有一份主帧', survivor === 1, 'count=' + survivor);
+    const noTmpLeft = readdirSync(cacheDir).filter((f) => f.startsWith(gpuMasterFile + '.tmp')).length;
     check('并发写入未残留 .tmp 垃圾', noTmpLeft === 0, 'tmp=' + noTmpLeft);
     // 清除通道：DELETE（以及 POST ?clear=1）→ 可重新抓取。
     const clr = await runClear('/wallpaper-engine/scene-frame-cache/' + token);
@@ -395,10 +446,9 @@ if (token) {
       'status=' + headAfterClear.__state.status);
     const put3 = await runPut('/wallpaper-engine/scene-frame-cache/' + token, gpuPng);
     check('清除后可重新写入 → 200（坏帧不再是死结）', put3.__state.status === 200, 'status=' + put3.__state.status);
-    // ── 抓帧几何随 HEAD 暴露（客户端据此判断存帧是否还是当前视口的构图）────
-    // _gpu.png 是抓帧那一刻渲染页视口的构图（渲染器按画布比取景），别的窗口/
-    // 旧会话留下的帧拿到当前窗口上屏会被 CSS object-fit: cover 再裁一次 = 画面
-    // 放大且四周被切。IHDR 的宽高比就是抓帧画布的设备像素比 → 直接读文件头即可。
+    // ── 抓帧几何随 HEAD 暴露（客户端面积升级判定的数据源 + 人类可读的诊断）────
+    // _gpu.png 的 IHDR 就是抓帧画布的设备像素尺寸：客户端拿 W/H 算主帧面积
+    //（≥ 画布×0.95 保留缩放，否则升级重抓），人也能直接看出这张帧是哪个视口抓的。
     const headGeo64 = await runHead('/wallpaper-engine/scene-frame/' + token);
     check('HEAD 报出抓帧几何（X-WE-GPU-W/H/AR，来自 PNG IHDR）',
       headGeo64.__state.headers['X-WE-GPU-AR'] === '1.0000'
@@ -409,7 +459,7 @@ if (token) {
     const putWide = await runPut('/wallpaper-engine/scene-frame-cache/' + token, makePng(4096, 7, [1440, 960]));
     check('PUT 3:2 抓帧（1440x960）→ 200', putWide.__state.status === 200, 'status=' + putWide.__state.status);
     const headGeoWide = await runHead('/wallpaper-engine/scene-frame/' + token);
-    check('HEAD 报出 3:2 抓帧几何（1.5000 → 客户端判「与 16:9 视口不符」→ 重抓）',
+    check('HEAD 报出 3:2 抓帧几何（1.5000 —— 小视口抓的帧，客户端会按面积升级覆盖）',
       headGeoWide.__state.status === 204 && headGeoWide.__state.headers['X-WE-GPU-AR'] === '1.5000',
       'ar=' + headGeoWide.__state.headers['X-WE-GPU-AR']);
     const headGeoNoGpu = await (async () => {
@@ -444,7 +494,7 @@ if (token) {
       } else {
       const mode = statSync(cacheDir).mode & 0o777;
       chmodSync(cacheDir, 0o555); // 目录不可写 → unlinkSync EACCES
-      let locked = null;
+      let locked;
       try {
         locked = await runClear('/wallpaper-engine/scene-frame-cache/' + token);
       } finally {
@@ -454,7 +504,7 @@ if (token) {
         locked && locked.__state.status === 500 && /unlink-failed/.test(String(locked.__state.body)),
         'status=' + (locked && locked.__state.status) + ' body=' + String(locked && locked.__state.body).slice(0, 90));
       check('unlink 失败后 GPU 帧仍在盘上（清除确实没发生）',
-        readdirSync(cacheDir).filter((f) => f === curKey + '_gpu.png').length === 1);
+        readdirSync(cacheDir).filter((f) => f === gpuMasterFile).length === 1);
       const headLocked = await runHead('/wallpaper-engine/scene-frame/' + token);
       check('unlink 失败后 HEAD 仍报 X-WE-GPU=1（与客户端所见一致）',
         headLocked.__state.status === 204 && headLocked.__state.headers['X-WE-GPU'] === '1',
@@ -489,9 +539,13 @@ if (token) {
 }
 
 // 帧上限从源码解析（别写死：上限一改，超限用例会静默测到旧尺寸 = 假通过）
+// ⚠️ 真源随 P0 库化搬到 `lib/media/frame-store.js`（门面已不持有实现）⇒ 这里按**声明处**解析，
+// 不固定在门面路径上（固定路径会在搬家后静默退化成 0 ⇒ 判据失去牙齿，而不是"搬家即红"）。
 const frameLimit = (() => {
-  const expr = (/const GPU_FRAME_MAX_BYTES = ([^;]+);/.exec(
-    readFileSync(resolve(root, 'lib', 'index.js'), 'utf8')) || [])[1] || '';
+  const src = ['lib/media/frame-store.js', 'lib/index.js', 'lib/kernel/host-kernel.js']
+    .map((rel) => { try { return readFileSync(resolve(root, rel), 'utf8'); } catch { return ''; } })
+    .join('\n');
+  const expr = (/const GPU_FRAME_MAX_BYTES = ([^;]+);/.exec(src) || [])[1] || '';
   return /^[\d\s*+()]+$/.test(expr) ? Number(new Function('return (' + expr + ')')()) : 0;
 })();
 check('帧上限常量可从源码解析（超限块尺寸不写死）', frameLimit > 0, 'GPU_FRAME_MAX_BYTES = ' + frameLimit);
@@ -511,7 +565,7 @@ if (token) {
     if (!hit) { res.statusCode = 404; res.end('no route'); return; }
     try { hit.handler(req, res); } catch (err) { res.statusCode = 500; res.end(String(err)); }
   });
-  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  await new Promise((r) => { server.listen(0, '127.0.0.1', r); });
   const port = server.address().port;
   // 结果里带上**是哪个信号先到**（`res end` / `res close` / `req error`）与响应状态码：
   // 偶发 `status=0` 时，这一条决定了"是服务端没送到"还是"客户端侧先报错、但 413 其实收到了"
@@ -569,7 +623,7 @@ if (token) {
   });
   check('真 socket：HEAD 探测可达且报 X-WE-GPU', headOver.status === 204 || headOver.status === 404,
     'status=' + headOver.status + ' gpu=' + headOver.gpu);
-  await new Promise((r) => server.close(r));
+  await new Promise((r) => { server.close(r); });
 }
 
 // ── Level B2: 用户图片资产路由（会话头像 + 吉祥物立绘；真 socket + 隔离的数据目录）──
@@ -598,7 +652,7 @@ if (token) {
     if (!hit) { res.statusCode = 404; res.end('no route'); return; }
     try { hit.handler(req, res); } catch (err) { res.statusCode = 500; res.end(String(err)); }
   });
-  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  await new Promise((r) => { server.listen(0, '127.0.0.1', r); });
   const port = server.address().port;
   const call = (method, path, headers, body) => new Promise((resolveFn) => {
     const chunks = [];
@@ -682,7 +736,7 @@ if (token) {
       mClear.status === 200 && /"removed":true/.test(mClear.body) && mAfter.status === 404,
       'status=' + mClear.status + ' then ' + mAfter.status);
   } finally {
-    await new Promise((r) => server.close(r));
+    await new Promise((r) => { server.close(r); });
     if (PREV_DATA_DIR === undefined) delete process.env.DSH_WE_DATA_DIR; else process.env.DSH_WE_DATA_DIR = PREV_DATA_DIR;
     rmSync(dataDir, { recursive: true, force: true });
   }
@@ -805,14 +859,16 @@ if (token) {
   const src = readHostHalf();
   /** 判据只认代码：调用点沿用短名 `strip`。 */
   const strip = stripComments;
-  const bare = strip(src).match(/req\.destroy\(\)/g) || [];
-  check('D3 全仓 req.destroy() 只允许两处收口（lingerClose / idle 兜底）', bare.length <= 2,
-    '当前 ' + bare.length + ' 处');
+  /** 共享判据：阳性（宿主半全文）与阴性对照（合成样本）都走它。 */
+  const bareDestroyCount = (t) => (t.match(/req\.destroy\(\)/g) || []).length;
+  const bare = bareDestroyCount(strip(src));
+  check('D3 全仓 req.destroy() 只允许两处收口（lingerClose / idle 兜底）', bare <= 2,
+    '当前 ' + bare + ' 处');
   const calls = strip(src).match(/lingerClose\(/g) || [];
   check('D3 每条"收到一半就放弃"的路由都接了 lingerClose（当前 5 条：帧缓存 / 实时帧 / 自定义画面 / 上传 / 设置）',
     calls.length >= 6, '出现 ' + calls.length + ' 次（1 处定义 + 调用点）');
-  check('负对照：裸 req.destroy() 计数判据有牙',
-    (strip("try { req.destroy(); } catch { /* ignore */ }").match(/req\.destroy\(\)/g) || []).length === 1);
+  check('负对照：裸 req.destroy() 计数判据有牙（同一函数吃合成样本 ⇒ 计数 1）',
+    bareDestroyCount(strip("try { req.destroy(); } catch { /* ignore */ }")) === 1);
 }
 // ── Level E: 缓存键单一构造点（结构不变量）──────────────────────────────────
 // 帧缓存键如果每个派生点各拼一遍字面量 ⇒ 升版本
@@ -824,7 +880,9 @@ if (token) {
   //    搬进 `lib/routes/scene-media.js`。本判据守的是"每种缓存各只有一个派生点"这个
   //    **宿主级**不变量，不是"三个派生点都在主文件里"（本文件头 30–31 行的约定）。
   const hostSrc = readHostHalf();
-  const derivations = hostSrc.match(/Buffer\.from\(abs, 'utf8'\)\.toString\('base64url'\)/g) || [];
+  /** 共享判据：阳性（宿主半）与阴性对照（宿主半 + 一条合成派生）共用同一计数函数。 */
+  const base64UrlDerivations = (t) => (t.match(/Buffer\.from\(abs, 'utf8'\)\.toString\('base64url'\)/g) || []).length;
+  const derivations = base64UrlDerivations(readKeyDerivationSurface());
   /**
    * 取一个顶层函数的函数体：起点锚 `function <name>(`，终点锚 `function <nextName>(`。
    * ⚠️ 终点锚**必须真实存在，且缺锚要判红**（返回 null）：此处此前把终点写成
@@ -845,13 +903,13 @@ if (token) {
   check('负对照：终点锚缺失时 fnBody 返回 null（判据有牙，不会静默扫全文）',
     fnBody('function a() {}\n', 'a', 'doesNotExist') === null);
   check('P1-6 每种缓存各只有一个键派生点（当前 3 种：帧 / 场景音频 / 场景视频）',
-    derivations.length === 3,
-    '派生点 ' + derivations.length + ' 处');
+    derivations === 3,
+    '派生点 ' + derivations + ' 处');
   check('P1-6 sceneFrameSlot 复用 sceneFrameCacheKey 且不再自带版本前缀',
     slotBody !== null && slotBody.includes('sceneFrameCacheKey(abs, mtime)') && !slotBody.includes('LIVE_FRAME_KEY_VERSION'),
     'reuse=' + (slotBody !== null && slotBody.includes('sceneFrameCacheKey(abs, mtime)')) + ' versionInSlot=' + (slotBody !== null && slotBody.includes('LIVE_FRAME_KEY_VERSION')));
-  check('P1-6 negative control: 再写一份派生会被数出来',
-    (hostSrc + "\nconst x = Buffer.from(abs, 'utf8').toString('base64url');").match(/Buffer\.from\(abs, 'utf8'\)\.toString\('base64url'\)/g).length === derivations.length + 1);
+  check('P1-6 negative control: 再写一份派生会被同一计数判据数出来',
+    base64UrlDerivations(readKeyDerivationSurface() + "\nconst x = Buffer.from(abs, 'utf8').toString('base64url');") === derivations + 1);
 
   // ── 槽位只给唯一产物（反向探针：删掉的死字段不许爬回来）─────────────────────
   // `sceneFrameSlot` 曾返回 `pngPath` / `jpgPath` / `gifPath` / `dir` 与一个 `_vN` 档位后缀，
@@ -924,7 +982,8 @@ if (token) {
     slotBody !== null && /function sceneFrameSlot\(\s*abs\s*\)/.test(slotBody) && !slotBody.includes("'_v'"),
     slotBody === null ? '锚点缺失' : 'arity-ok=' + /function sceneFrameSlot\(\s*abs\s*\)/.test(slotBody));
   check('P4-16 档 4 豁免抓帧时**不解析槽位**（不留那次白做的 statSync + ensureFrameCacheDir）',
-    /variant === 4 \? null : gpuFrameFileFor\(sceneFrameSlot\(abs\)\)/.test(readFileSync(join(root, 'lib', 'routes', 'scene-frame.js'), 'utf8')));
+    /const slot = variant === 4 \? null : sceneFrameSlot\(abs\);/.test(readFileSync(join(root, 'lib', 'routes', 'scene-frame.js'), 'utf8'))
+    && /const gpuFile = slot \? gpuFrameFileFor\(slot\) : null;/.test(readFileSync(join(root, 'lib', 'routes', 'scene-frame.js'), 'utf8')));
 }
 
 // ── Level F: sceneVideo 文件版探测（issue #136）──────────────────────────────
@@ -1006,9 +1065,7 @@ console.log('Level F — sceneVideo 文件版探测（issue #136）等价 / 读�
     const file = join(eqDir, name + '.pkg');
     writeFileSync(file, pkg);
     // ① 条目表（含压缩 flags）逐字段全等 —— probeCompressedEntry ≡ probeCompressedEntryAt。
-    let counted = 0;
     const readAt = async (pos, len) => {
-      counted += len;
       return pkg.subarray(pos, pos + Math.min(len, Math.max(pkg.length - pos, 0)));
     };
     const head = await parsePkgHead(readAt, pkg.length);
@@ -1057,12 +1114,14 @@ console.log('Level F — sceneVideo 文件版探测（issue #136）等价 / 读�
   //     "契约丢了"（本文件头第 30–31 行的那条约定：断言"仍实现某契约"要覆盖族目录）。
   {
     const hostHalfSrc = stripComments(readHostHalf());
+    /** 共享判据：阳性（宿主半）与阴性对照（合成变异串）都喂进它。 */
+    const usesUint8Probe = (t) => /extractSceneVideo\(new Uint8Array\(/.test(t);
     check('F 后台探测泵走文件版', /probeSceneVideoFromPkgFile\(job\.abs\)/.test(hostHalfSrc));
     check('F /scene-video 走文件版提取', /await extractSceneVideoFromPkgFile\(abs\)/.test(hostHalfSrc));
     check('F 宿主零残留：readFile(整包) → extractSceneVideo 旧形态',
-      !/extractSceneVideo\(new Uint8Array\(/.test(hostHalfSrc));
-    check('F negative control: 旧形态会被同一判据判出',
-      /extractSceneVideo\(new Uint8Array\(/.test('extractSceneVideo(new Uint8Array(await readFile(abs)))'));
+      !usesUint8Probe(hostHalfSrc));
+    check('F negative control: 旧形态会被同一判据判出（合成变异串 ⇒ true）',
+      usesUint8Probe('extractSceneVideo(new Uint8Array(await readFile(abs)))') === true);
   }
   // ③b 族文件归属：场景内嵌媒资族（`/scene-video` + `/scene-audio`）已搬进
   //     `lib/routes/scene-media.js`（逐条理由见该文件头）。判据钉两件事：
@@ -1077,8 +1136,12 @@ console.log('Level F — sceneVideo 文件版探测（issue #136）等价 / 读�
       !stale.test(hostSrc)
         && famSrc.includes('path: `${BASE}/scene-video`')
         && famSrc.includes('path: `${BASE}/scene-audio`'));
-    check('G 去重账本只以引用进 c（声明仍在 apply()，生命周期未改）',
-      /const SCENE_VIDEO_INFLIGHT = new Map\(\);/.test(hostSrc)
+    // ⚠️ 该常量的**声明处**随 P0 库化搬到了会话段 `lib/kernel/host-session.js`（门面只剩装配 +
+    // 组件分发点）—— 判据守的不变量是「去重账本是**本 fiber 的单例**、只以引用进 `c`」，
+    // 因此按"在其所属半边里找声明"来判，而不是把它钉死在门面上（钉死会退化成无关搬家即红）。
+    const sessionSrc = stripComments(readFileSync(join(root, 'lib', 'kernel', 'host-session.js'), 'utf8'));
+    check('G 去重账本只以引用进 c（声明在本 fiber 的会话段，生命周期未改）',
+      /const SCENE_VIDEO_INFLIGHT = new Map\(\);/.test(sessionSrc)
         && /SCENE_VIDEO_INFLIGHT/.test(famSrc)
         && /registerSceneMediaRoutes\(webServer, \{/.test(hostSrc));
     check('G negative control: 门面里重新出现被搬走的路由字面量会被同一条判据拒掉',

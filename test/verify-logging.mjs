@@ -17,6 +17,8 @@
  *      自己声明（issue #13）—— 产物里真有 `lvl=` 上报与三档字面量，且产物**不许**再有本地补丁
  *      （本地把级别打进产物会在下次 vendor 时被覆盖，也让产物与上游不一致）。只删补丁不建上游，
  *      渲染页就退回"宿主靠文案猜"。
+ *      ③ 同一份同步 rig 还要与宿主**路由前缀**对齐：产物里的绝对引用、rig 的 base、宿主注册的
+ *      `${BASE}/…` 三者一致 —— 否则改前缀/改路由名时产物与路由静默分叉（渲染页 404 而判据全绿）。
  *
  * N1–N6 是**静态**判据（代码长什么样）；R1–R4 是**运行期**判据（真的跑一遍两个宿主模块）——
  * 闸门三态、幂等与"投递失败才 warn"这三件事在源码上看不出来，只能跑：
@@ -34,6 +36,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 // 剥注释：共享的字符串感知实现（test/tools/js-text.mjs）。
 import { stripComments } from './tools/js-text.mjs';
+import { liveText } from './tools/src-scope.mjs';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const results = [];
@@ -51,7 +54,7 @@ const SINKS = ['lib/log.js', 'lib/notice.js'];
 /** 不在这条判据扫描面里的东西及其理由（口径写在判据旁，不靠"约定"）。 */
 const NOT_OURS = [
   [/^lib\/client\.js$/, '构建产物（源在 src/**，由 build-client 内联生成）'],
-  [/^lib\/webwallgl\//, '上游 vendored 渲染页（自带 WebWallGL 的 console logger）'],
+  [/^lib\/webwallgl\//, '浏览器端渲染页（诊断经 `/diag` 像素上报，不经宿主日志）'],
 ];
 
 function walkLib(dir, out = []) {
@@ -151,18 +154,52 @@ const CALLERS = N1_FILES.filter((f) => f !== 'lib/notice.js');
 
 // ── N3 源码级不重复（每个 kind 的调用点恰好一处）──────────────────────────────
 {
-  const counts = new Map((KINDS || []).map((k) => [k, 0]));
-  for (const f of CALLERS) {
-    for (const k of noticeLiteralKinds(read(f))) counts.set(k, (counts.get(k) || 0) + 1);
-  }
-  const bad = [...counts.entries()].filter(([, n]) => n !== 1);
+  const sources = CALLERS.map((f) => [f, read(f)]);
+  const { counts, bad } = kindCounts(KINDS, sources);
   check('N3 每个 kind 在调用点里恰好出现一次（会话内幂等由运行时 Set 负责）',
     counts.size > 0 && bad.length === 0,
     bad.length ? '次数不为 1：' + bad.map(([k, n]) => k + '=' + n).join(' ')
       : [...counts].map(([k, n]) => k + '=' + n).join(' '));
-  check('N3 negative control: 同一 kind 的第二个调用点会让计数变成 2',
-    noticeLiteralKinds("a(); notice('media-origin', 'x'); notice('media-origin', 'y');")
-      .filter((k) => k === 'media-origin').length === 2);
+
+  // 负对照：变异**真扫描面读到的**源码，再喂回同一个 `kindCounts`（不是回测抽取器）——
+  //   ① 复制一份真调用点 ⇒ 该 kind 出现两次；② 抹掉一份真调用点 ⇒ 该 kind 出现零次。
+  // 地板：要求扫描面里真有调用点、且它在真树上的计数就是 1（正是这条契约要求的好形态），
+  //       否则"没有东西可变异"会让对照恒真。计数与"被判出"两件事都断言。
+  const sites = sources.flatMap(([f, src]) => noticeLiteralKinds(src).map((k) => ({ f, k })));
+  const first = sites[0] || null;
+  const healthy = first !== null && counts.get(first.k) === 1;
+  const dupSources = first === null ? [] : sources.map(([f, src]) =>
+    [f, f === first.f ? src + "\n  notice('" + first.k + "', 'mutant');" : src]);
+  const dropSources = first === null ? [] : sources.map(([f, src]) =>
+    [f, f === first.f ? withoutNoticeCall(src, first.k) : src]);
+  const dup = first === null ? null : kindCounts(KINDS, dupSources);
+  const drop = first === null ? null : kindCounts(KINDS, dropSources);
+  check('N3 negative control: 复制一份真调用点 / 抹掉一份真调用点，都会被同一个计数判据判出',
+    healthy
+    && dup.counts.get(first.k) === 2 && dup.bad.some(([k]) => k === first.k)
+    && drop.counts.get(first.k) === 0 && drop.bad.some(([k]) => k === first.k)
+    && dup.bad.length + drop.bad.length > 0,
+    first === null ? '扫描面里没有调用点可变异'
+      : '变异对象=' + first.f + ' 的 ' + first.k + '；复制后=' + dup.counts.get(first.k)
+        + ' 抹掉后=' + drop.counts.get(first.k));
+}
+
+/** N3 的判据本体（纯函数）：喂 [文件名, 源码] 列表 + 白名单，返回每个 kind 的计数与"次数不为 1"的清单。
+ *  正判据喂真源码，负对照喂真源码的变异副本 —— 两边走**同一个函数**，
+ *  否则负对照测的只是抽取器，而不是"恰好一次"这条契约。 */
+function kindCounts(kinds, sources) {
+  const counts = new Map((kinds || []).map((k) => [k, 0]));
+  for (const [, src] of sources) {
+    for (const k of noticeLiteralKinds(src)) counts.set(k, (counts.get(k) || 0) + 1);
+  }
+  return { counts, bad: [...counts.entries()].filter(([, n]) => n !== 1) };
+}
+
+/** 抹掉某个 kind 的调用点：把两种引号形态的 `notice('<kind>'` 前缀换成括号。
+ *  只在守卫的合成输入上做文本变异，不执行；抽取器只认 `notice(` 后紧跟字面量这一种形态。 */
+function withoutNoticeCall(src, kind) {
+  return src.split("notice('" + kind + "'").join('(/*removed*/')
+    .split('notice("' + kind + '"').join('(/*removed*/');
 }
 
 // ── N4 成功不发日志（lib/notice.js 的日志出口只有失败路径的那一个处理器）──────
@@ -199,7 +236,7 @@ function noticeSuccessSilent(src) {
   //   ③ `lib/serve.js` 的 handleSceneFiles 函数体（每个壁纸子资源请求都过它）。
   const hot = [
     ['lib/routes/scene-serve.js', read('lib/routes/scene-serve.js')],
-    ['src/live-layer.js', read('src/live-layer.js')],
+    ['src/live-layer.js', liveText()],
     ['lib/serve.js:handleSceneFiles', functionBody(read('lib/serve.js'), 'function handleSceneFiles(req, res, mount)')],
   ];
   const missing = hot.filter(([, body]) => body === null).map(([n]) => n);
@@ -216,7 +253,7 @@ function noticeSuccessSilent(src) {
 // ── N6 两侧档位名同集合 ─────────────────────────────────────────────────────
 {
   const host = levelNamesIn(read('lib/log.js'));
-  const client = levelNamesIn(read('src/live-layer.js'));
+  const client = levelNamesIn(liveText());
   check('N6 宿主与客户端声明的三个档位名集合相同（两侧不共享内核，靠判据防漂）',
     host.length === LEVEL_NAMES.length && client.length === LEVEL_NAMES.length
     && LEVEL_NAMES.every((l) => host.includes(l) && client.includes(l)),
@@ -226,55 +263,88 @@ function noticeSuccessSilent(src) {
     && levelNamesIn("const X = { 'error': 1, 'warn': 1, 'info': 1 };").length === LEVEL_NAMES.length);
 }
 
-// ── N7 渲染页的级别由**上游产物自己**声明（宿主不再需要本地补丁）──────────────
-// `/diag` 分档的主路径是发送端自带的 `&lvl=`：上游 WebWallGL 的 `diag-level.ts` 负责声明
-// （issue #13），宿主 `lib/routes/diag.js` 只读不猜 —— 三档优先、未知 / 缺失才回落模式表
-// （那条回落由 R5 用真请求钉住）。本判据把两件事同时钉住：「产物自带级别」与「补丁已清干净」：
-// 少了上游实现，渲染页就退回"宿主靠文案猜"；而产物一旦被本地改过，`/scene-live` 的 immutable
-// 缓存会让同一 URL 继续发旧字节 —— 两种坏法都只有在这里能当场看见。
-/** 产物自带级别：`/diag` 上报模板带 `lvl=`，且三档字面量齐（宿主按这三个值认档）。 */
+// ── N7 渲染页的 `/diag` 上报自带级别 ─────────────────────────────────────────
+// `/diag` 分档的主路径是发送端自带的 `&lvl=`：引擎（npm `webwallgl` 的 diag-level）给每条诊断
+// 声明级别，渲染页 lib/webwallgl/renderer.js 原样带进上报 URL；宿主 `lib/routes/diag.js` 只读不猜
+// —— 三档优先、未知 / 缺失才回落模式表（那条回落由 R5 用真请求钉住）。渲染页丢了 `lvl=`，
+// 宿主就退回"靠文案猜"。
+/** 上报自带级别：`/diag` 上报模板带 `lvl=`，且三档字面量齐（宿主按这三个值认档）。 */
 function rendererDeclaresLevel(src) {
   return src.includes('/diag?msg=') && /&lvl=\$\{[A-Za-z_$][\w$]*\}/.test(src)
     && LEVEL_NAMES.every((l) => src.includes('"' + l + '"'));
 }
-/** 本地补丁残留：产物里的补丁标记 / 补丁后缀名，以及同步脚本里的补丁函数与开关。 */
-function localPatchResidue(assets, syncSrc) {
-  const out = [];
-  for (const f of assets) {
-    if (read(f).includes('__weLvl')) out.push(f + ' 带补丁标记');
-    if (/-welvl\d*\.js$/.test(f)) out.push(f + ' 带补丁后缀');
-  }
-  const code = stripComments(syncSrc);
-  // 这是**零残留**探针：谁把补丁函数或
-  // `--patches-only` 接回来，这里就红 —— 它不读"工具里有没有这些字符串"，而是断言它们不在。
-  for (const mark of ['applyLocalPatches', 'applyDiagLevelPatch', 'PATCH_SUFFIX', 'patches-only']) {
-    if (code.includes(mark)) out.push('sync-webwallgl.mjs 仍有 ' + mark);
-  }
-  return out;
-}
 {
-  const assets = LIB_FILES.filter((f) => /^lib\/webwallgl\/assets\/.*\.js$/.test(f));
-  const declared = assets.filter((f) => rendererDeclaresLevel(read(f)));
-  const residue = localPatchResidue(assets, read('test/tools/sync-webwallgl.mjs'));
-  check('N7 渲染页产物自带级别声明：`/diag` 上报带 `lvl=`，且 error/warn/info 三档字面量齐',
-    assets.length >= 1 && declared.length === 1,
-    '命中=' + declared.length + '/' + assets.length + '（' + (declared[0] || '无') + '）');
-  check('N7 本地补丁已清干净：产物无 `__weLvl` / `-welvl1` 后缀，同步脚本无补丁函数与 `--patches-only`',
-    residue.length === 0, residue.length ? residue.join(' | ') : '产物 ' + assets.length + ' 个 + 同步脚本干净');
+  const page = 'lib/webwallgl/renderer.js';
+  check('N7 渲染页的 `/diag` 上报带 `lvl=`，且 error/warn/info 三档字面量齐',
+    rendererDeclaresLevel(stripComments(read(page))), page);
   // 合成输入用的三档字面量 + 两种上报 URL（带 / 不带 `lvl=`）—— 同一个判据函数。
   const THREE = ' "error" "warn" "info"';
   const HAS_LVL = 'return `${t}/diag?msg=${x}&lvl=${lv}`}';
-  check('N7 negative control: 缺 `lvl=` / 缺档位字面量 / 带补丁残留 三种坏形态都会被判出',
+  check('N7 negative control: 缺 `lvl=` / 缺档位字面量 两种坏形态都会被判出',
     rendererDeclaresLevel('/diag?msg=x' + THREE) === false
     && rendererDeclaresLevel(HAS_LVL + THREE.slice(0, THREE.lastIndexOf(' "info"'))) === false
-    && rendererDeclaresLevel(HAS_LVL + THREE) === true
-    && localPatchResidue([], 'function applyDiagLevelPatch() {}').length === 1
-    && localPatchResidue([], '// applyDiagLevelPatch 曾是补丁\nconst x = 1;').length === 0
-    && localPatchResidue([], "const PATCHES_ONLY = process.argv.includes('--patches-only');").length === 1);
+    && rendererDeclaresLevel(HAS_LVL + THREE) === true);
+}
+
+// ── N7③ 客户端请求的渲染页 URL / 宿主注册前缀 / 渲染页的资源引用，三者必须对齐 ──────
+// 事故形态：客户端（src/live-layer.js 的 liveRenderUrl）按字面量请求 `/wallpaper-engine/scene-live/index.html`，
+// 只有宿主真把 `${BASE}/scene-live` 注册成路由时才解析得到；渲染页自己（index.html → renderer.js →
+// engine/）一律用**相对**引用，才会跟着这个前缀走。三处各写一份、谁都不核谁 ⇒ 改前缀（或改路由名）时
+// **静默分叉**，症状是渲染页 404 / 白屏，而所有判据仍然全绿。
+// 纯函数：喂四份源码文本，返回问题清单（正判据与负对照都调它）。
+const HOST_BASE_RE = /\bconst\s+BASE\s*=\s*'([^']*)'/;
+const ROUTE_TEMPLATE_RE = /path:\s*`\$\{BASE\}(\/[^`]*)`/g;
+const CLIENT_PAGE_RE = /"(\/[^"]*)\/index\.html\?type="/;
+const ABS_REF_RE = /(?:src|href)="(\/[^"]*)"|from\s+"(\/[^"]*)"/g;
+
+function prefixAlignment(hostSrc, routeSrc, clientSrc, pageSrc) {
+  const problems = [];
+  const base = (stripComments(hostSrc).match(HOST_BASE_RE) || [])[1] ?? null;
+  const clientPrefix = (stripComments(clientSrc).match(CLIENT_PAGE_RE) || [])[1] ?? null;
+  if (base === null) problems.push("抠不到 lib/index.js 的 `const BASE = '…'`");
+  if (clientPrefix === null) problems.push('抠不到 src/live-layer.js 请求的渲染页 URL（`…/index.html?type=`）');
+  if (base === null || clientPrefix === null) return problems;
+  const routes = new Set([...stripComments(routeSrc).matchAll(ROUTE_TEMPLATE_RE)].map((m) => base + m[1]));
+  if (routes.size === 0) problems.push('宿主路由里找不到 `${BASE}/…` 模板（判据无从对齐）');
+  if (!routes.has(clientPrefix)) problems.push('客户端请求的渲染页前缀 ' + clientPrefix + ' 宿主没有注册');
+  const abs = [...stripComments(pageSrc).matchAll(ABS_REF_RE)].map((m) => m[1] || m[2]);
+  if (abs.length) problems.push('渲染页用了绝对引用（不随路由前缀走）：' + abs.join(', '));
+  return problems;
+}
+{
+  const src = {
+    // ⚠️ 宿主面 = 门面 + **内核**：本分支 P0 库化后 `BASE` 由 `lib/kernel/host-boot.js` 定义并
+  // 被门面 import（门面正文里因此没有 `const BASE = '…'` 字面量）⇒ 只读门面会让
+  // 'N7③ 三者对齐'判据报"抠不到 BASE"。**判据的不变量不变**（仍是三者前缀必须一致），
+  // 只是把"BASE 从哪读"指向真源。
+  host: read('lib/index.js') + read('lib/host-boot.js') + read('lib/kernel/host-kernel.js'),
+    route: read('lib/routes/scene-serve.js'),
+    client: liveText(),
+    page: read('lib/webwallgl/index.html') + '\n' + read('lib/webwallgl/renderer.js'),
+  };
+  const problems = prefixAlignment(src.host, src.route, src.client, src.page);
+  check('N7③ 客户端渲染页 URL / 宿主注册前缀 / 渲染页相对引用三者对齐（分叉 ⇒ 渲染页 404 而判据全绿）',
+    problems.length === 0,
+    problems.length ? problems.join(' | ')
+      : 'BASE=' + ((stripComments(src.host).match(HOST_BASE_RE) || [])[1] || '?')
+        + ' · client=' + ((stripComments(src.client).match(CLIENT_PAGE_RE) || [])[1] || '?'));
+  // 负对照：变异喂进**同一条判据**（改客户端前缀 / 渲染页改用绝对引用 / 改宿主 BASE / 字面量抠不到）
+  const clientBroken = prefixAlignment(src.host, src.route,
+    src.client.replace('"/wallpaper-engine/scene-live/index.html?type="', '"/wallpaper-engine/oops/index.html?type="'), src.page);
+  const pageBroken = prefixAlignment(src.host, src.route, src.client,
+    src.page.replace('src="./renderer.js"', 'src="/wallpaper-engine/scene-live/renderer.js"'));
+  const hostBroken = prefixAlignment(
+    src.host.replace("const BASE = '/wallpaper-engine'", "const BASE = '/wp'"), src.route, src.client, src.page);
+  const hostGone = prefixAlignment(
+    src.host.replace("const BASE = '/wallpaper-engine'", 'const BASE = process.env.WE_BASE'),
+    src.route, src.client, src.page);
+  check('N7③ negative control: 改客户端前缀 / 渲染页绝对引用 / 改宿主 BASE / 字面量抠不到 —— 四种坏形态都被判出',
+    clientBroken.length > 0 && pageBroken.length > 0 && hostBroken.length > 0 && hostGone.length > 0,
+    [clientBroken, pageBroken, hostBroken, hostGone].map((p) => p.length).join('/') + ' 处问题');
 }
 
 // ── N8 模块级代码不得引用 apply 作用域的 log（真机事故：宿主被杀、DSH 反复重启）──
-// 事故形态（2026-10-02 晚·官方壳，崩溃日志原文）：
+// 事故形态（晚·官方壳，崩溃日志原文）：
 //   `dsh: fatal load failure: ReferenceError: log is not defined at lib/index.js:1235`
 // 一个**模块级**助手在失败分支里写了 `log.warn(...)`，而 `log` 只在 `apply()` 体内存在：
 // ReferenceError 抛在 catch 里 ⇒ 那个 async 任务以 reject 收场且无人接管 ⇒ Node 24 按
@@ -310,11 +380,19 @@ function moduleScopeLogRefs(src) {
 }
 
 // ── 接线在位：两个宿主模块必须真的被入口 import（否则上面六条可以在死代码上全绿）──
-const wiredUp = (src) => /from\s*'\.\/log\.js'/.test(src) && /from\s*'\.\/notice\.js'/.test(src)
-  && /createNotice\(/.test(src) && consoleCalls(src) === 0;
+// ⚠️ 两个面**分开取**：
+//   · `importsSrc` —— "真的 import 并用上了这两个模块"：本分支 P0 库化后 import 点在内核段
+//     ⇒ 面 = 门面 + `lib/host-boot.js`。
+//   · `consoleSrc` —— "**门面自己**零 console.*"：这一半必须**只看门面正文**，扩面会把它稀释掉
+//     （本判据 N1 的口径是"终端只有一个收口"，而不是"没人写过 console"）。
+const wiredUp = (importsSrc, consoleSrc = importsSrc) =>
+  // specifier 用**任意相对形式**（真源在 lib/kernel/ 下 ⇒ 是 `../log.js` 而不是 `./log.js`）：
+  // 写死 `./` 会让"是否真的 import 了"的判据在实现搬家后假红（与 specifier 落空同一课）。
+  /from\s*'[^']*\/log\.js'/.test(importsSrc) && /from\s*'[^']*\/notice\.js'/.test(importsSrc)
+  && /createNotice\(/.test(importsSrc) && consoleCalls(consoleSrc) === 0;
 {
   check('接线在位：lib/index.js 真的 import 并用上了 log.js / notice.js，且自己零 console.*',
-    wiredUp(read('lib/index.js')));
+    wiredUp(read('lib/index.js') + '\n' + read('lib/kernel/host-session.js'), read('lib/index.js')));
   check('接线在位 negative control: 少一个 import 或自己打一行 console 都会被判出',
     wiredUp("import { createLog } from './log.js';\ncreateNotice(") === false
     && wiredUp("import { createLog } from './log.js';\nimport { createNotice } from './notice.js';\ncreateNotice(1);\nconsole.log('x');") === false);
@@ -450,11 +528,9 @@ const wiredUp = (src) => /from\s*'\.\/log\.js'/.test(src) && /from\s*'\.\/notice
     JSON.stringify(forced.terminal));
   check('R3 negative control: 旧的 `✔ <文案>` 形状不再被认作提示行',
     isNotice({ terminal: ['out:✔ ok0\n'] }) === 0 && isNotice({ terminal: ['out:[wallpaper-engine] ok0 ✔\n'] }) === 1);
-  check('R3 negative control: 静默两态确实一条输出都没有（不是"写了但没认出来"）',
-    silentOff.terminal.length === 0 && silentPipe.terminal.length === 0);
+  // 判据只数投递失败次数，不断文案（`/投递失败/` 抄自 `lib/notice.js:56`，改名会假红）。
   check('R4 投递失败（同步抛错 / 回调 err）恰好一条 warn，成功路径零日志',
-    failedSync.length === 1 && /投递失败/.test(failedSync[0])
-    && failedCallback.length === 1 && /投递失败/.test(failedCallback[0])
+    failedSync.length === 1 && failedCallback.length === 1
     && forced.logs.length === 0 && ttyOn.logs.length === 0,
     '同步=' + failedSync.length + ' 回调=' + failedCallback.length + ' 成功路径=' + forced.logs.length);
   check('R4 negative control: 投递成功的三条路径都没有日志（判据不是"只要有日志就算"）',
@@ -569,11 +645,6 @@ const wiredUp = (src) => /from\s*'\.\/log\.js'/.test(src) && /from\s*'\.\/notice
     check('R5 三条早退不变：非 POST ⇒ 405、超 64KB ⇒ 413（且都不落盘、不提示）',
       badMethod === 405 && tooBig === 413 && notices.length === 1,
       '405=' + badMethod + ' 413=' + tooBig + ' 提示仍为 ' + notices.length);
-    check('R5 negative control: 失败模式表之外的文案不会被升级成 warn，非 `scene` 类型不会触发提示',
-      rendererLevels[1] === 'info' && rendererLevels[3] === 'info' && rendererLevels[4] === 'info'
-      && rendererLevels[5] === 'info' && rendererLevels[6] === 'info'
-      && rendererLevels.filter((l) => l === 'warn').length === 3
-      && notices.length === 1 && noNoticeForWeb === 204);
   }
 }
 

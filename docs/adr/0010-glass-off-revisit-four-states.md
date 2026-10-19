@@ -1,7 +1,7 @@
 # ADR-0010: 玻璃可关性的再裁定与共存四态（glass off-revisit & coexistence modes）
 
 - **Date**: 2026-10-09
-- **Status**: Accepted
+- **Status**: Amended by ADR-0015
 - **Deciders**: 用户（共存审计计划拍板）+ 实现（本仓）
 - **Amends**: ADR-0008（Consequences 的「放弃：关闭某一面即回原生纯色」一条与触发线第一条）
 

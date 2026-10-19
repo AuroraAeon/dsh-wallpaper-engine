@@ -37,7 +37,7 @@ if (!existsSync(abs)) {
 }
 
 if (PROBE) {
-  // 与 `lib/media/supervisor.js` 同口径：带管道是协议通道，detached/plain 是它试的两种姿势。
+  // 与 `packages/media-bridge/lib/supervisor.js` 同口径：带管道是协议通道，detached/plain 是它试的两种姿势。
   const blocked = [
     ['带管道（协议通道）', { stdio: ['pipe', 'pipe', 'pipe'] }],
     ['detached', { stdio: 'ignore', detached: true, windowsHide: true }],
@@ -58,10 +58,21 @@ const r = spawnSync(process.execPath, [abs, ...rest], {
   stdio: 'inherit',
   env: { ...process.env, DSH_WARN_ONLY: '1' },
 });
-const code = r.status === null ? 1 : r.status;
-if (code !== 0) {
-  process.env.DSH_WARN_ONLY_EXIT = String(code);
-  console.log('\n[warn-only] 软档守卫原退出码 = ' + code
+if (r.status === null) {
+  // 守卫**根本没起来**（spawn 失败，或被信号结束）⇒ 没有"原退出码"这回事。把合成码 1 当
+  // "原退出码"打印后 `exit 0` 与"守卫真的红了一次"同形：判据没跑，报告里却像跑过。
+  // `verify:docs` 那几条软档**不带** `--probe-spawn`，所以这里是它们的兜底路径 —— 走与
+  // `--probe-spawn` 分支同样的**具名 SKIP**，并明说"这不是通过"。
+  console.log('SKIP ' + target + ' —— 本环境没能把该自检跑起来（spawn 失败'
+    + (r.error ? '：' + (r.error.code || r.error.message) : '，或进程被信号结束')
+    + (r.signal ? '，signal=' + r.signal : '') + '）。');
+  console.log('     这不是"通过"：该自检在本环境**没有覆盖**（CI 与普通终端里照跑）。');
+  process.exit(0);
+}
+if (r.status !== 0) {
+  // 原退出码只走下面这行 stdout —— `test/run-guards.mjs` 解析的就是它。
+  // （别想用 env 传出去：在**自身进程**里 set 的 env 传不给父进程，全仓也没有任何读取点。）
+  console.log('\n[warn-only] 软档守卫原退出码 = ' + r.status
     + ' —— 已降级为警告，不决定本次红绿（判据未改；要它重新拦下改动，就 `node ' + target + '` 直接跑）');
 }
 process.exit(0);

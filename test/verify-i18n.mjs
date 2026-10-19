@@ -12,7 +12,7 @@
  *   ③ **值纪律**：每条译文非空、不含中文、`{}` 占位符集合与键**逐个相等**（少一个占位符 =
  *      英文句子把数字吞了；多一个 = 永远插不进去）。宿主表（`WE_I18N_HOST_EN`）另判"键必须能在
  *      `lib/**` 里找到同一条字面量"，防凭空造句。
- *   ④ **运行期行为**：在 vm 沙箱里真跑 `src/i18n-copy.js + src/i18n.js`，判
+ *   ④ **运行期行为**：在 vm 沙箱里真跑 `src/i18n-copy*.js`（词表族）+ `src/i18n.js`，判
  *      中文=原文 / 英文=词表 / 未知键原样 / `{name}` 插值 / **接上宿主 locale 服务后跟随切换**
  *      （`locale/change` → 译文变、修订号 +1、订阅者被通知）/ 服务缺席时回落默认语言。
  *
@@ -31,6 +31,9 @@ import { fileURLToPath } from 'node:url';
 import { createContext, Script } from 'node:vm';
 import { scanCjkStrings, needsTranslation } from './tools/i18n-scan.mjs';
 import { stripExportBlocks } from './tools/js-text.mjs';
+// 词表族（组装点 + 7 个域模块）的**按构建顺序**读法：单一真源是 scripts/build-client.mjs 的
+// INLINE_MODULES（见 test/tools/src-scope.mjs）。词表已按域拆到同族模块，键序由内联顺序决定。
+import { parseInlineModules } from './tools/src-scope.mjs';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 
@@ -45,18 +48,26 @@ const check = (name, ok, detail) => {
 // 两类例外，都按"文件 + 形态"登记（不是按内容片段），且**不许空转**：登记项在源码里找不到
 // 对应命中就判红（清单过期 = 判据的牙被拔了，本仓对允许清单的既有口径）。
 
-/** 整块纯数据：`src/styles.js` 的样式表模板（其中文只出现在 CSS 注释里，不进界面）。 */
+/** 整块纯数据：样式族的 8 个域模块（其中文只出现在 CSS 注释里，不进界面）。
+ *  （刀3）：原先登记的单文件 `src/styles.js` 已按视觉域拆成 8 个域模块 + 组装点
+ *  （组装点无 CSS）⇒ 逐域登记，判据（kind / minLength / 空转检查）一字未改。 */
 const DATA_BLOCKS = [
-  {
-    file: 'src/styles.js',
-    kind: 'template',
-    minLength: 10000,
-    why: '整份样式表是纯数据；其内的中文只出现在 CSS 注释（不渲染到界面）',
-  },
+  { file: 'src/styles-base.js', kind: 'template', minLength: 10000, why: '样式域 base 是纯数据；其内的中文只出现在 CSS 注释（不渲染到界面）' },
+  { file: 'src/styles-shell.js', kind: 'template', minLength: 10000, why: '样式域 shell 是纯数据；其内的中文只出现在 CSS 注释（不渲染到界面）' },
+  { file: 'src/styles-sidebar.js', kind: 'template', minLength: 10000, why: '样式域 sidebar 是纯数据；其内的中文只出现在 CSS 注释（不渲染到界面）' },
+  { file: 'src/styles-chrome.js', kind: 'template', minLength: 10000, why: '样式域 chrome 是纯数据；其内的中文只出现在 CSS 注释（不渲染到界面）' },
+  { file: 'src/styles-settings.js', kind: 'template', minLength: 10000, why: '样式域 settings 是纯数据；其内的中文只出现在 CSS 注释（不渲染到界面）' },
+  { file: 'src/styles-panel.js', kind: 'template', minLength: 10000, why: '样式域 panel 是纯数据；其内的中文只出现在 CSS 注释（不渲染到界面）' },
+  { file: 'src/styles-quick.js', kind: 'template', minLength: 10000, why: '样式域 quick 是纯数据；其内的中文只出现在 CSS 注释（不渲染到界面）' },
+  { file: 'src/styles-ext.js', kind: 'template', minLength: 10000, why: '样式域 ext 是纯数据；其内的中文只出现在 CSS 注释（不渲染到界面）' },
 ];
 
 /** 逐条精确值豁免（形如"是数据不是文案"的个别串）。每条都必须写明理由，且必须还在源码里。 */
 const VALUE_ALLOW = [
+  ...[
+    ...JSON.parse(readFileSync(join(ROOT, 'packages/pet-link/src/pet-link-actions.json'), 'utf8')).animations.events.DSHWE,
+    ...readdirSync(join(ROOT, 'packages/pet-link/assets/memes')).filter(name => name.endsWith('.png')).map(name => name.slice(0, -4)),
+  ].map(value => ({ value, why: '桌宠资源池的实际动画名或配图键；必须与文件名一致，不能翻译。' })),
   {
     value: '设置',
     why: '**宿主的**标签候选（src/sidebar-right.js 的 settingsLabelCandidates）：' +
@@ -75,7 +86,7 @@ const VALUE_ALLOW = [
 ];
 
 /** 诊断/日志实参：不进界面的中文（由扫描器按"最内层被调函数"判定，无需登记具体串）。 */
-const DIAGNOSTIC_CALLEES_NOTE = 'liveLog / weLog / console.* / log / warn / error / weDiag …（见 test/tools/i18n-scan.mjs）';
+// （说明文字，未参与判据）诊断类调用名：liveLog / weLog / console.* / log / warn / error / weDiag …（见 test/tools/i18n-scan.mjs）
 
 // ══ 工具 ═════════════════════════════════════════════════════════════════════
 
@@ -118,16 +129,33 @@ function fragmentedCjk(hits, dataBlocks = DATA_BLOCKS) {
     && (h.hasInterp || (h.wrapped && h.concatAdjacent)));
 }
 
-/** 从 `src/i18n-copy.js` 里切出两块词表（按声明行到其配对的 `};`）。 */
-function readCopyBlocks(src) {
-  const blocks = {};
-  for (const name of ['WE_I18N_EN', 'WE_I18N_HOST_EN']) {
-    const at = src.indexOf('const ' + name + ' = {');
-    if (at < 0) { blocks[name] = null; continue; }
+/**
+ * 从词表族（组装点 `src/i18n-copy.js` + 各域模块 `src/i18n-copy-*.js`）切出两块词表。
+ *
+ * 取文口径**刻意保持朴素**：声明行到第一个 `\n};`（不配平大括号）—— 见 verify-module-layout 的
+ * "朴素切片是刻意的"纪律：配平会改边界语义，反而把坏输入切"好"了。
+ *
+ * EN 表按域住在各 `const WE_I18N_EN_<域> = {` 块里（组装点只有展开），故按传入的顺序逐个切出再拼；
+ * 拼完再抽键 ⇒ **重复键的检测面是跨域的**（域之间撞同一个中文键一样判红，这正是拆域后需要保住的那颗牙）。
+ * HOST 表仍在组装点里（未分域）。
+ */
+function readCopyBlocks(sources) {
+  const texts = Array.isArray(sources) ? sources : [sources];
+  const sliceFrom = (src, decl) => {
+    const at = src.indexOf(decl);
+    if (at < 0) return null;
     const end = src.indexOf('\n};', at);
-    blocks[name] = end < 0 ? null : src.slice(at, end + 3);
+    return end < 0 ? null : src.slice(at, end + 3);
+  };
+  const en = [];
+  for (const src of texts) {
+    for (const m of src.matchAll(/^const (WE_I18N_EN_\w+) = \{$/gm)) {
+      const block = sliceFrom(src, 'const ' + m[1] + ' = {');
+      if (block) en.push(block);
+    }
   }
-  return blocks;
+  const host = texts.map((src) => sliceFrom(src, 'const WE_I18N_HOST_EN = {')).find(Boolean) || null;
+  return { WE_I18N_EN: en.length ? en.join('\n') : null, WE_I18N_HOST_EN: host };
 }
 
 /**
@@ -182,19 +210,47 @@ function componentsWithoutLocaleHook(sources) {
 // **词表模块本身在扫描面之外**：它的中文就是键（`src/i18n.js` 的设计），不是"漏包的界面文案"。
 // 排除它必须留牙：下面 ① 里那条"词表里确实还有中文键"的判据钉住这次排除不是空豁免。
 const DICT_MODULE = 'src/i18n-copy.js';
-const srcFiles = jsFiles(join(ROOT, 'src'));
+// 词表落在**一个族**里：组装点 `DICT_MODULE` + 各域模块 `src/i18n-copy-*.js`。族顺序 = 构建期内联
+// 顺序（INLINE_MODULES 单一真源）⇒ 扫描面、切片面、vm 装载面三处用同一份清单，不会各自漂移。
+const DICT_FAMILY = parseInlineModules().map(({ file }) => file)
+  .filter((file) => /(?:^|\/)i18n-copy(?:-[^/]+)?\.js$/.test(file));
+const DICT_MODULES = new Set(DICT_FAMILY);
+// A3（多包，BUNDLE-SPLIT §7.1）之后产品源码分居两处：主包 src/** 与 lib/**，子包 packages/<pkg>/{src,lib}/**。
+// 扫描面必须同源扩到 packages/**：否则迁出去的 weT(…) 调用点（如 packages/fx/src/ext-fx.js）
+// 与宿主「原句」出处（如 packages/fonts/lib/fontsets.js）双双掉出扫描面 —— 症状恰好是
+// 「一堆孤儿键 + 一堆凭空造句」，而源码两半其实都合规。这正是 A3 打崩本守卫的形态。
+const PACKAGES_ROOT = join(ROOT, 'packages');
+/** 子包面里的 <sub> 目录（src / lib）；没有 packages/ 时返回空数组。 */
+const subpackageDirs = (sub) => {
+  let entries;
+  try { entries = readdirSync(PACKAGES_ROOT, { withFileTypes: true }); } catch { return []; }
+  return entries.filter((e) => e.isDirectory())
+    .map((e) => join(PACKAGES_ROOT, e.name, sub))
+    .filter((d) => existsSync(d));
+};
+/** 产物（构建生成的浏览器半边）：主包 lib/client.js 与子包 lib/client.<short>.js —— 它们是源码的副本
+ *  （同一份中文原句已按源码面各判一遍），不是「原句」出处。 */
+const isGeneratedClient = (rel) => rel === 'lib/client.js' || /(^|\/)client\.[^/]+\.js$/.test(rel);
+const srcFiles = [join(ROOT, 'src'), ...subpackageDirs('src')].flatMap((d) => jsFiles(d));
 const srcHits = [];
 for (const file of srcFiles) {
   const rel = relative(ROOT, file).split(/[\\/]/).join('/');
-  if (rel === DICT_MODULE) continue;
+  if (DICT_MODULES.has(rel)) continue;
   for (const h of scanCjkStrings(readFileSync(file, 'utf8'))) srcHits.push({ file: rel, ...h });
 }
-const dictHits = scanCjkStrings(readFileSync(join(ROOT, DICT_MODULE), 'utf8'));
-// 宿主文案的取值面：`lib/**` 的 `.js`（排除**生成物**与 **vendored** —— 它们不是本仓文案）。
+const dictHits = DICT_FAMILY.flatMap((rel) => scanCjkStrings(readFileSync(join(ROOT, rel), 'utf8')));
+// 宿主文案的取值面：`lib/` 下的全部 `.js`（排除**生成物**与 **vendored** —— 它们不是本仓文案）。
 // 路径一律先归一成 `/` 再判（CI 里 Windows 的分隔符会让 `includes('/vendor/')` 静默失效）。
-const libFiles = jsFiles(join(ROOT, 'lib')).filter((f) => {
+// 本文件里的 glob 不许写成「斜杠紧跟两个星号」：那三个字符会让**朴素剥注释**的实现
+// （`/\/\*[\s\S]*?\*\//`，正是 `test/tools/js-text.mjs` 存在的理由）从这里开一个假块注释，
+// 一路吃到下面第一条真块注释的结束标记，把中间的真实代码**静默删掉**（实测会丢 9481 个非空白
+// 字符，连文件末尾的 `process.exit(failed ? 1 : 0)` 都一起吃掉 ⇒ `audit-guard-teeth` 判据 E 会
+// 假报「本文件既无 process.exit 也无 throw」）。本仓生产路径统一走字符串感知的剥注释，
+// 这里只是不给下一个"守守卫"的工具留同样的坑。
+const libFiles = [join(ROOT, 'lib'), ...subpackageDirs('lib')].flatMap((d) => jsFiles(d)).filter((f) => {
   const rel = relative(ROOT, f).split(/[\\/]/).join('/');
-  return rel !== 'lib/client.js' && !rel.startsWith('lib/vendor/') && !rel.startsWith('lib/webwallgl/');
+  // vendored 两个前缀对主包与子包同口径；产物见 isGeneratedClient。
+  return !isGeneratedClient(rel) && !/(^|\/)(vendor|webwallgl)\//.test(rel);
 });
 const libValues = new Set();
 for (const file of libFiles) {
@@ -202,13 +258,13 @@ for (const file of libFiles) {
 }
 
 const copySrc = readFileSync(join(ROOT, 'src', 'i18n-copy.js'), 'utf8');
-const blocks = readCopyBlocks(copySrc);
+const blocks = readCopyBlocks(DICT_FAMILY.map((rel) => readFileSync(join(ROOT, rel), 'utf8')));
 const enKeys = copyKeys(blocks.WE_I18N_EN);
 const hostKeys = copyKeys(blocks.WE_I18N_HOST_EN);
 const callSites = weTCallSites(srcHits);
 
 // ══ ① 界面零裸中文 ═══════════════════════════════════════════════════════════
-console.log('① 界面零裸中文（src/**，诊断串与纯数据块除外）');
+console.log('① 界面零裸中文（src/ 下，诊断串与纯数据块除外）');
 {
   const naked = nakedCjk(srcHits);
   check('每条中文都进了 weT(...)', naked.length === 0,
@@ -232,7 +288,7 @@ console.log('① 界面零裸中文（src/**，诊断串与纯数据块除外）
     staleValues.length ? staleValues.map((v) => JSON.stringify(v.value).slice(0, 30)).join(' ') : VALUE_ALLOW.length + ' 条精确值在册');
 
   // 词表模块的排除必须留牙：它里面必须**真的**还是"中文即键"（而不是被排除后空了）。
-  check('词表模块的排除不空转（' + DICT_MODULE + ' 里仍有中文键）',
+  check('词表族的排除不空转（' + DICT_MODULE + ' 族里仍有中文键）',
     dictHits.length > 100 && dictHits.every((h) => h.value.length > 0),
     dictHits.length + ' 条中文键在词表里');
 
@@ -254,35 +310,80 @@ console.log('① 界面零裸中文（src/**，诊断串与纯数据块除外）
 console.log('② 词表双向对账（WE_I18N_EN ⇄ 代码里的 weT 字面量）');
 {
   const blockOk = blocks.WE_I18N_EN !== null && blocks.WE_I18N_HOST_EN !== null;
-  check('词表两块都在 src/i18n-copy.js 里', blockOk,
+  check('词表两块都在词表族里（组装点 + 各域模块）', blockOk,
     blockOk ? 'WE_I18N_EN=' + enKeys.keys.length + ' 条 · WE_I18N_HOST_EN=' + hostKeys.keys.length + ' 条' : '缺块');
 
   check('词表内无重复键（JS 对象字面量会静默去重）',
     enKeys.duplicates.length === 0 && hostKeys.duplicates.length === 0,
     enKeys.duplicates.concat(hostKeys.duplicates).slice(0, 5).join(' / ') || '无重复');
 
-  const missing = [...callSites].filter((k) => !enKeys.keys.includes(k)).sort();
+  // 拆域后重复键的检测面从"单文件内"变成"跨域"：这条负对照钉住那颗牙**真的还在**
+  // （两个域模块撞同一个键必须判红；键不撞则不报）。判据本体就是上面那条 `enKeys.duplicates`，
+  // 这里喂的合成输入走的正是生产读法 `readCopyBlocks` → `copyKeys`。
+  const dupProbe = (clash) => copyKeys(readCopyBlocks([
+    'const WE_I18N_EN_A = {\n  "同一个键": "One",\n};',
+    clash ? 'const WE_I18N_EN_B = {\n  "同一个键": "Two",\n};' : 'const WE_I18N_EN_B = {\n  "另一个键": "Two",\n};',
+  ]).WE_I18N_EN).duplicates;
+  check('negative control: 跨域重复键会被判红（键不撞则不报）',
+    dupProbe(true).length === 1 && dupProbe(false).length === 0,
+    '撞键 ⇒ ' + dupProbe(true).length + ' 条重复 / 不撞 ⇒ ' + dupProbe(false).length + ' 条');
+
+  // 组装点自己不许再藏字面量键：键只许住在域模块里，且**展开顺序 == 族顺序** ——
+  // 顺序即键插入序（同键在不同域里的覆盖关系、以及守卫看到的顺序都由它决定）。
+  const enBlockAt = copySrc.indexOf('const WE_I18N_EN = {');
+  const enBlockEnd = enBlockAt < 0 ? -1 : copySrc.indexOf('\n};', enBlockAt);
+  const composerEnBlock = enBlockAt < 0 || enBlockEnd < 0 ? '' : copySrc.slice(enBlockAt, enBlockEnd + 3);
+  const spreadOrder = [...composerEnBlock.matchAll(/\.\.\.(WE_I18N_EN_\w+)/g)].map((m) => m[1]);
+  const wantOrder = DICT_FAMILY.filter((rel) => rel !== DICT_MODULE)
+    .map((rel) => readFileSync(join(ROOT, rel), 'utf8').match(/^const (WE_I18N_EN_\w+) = \{$/m)?.[1]);
+  check('组装点只按族顺序展开、自身不含字面量键（键只住在域模块里）',
+    spreadOrder.length > 0 && spreadOrder.length === wantOrder.length
+    && spreadOrder.every((name, i) => name === wantOrder[i])
+    && copyKeys(composerEnBlock).keys.length === 0,
+    spreadOrder.join(' → ') || '组装点里没找到展开');
+
+  // 正判据与下面两条对照**必须**走同一个具名函数。内联复刻一份判据（例如用自己的 `judge` 顶替，
+  // 其 orphan 分支不剥 `^[^\u0000]*\u0000` 上下文前缀）会在生产判据被砸坏时仍全绿。
+  const missingKeys = (sites, keys) => [...sites].filter((k) => !keys.includes(k)).sort();
   // 上下文键（`<ctx>\u0000<原文>`）按**原文**对账：它服务的正是同一处 `weT("原文", …)` 调用点。
-  const orphan = enKeys.keys.filter((k) => !callSites.has(k.replace(/^[^\u0000]*\u0000/, ''))).sort();
+  const orphanKeys = (sites, keys) => keys
+    .filter((k) => !new Set(sites).has(k.replace(/^[^\u0000]*\u0000/, ''))).sort();
+  const missing = missingKeys(callSites, enKeys.keys);
+  const orphan = orphanKeys(callSites, enKeys.keys);
   check('零漏译（每个 weT 原文都有词条）', missing.length === 0,
     missing.length ? missing.length + ' 条缺：' + missing.slice(0, 6).map((k) => JSON.stringify(k.slice(0, 30))).join(' ') : callSites.size + ' 条对账');
   check('零孤儿键（每条词条都被代码用到）', orphan.length === 0,
     orphan.length ? orphan.length + ' 条多余：' + orphan.slice(0, 6).map((k) => JSON.stringify(k.slice(0, 30))).join(' ') : '词表与调用点一一对应');
 
-  // 负对照：判据本体必须能对"少一条 / 多一条"分别判红。
-  const judge = (sites, keys) => ({
-    missing: [...sites].filter((k) => !keys.includes(k)).length,
-    orphan: keys.filter((k) => !new Set(sites).has(k)).length,
-  });
-  check('negative control: 漏译/孤儿分别判红',
-    judge(['中'], []).missing === 1 && judge([], ['中']).orphan === 1
-    && judge(['中'], ['中']).missing === 0 && judge(['中'], ['中']).orphan === 0);
-  check('positive control: 上下文后缀键按原文对账',
-    (() => {
-      const sites = new Set(['适配']);
-      const keys = ['适配', 'adapter\u0000适配'];
-      return keys.filter((k) => !sites.has(k.replace(/^[^\u0000]*\u0000/, ''))).length === 0;
-    })());
+  // 负对照：拿**真数据**做变异，喂回上面**同一条**判据 ——
+  //   少一条调用点 ⇒ 该词条变成孤儿（生产 orphan 判据必须开火）；
+  //   凭空多一条调用点 ⇒ 漏译 1 条；词表多一条 ⇒ 孤儿 1 条。
+  const droppedSite = [...callSites][0];
+  const mutations = {
+    lessSites: [...callSites].slice(1),
+    moreSites: [...callSites, '这个词表里没有的合成调用点'],
+    moreKeys: enKeys.keys.concat(['这个词表里没有的合成键']),
+  };
+  const missMore = missingKeys(new Set(mutations.moreSites), enKeys.keys);
+  const orphLess = orphanKeys(new Set(mutations.lessSites), enKeys.keys);
+  const orphMore = orphanKeys(callSites, mutations.moreKeys);
+  check('negative control: 同一条判据对"少一条调用点 / 多一条调用点 / 词表多一条"分别判红（变异的是真数据）',
+    callSites.size >= 2 && typeof droppedSite === 'string'
+    && orphLess.length >= 1
+    && missMore.length === 1 && missMore[0] === '这个词表里没有的合成调用点'
+    && orphMore.length === 1 && orphMore[0] === '这个词表里没有的合成键'
+    && missing.length === 0 && orphan.length === 0,
+    'sites=' + callSites.size + ' · 少一条 ⇒ 孤儿 ' + orphLess.length
+      + ' 条（' + JSON.stringify(droppedSite.slice(0, 12)) + ' 那类）· 多一条 ⇒ 漏译 ' + missMore.length
+      + ' / 词表多一条 ⇒ 孤儿 ' + orphMore.length);
+  // 正对照：上下文后缀键（`<ctx>\u0000<原文>`）按原文对账 —— 同一条 orphan 判据：对得上是 0 条，
+  // 把原文改掉（后缀前缀都不剥就会漏判）则必须是 1 条。
+  const ctxSites = new Set(['适配']);
+  check('positive control: 上下文后缀键按原文对账（与生产 orphan 判据同源）',
+    orphanKeys(ctxSites, ['适配', 'adapter\u0000适配']).length === 0
+    && orphanKeys(ctxSites, ['adapter\u0000适配别的']).length === 1,
+    '一致 ' + orphanKeys(ctxSites, ['适配', 'adapter\u0000适配']).length + ' 条孤儿 / 改写后 '
+      + orphanKeys(ctxSites, ['adapter\u0000适配别的']).length + ' 条');
 }
 
 // ══ ③ 值纪律 ═════════════════════════════════════════════════════════════════
@@ -301,10 +402,10 @@ console.log('③ 值纪律（非空 / 无中文 / 占位符对齐）');
 }
 
 // ══ ④ 宿主表对账 ═════════════════════════════════════════════════════════════
-console.log('④ 宿主表（WE_I18N_HOST_EN 的键必须来自 lib/** 的真实字面量）');
+console.log('④ 宿主表（WE_I18N_HOST_EN 的键必须来自 lib/ 下的真实字面量）');
 {
   const stray = hostKeys.keys.filter((k) => !libValues.has(k.replace(/^[^\u0000]*\u0000/, '')));
-  check('零凭空造句（每条键都能在 lib/** 找到）', stray.length === 0,
+  check('零凭空造句（每条键都能在 lib/ 下找到）', stray.length === 0,
     stray.length ? stray.slice(0, 5).map((k) => JSON.stringify(k.slice(0, 40))).join(' · ') : hostKeys.keys.length + ' 条对账');
 
   const hostEntries = parseCopyEntries(blocks.WE_I18N_HOST_EN);
@@ -312,12 +413,14 @@ console.log('④ 宿主表（WE_I18N_HOST_EN 的键必须来自 lib/** 的真实
   check('宿主表值纪律', hostViolations.length === 0,
     hostViolations.length ? hostViolations.slice(0, 5).join(' · ') : hostEntries.length + ' 条');
 
-  check('negative control: 库里没有的键会被判红',
-    ['不存在的串'].filter((k) => !libValues.has(k)).length === 1);
+  // 不许用「库里没有的键会被判红」这类对照：`['不存在的串'].filter((k) => !libValues.has(k))`
+  // 对任何不含该字面量的集合都成立（含空集），只是复述 `Array.prototype.filter` 而已；
+  // 覆盖点：上游 `stray = hostKeys.keys.filter(…)` 那条判据自身的开火路径
+  // （test/verify-i18n.mjs:332-337：`lib/` 抓不到某条宿主键时 stray 非空、当场判红，同一失效模式）。
 }
 
 // ══ ⑤ 运行期行为（真跑 i18n 层）══════════════════════════════════════════════
-console.log('⑤ 运行期行为（vm 沙箱里跑 src/i18n-copy.js + src/i18n.js）');
+console.log('⑤ 运行期行为（vm 沙箱里跑词表族 src/i18n-copy*.js + src/i18n.js）');
 {
   const runtime = loadI18nRuntime({ search: '' });
   const enDictSource = runtime.api.WE_I18N_EN || {};
@@ -358,9 +461,33 @@ console.log('⑤ 运行期行为（vm 沙箱里跑 src/i18n-copy.js + src/i18n.j
   check('zh 表是"原文身份"（值 == 原文）',
     Object.keys(zhDict).length > 0 && Object.keys(zhDict).every((k) => zhDict[k] === k.replace(/^[^\u0000]*\u0000/, '')),
     Object.keys(zhDict).length + ' 条');
-  check('en 表与 WE_I18N_EN 一致（含宿主表合并）',
-    Object.keys(enDictSource).every((k) => enDict[k] === enDictSource[k]),
-    Object.keys(enDict).length + ' 条');
+  // 期望值必须取自**磁盘上的词表原文**（`parseCopyEntries(blocks.…)` 从词表族 `src/i18n-copy.js`
+  // 与各域模块原文解析），不能拿被测模块经沙箱交回的 `WE_I18N_EN`：同源意味着模块整段漏合并宿主表也会绿，
+  // "含宿主表合并"那一半就从未被断言。
+  const enDisk = parseCopyEntries(blocks.WE_I18N_EN);
+  const hostDisk = parseCopyEntries(blocks.WE_I18N_HOST_EN);
+  const asDict = (entries) => Object.fromEntries(entries.map((e) => [e.key, e.value]));
+  // 合并形态照产品实现（`src/i18n.js:197` 的 `Object.assign({}, WE_I18N_EN, WE_I18N_HOST_EN)` ⇒ 宿主表覆盖同名键）。
+  const enExpected = Object.assign({}, asDict(enDisk), asDict(hostDisk));
+  const diskMismatches = (dict, expected) => Object.keys(expected).filter((k) => dict[k] !== expected[k]);
+  const enDictKeys = Object.keys(enDict);
+  check('en 表与磁盘词表原文逐条一致（WE_I18N_EN 部分；期望值取自词表族原文）',
+    enDisk.length > 0 && enDictKeys.length === Object.keys(enExpected).length
+    && diskMismatches(enDict, asDict(enDisk)).length === 0,
+    '磁盘 EN ' + enDisk.length + ' 条 / 注册 ' + enDictKeys.length + ' 条');
+  check('en 表含宿主表合并（每条宿主键都在注册表里、值取自磁盘原文，不取自被测对象）',
+    hostDisk.length > 0 && diskMismatches(enDict, asDict(hostDisk)).length === 0,
+    '磁盘 HOST ' + hostDisk.length + ' 条 / 注册 ' + enDictKeys.length + ' 条');
+  // 负对照：喂**变异后的期望**给上面**同一对**判据 —— 模块漏合并宿主表、或某条值被改写，都必须判红。
+  const enOnly = asDict(enDisk);
+  const enFirstKey = Object.keys(enOnly)[0] || '';
+  const enMutated = Object.assign({}, enExpected, { [enFirstKey]: '__mutated__' });
+  check('negative control: 同一条判据对"漏合并宿主表 / 值被改写"分别判红',
+    hostDisk.length > 0 && Object.keys(enOnly).length > 0
+    && diskMismatches(enOnly, enExpected).length >= 1
+    && diskMismatches(enMutated, enExpected).length >= 1,
+    '漏合并 ⇒ ' + diskMismatches(enOnly, enExpected).length + ' 处不一致；改写首键 ⇒ '
+      + diskMismatches(enMutated, enExpected).length + ' 处');
 
   check('服务在场时取词仍正确（中文）', live.api.weT(sample) === sample);
   check('语言切换 ⇒ 订阅者被通知 + 修订号前进',
@@ -456,7 +583,9 @@ function parseCopyEntries(block) {
 function loadI18nRuntime({ search = '', service = null } = {}) {
   // `vm.Script` 不是模块环境 ⇒ 先按构建期内联的同一手法剥掉各文件的 `export { … }`
   // （共享实现：`test/tools/js-text.mjs` 的 stripExportBlocks —— 别在这里再抄一份正则）。
-  const code = stripExportBlocks(readFileSync(join(ROOT, 'src', 'i18n-copy.js'), 'utf8'))
+  // 装载顺序 = 族顺序（域模块在前、组装点在后），与构建期内联进同一工厂作用域时同形：
+  // 组装点顶层读域常量，顺序反了会 TDZ 报错。
+  const code = DICT_FAMILY.map((rel) => stripExportBlocks(readFileSync(join(ROOT, rel), 'utf8'))).join('\n;\n')
     + '\n;\n' + stripExportBlocks(readFileSync(join(ROOT, 'src', 'i18n.js'), 'utf8'))
     + '\n;\n({ weT, WE_I18N_EN, WE_I18N_HOST_EN, weI18nAttach, weLocaleSubscribe,'
     + ' weLocaleRevisionValue, weOnLocaleChange, weLocaleId });\n';
