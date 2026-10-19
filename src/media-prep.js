@@ -567,7 +567,7 @@ function applySelection(id, opts) {
   // (and the UI would keep claiming 无需抽帧 for a 120fps source).
   selection.mediaInfo = null;
   abortTranscodeUpgrade();
-  refreshMediaInfo();
+  refreshMediaInfo(true);
   syncRotationTimer();
   emit();
   // 主题随壁纸（无开关）：本张壁纸的判决在**媒体层已经建好之后**才落一次（作者配色缺席时
@@ -687,7 +687,5 @@ function buildMedia(sel) {
 // are only throttled by the browser while the page is hidden.
 export {
   applySelection, buildMedia, beginRotationPrepare, prepareLiveTimeouts,
-  prepTimeout, prepareWallpaper, prepareVideoProbe, prepareWebProbe,
-  prepareLiveExhausted, notePrepareLiveTimeout, clearPrepareLiveTimeout,
-  prepareSceneLiveStage, prepareSceneStaticStage,
+  clearPrepareLiveTimeout,
 };

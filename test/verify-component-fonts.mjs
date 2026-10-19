@@ -42,11 +42,15 @@ const mod = await import(new URL('../src/font/components.js', import.meta.url).h
 const { COMPONENT_FONT_TARGETS, COMPONENT_FONT_PROPS, probeComponentTargets, buildComponentCss, selectorFor } = mod;
 
 let failed = 0;
+let passed = 0;
 const check = (name, ok, detail) => {
-  if (ok) console.log('  ✓ ' + name + (detail ? ' — ' + detail : ''));
+  if (ok) { console.log('  ✓ ' + name + (detail ? ' — ' + detail : '')); passed++; }
   else { console.log('  ✗ ' + name + (detail ? ' — ' + detail : '')); failed++; }
 };
 const section = (t) => console.log('\n' + t);
+/** 跳过账本（`docs/DEV-GUIDE.md` §4.7 约定 10：跳过不得与通过同形 —— 末尾逐条点名 + 计数）。 */
+const skipNotes = [];
+const skip = (name, why) => { skipNotes.push({ name, why }); };
 /** 判据只认代码：调用点沿用短名 `strip`。 */
 const strip = stripComments;
 
@@ -226,7 +230,10 @@ section('⑤b 模块名的实测出处（source）');
       !new RegExp('^\\.' + 'definitelyNotAClass' + '(?![A-Za-z0-9_-])', 'm')
         .test(readFileSync(join(nm, String(COMPONENT_FONT_TARGETS[0].source)), 'utf8')));
   } else {
-    console.log('  · 跳过出处核对（本机没有 DSH 安装：' + nm + '；可用 DSH_WE_DSH_ROOT 指定）');
+    // 不打印一句就放过：记进跳过账本，末尾**逐条点名 + 带计数**（本机没 DSH 时这 2 条判据
+    // 一句都不会执行，而末尾仍会打印 PASSED ⇒ 必须让读者看得出"这两条没跑、不是通过"）。
+    skip('⑤b ★ 出处核对 + 它的负对照', '本机没有 DSH 安装（候选路径：'
+      + (dshCandidates.length ? dshCandidates.join(' / ') : '一个都没配') + '）；可用 DSH_WE_DSH_ROOT 指定');
   }
 }
 
@@ -375,6 +382,9 @@ section('⑧ 字体落地点已抽成 src/font/apply.js 并内联');
     'function applyComponentFonts()', 'function removeComponentFonts()',
     'function snapshotHostFontDefaults()', 'function removeFontStyles()'];
   const missing = moved.filter((m) => !applySrc.includes(m));
+  // 覆盖面地板：[`missing`/`notInlined`/`stale`] 三个 filter 判据在**空清单**上全为 []（恒过）；
+  // 空清单必须显式判红：下面三条 filter 判据在空域上恒过，先钉住清单非空。
+  check('覆盖面：搬家清单非空（空清单会让下面三条 filter 判据全部空转）', moved.length === 6);
   check('落地点模块在位（六个定义齐全）', missing.length === 0, missing.join(' ') || 'ok');
   const notInlined = moved.filter((m) => !bundleSrc.includes(m));
   check('六个定义都已内联进 lib/client.js', notInlined.length === 0, notInlined.join(' ') || 'ok');
@@ -384,10 +394,29 @@ section('⑧ 字体落地点已抽成 src/font/apply.js 并内联');
   // effects.js 里不该再有任何字体 DOM 落点：`#we-font-scope` 这个 style 元素的 id 是它的指纹
   check('effects.js 里零字体落点（不再引用 #we-font-scope）',
     !effectsSrc.includes('we-font-scope'));
-  check('负对照：搬家判据对"正文里还留一份"有牙',
-    !moved.every((m) => !('function applyComponentFonts() { /* 正文副本 */ }').includes(m)));
 }
 
+// ── 覆盖面地板 + 跳过账本 ────────────────────────────────────────────────────
+// 地板写在 `if` 之外、数的是**真的跑出结论**的判据（`passed + failed`）⇒ 把某一节整段掏空
+// （或整段包进一个恒假的条件）会立刻判红，而不是"少几条判据仍绿"。跳过项在下面逐条点名。
+// 地板 = 本机（无 DSH）实测到的执行数；装了 DSH 时 ⑤b 那 2 条会额外执行 ⇒ 只会更高。
+const EXECUTED_FLOOR = 75;
+{
+  const executed = passed + failed;
+  check('覆盖面：跑出结论的判据 ≥ ' + EXECUTED_FLOOR + '（跳过项在下面点名，不计入通过）',
+    executed >= EXECUTED_FLOOR,
+    'passed=' + passed + ' / failed=' + failed + ' / 地板 ' + EXECUTED_FLOOR
+    + (skipNotes.length ? ' / 跳过 ' + skipNotes.length : ''));
+}
 console.log('');
-if (failed) { console.log(`COMPONENT FONT CHECKS FAILED — ${failed} failed`); process.exit(1); }
-console.log('ALL COMPONENT FONT CHECKS PASSED');
+if (skipNotes.length) {
+  console.log('  ⚠️ 本次**未执行**的判据（不计入通过）—— ' + skipNotes.length + ' 条：');
+  for (const s of skipNotes) console.log('     ○ ' + s.name + ' —— ' + s.why);
+}
+if (failed) {
+  console.log(`COMPONENT FONT CHECKS FAILED — ${failed} failed, ${passed} passed`
+    + (skipNotes.length ? `, ${skipNotes.length} skipped` : ''));
+  process.exit(1);
+}
+console.log(`ALL COMPONENT FONT CHECKS PASSED (${passed})`
+  + (skipNotes.length ? ` —— ⚠️ ${skipNotes.length} 条未执行（不是通过，见上面的 ○ 行）` : ''));

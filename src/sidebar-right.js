@@ -47,6 +47,7 @@ function sidebarRightOpen() {
 /** 当前展开的右侧栏是否正显示「壁纸」tab（TabRecord.kind 即注册时的 kind）。 */
 function sidebarRightOursActive() {
   try {
+    if (weSidebarCtrl && typeof weSidebarCtrl.isExpanded === "function" && !weSidebarCtrl.isExpanded()) return false;
     const a = weSidebarCtrl && typeof weSidebarCtrl.active === "function" ? weSidebarCtrl.active() : null;
     return Boolean(a && a.kind === WE_SIDEBAR_KIND);
   } catch { return false; }
@@ -84,10 +85,14 @@ function sidebarRightClose() {
 // ── 壁纸侧栏的统一开关（吉祥物点击 / 快捷键共用；两个宿主形态都覆盖）─────────
 // 抽屉态的开关由 RopeDock 组件注册进来：drawer 的 open 状态是组件内部 state，
 // 模块层只能经这一组回调改它（注册/撤销见 client.js 的 RopeDock effect）。
+// eslint-disable-next-line prefer-const -- 跨片段写入：client.js:4404,4405,4410
 let ropeDrawerControl = null; // { toggle, open, close } | null（RopeDock 隐藏/卸载时为 null）
 /** 开：官方态展开并聚焦本 tab；抽屉态开抽屉。两边都不可用返回 false。 */
 function wallSidebarOpen() {
-  if (sidebarRightOpen()) return true;
+  if (sidebarRightOpen()) {
+    if (ropeDrawerControl) ropeDrawerControl.close();
+    return true;
+  }
   if (ropeDrawerControl) { ropeDrawerControl.open(); return true; }
   return false;
 }
@@ -99,7 +104,10 @@ function wallSidebarClose() {
 }
 /** 开/关切换（吉祥物点击、快捷键共用）。不可用（如吉祥物被隐藏且非官方态）返回 false。 */
 function wallSidebarToggle() {
-  if (sidebarRightToggle()) return true;
+  if (sidebarRightToggle()) {
+    if (ropeDrawerControl) ropeDrawerControl.close();
+    return true;
+  }
   if (ropeDrawerControl) { ropeDrawerControl.toggle(); return true; }
   return false;
 }
@@ -389,7 +397,7 @@ function openSettingsSection(tabId) {
   if (tabId) setTransient("settingsTabRequest", String(tabId));
 
   const clickOurNavRow = () => {
-    let rows = [];
+    let rows;
     try { rows = document.body.querySelectorAll("nav button"); } catch { return false; }
     // 锚点是**本插件注册的 nav label** ⇒ 它随语言变（en 下是 "Wallpaper Engine"）。
     // 每次点击现取一次译文，别把中文原文冻结成常量（冻结 = en 模式下找不到自己那一行）。
@@ -408,7 +416,7 @@ function openSettingsSection(tabId) {
   const menuBtnEarly = findAccountMenuTrigger();
   const trigger = menuBtnEarly ? null : findSettingsTrigger();
   // 诊断：点的是谁 + 左栏可见按钮清单（成功/失败都落，一次点击即可精修匹配）。
-  let dump = "";
+  let dump;
   try {
     const visibleB = (b) => { const r = b.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
     // 左栏底部（y>500）全列（设置钮就在那一段，slice 会把它切掉）+ 其余可见按钮摘要。
@@ -473,11 +481,7 @@ function openSettingsSection(tabId) {
 }
 
 export {
-  weSidebarCtrl,
-  WE_SIDEBAR_KIND,
   sidebarRightMode,
-  sidebarRightOpen,
-  sidebarRightOursActive,
   ropeDrawerControl,
   wallSidebarOpen,
   wallSidebarClose,
@@ -486,11 +490,5 @@ export {
   clearWeTimeout,
   installSidebarRight,
   installWallSidebarShortcut,
-  findAccountMenuTrigger,
-  settingsLabelCandidates,
-  isSettingsText,
-  findSettingsMenuItem,
-  findSettingsTrigger,
-  openSettingsBusy,
   openSettingsSection,
 };

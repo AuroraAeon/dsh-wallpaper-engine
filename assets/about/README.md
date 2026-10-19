@@ -4,7 +4,7 @@
 配图的**原始插画**。与 `assets/mascot/` 同一口径：它们是**源资产**，不是运行时载荷。
 
 - 运行时用的是这两张图**裁到码区**的派生版本，落在 **`lib/about/*.png`**（随包发布），由插件路由
-  `GET <BASE>/about-qr/<文件名>` 直出（白名单 + ETag/304，见 `lib/routes/about-qr.js`）；
+  `GET <BASE>/about-qr/<文件名>` 直出（白名单 + ETag/304，见 `packages/about-notice/lib/routes/about-qr.js`）；
   客户端只存路径（`src/about-assets.js`）。2026-10-01 之前那版把派生图**内联 base64** 进客户端
   bundle，用户要求改成 PNG 引入 —— bundle 因此省下约 240KB，换码也不必重建产物。
 - 因此**本目录**（源资产）**不进 npm 包**（不在 `package.json` 的 `files` 白名单内），只随仓库源码分发；
@@ -15,7 +15,7 @@
 | 文件 | 尺寸 | 用途 |
 |---|---|---|
 | `qq-group-dshwe-llm-702x852.png` | 702×852 | **QQ 群「DSHWE \| LLM 讨论群」** 群二维码（含图内标题）。对应 `lib/about/qq-group.png` / `ABOUT_QR_QQ_PATH` |
-| `douyin-group-dsh-1044x1026.png` | 1044×1026 | **抖音群「dsh 交流群」**（群号 252729465001）二维码（含图内群名与群号）。对应 `lib/about/douyin-group.png` / `ABOUT_QR_DOUYIN_PATH` |
+| `douyin-group-dshwe-2-748x748.png` | 748×748 | **抖音群「dshwe 交流 2 群」**（群号 917001335502）二维码（含图内群名与群号）。对应 `lib/about/douyin-group.png` / `ABOUT_QR_DOUYIN_PATH`。2026-10-10 换码：旧码 `douyin-group-dsh-1044x1026.png`（「dsh 交流群」，群号 252729465001）已退役 |
 | `update-notice-star-1254x1254.png` | 1254×1254 | **v1.3.0 更新公告配图**「求个 star 喵！」GitHub 求星插画（原图）。对应 `lib/about/update-notice.jpg` / `NOTICE_ART_PATH`（缩到 720px + JPEG q88，Pillow LANCZOS） |
 
 > **派生版只取"码"那块**（裁掉图内的标题带 / 群名 / 群号），因为这些文字在页面里由**卡片自己的
@@ -38,7 +38,7 @@ import base64, io
 # 裁剪框 = 码的内容 bbox（含 36px 留白）；两张图各自的框见下面的常量。
 BOXES = {
     "qq-group-dshwe-llm-702x852.png":      (63, 249, 634, 819),   # 标题带 / 分隔线之下
-    "douyin-group-dsh-1044x1026.png":      (229, 116, 789, 676),  # 群名 / 群号文字之上
+    "douyin-group-dshwe-2-748x748.png":    (185, 116, 567, 497),  # 群名 / 群号文字之上
 }
 MARGIN, W, COLORS = 36, 520, 128
 

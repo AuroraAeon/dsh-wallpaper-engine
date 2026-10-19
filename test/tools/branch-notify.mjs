@@ -25,18 +25,58 @@
  *      闭包按**名字**算，同名不同函数可能互相背书。
  *   ④ 输出是**候选**：要人读（例如"通知在调用点"的形态会被误报）。
  *
- * 用法：`node test/tools/branch-notify.mjs audit`（打印候选）；被 import 时导出 `pathNotifications`。
+ * 用法：`node test/tools/branch-notify.mjs audit`（打印候选）；被 import 时导出 `pathNotifications`、
+ * `definitionsOf` 与**定义形态正则 `DEF`**（`verify-client` ①h/①i 共用同一份，避免两处正则分叉）。
+ * CLI 的扫描面**派生**自构建脚本的 `INLINE_MODULES`（同 `verify-client` ①h/①i），不手工列文件名。
  */
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { stripComments } from './js-text.mjs';
+import { discoverPackages } from './packages.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const FILES = ['src/client.js', 'src/panel-tabs.js'];
+// 扫描面 = 与 `verify-client` ①h/①i **同源**：正文 + 构建脚本的 INLINE_MODULES + 子包配方。
+// 手工清单会只审 2 个模块，人手跑 `audit` 时把其余模块的候选漏掉（判据本体用的一直是全量扫描面，
+// 所以差异只影响**人读工具**的覆盖面）。
+const inlineModuleFiles = () => [...readFileSync(join(ROOT, 'scripts', 'build-client.mjs'), 'utf8')
+  .matchAll(/file:\s*'([^']+)'/g)].map((m) => m[1]);
+/**
+ * 子包浏览器半边的扫描面：**包枚举**来自发现层（`test/tools/packages.mjs` 的 `discoverPackages`），
+ * **文件清单**来自各包 `client.build.json` 的 `inline[].file` —— 与 `build-client.mjs` 的消费面同源，
+ * 子包数从 2 变 N 时这里自动跟着走，不再有"手工清单漏包"的口子。
+ *
+ * 为什么不再靠上面那个 `inlineModuleFiles()` 兜住这 4 个文件：配方是 JSON（双引号），而那个正则只认
+ * **单引号**字面量 ⇒ 构建改数据驱动后会**静默**少捞 4 个文件；且它捞出来的是**相对包目录**的
+ * `src/fx-layer.js`，拼到 ROOT 上指向不存在的路径（实测 `ROOT/src/fx-layer.js` 已不存在 ⇒ 旧口径下
+ * `audit` 会 ENOENT 崩在扫描途中，那 4 个文件的"覆盖"只是名义上的）。这里拼成 `包目录/文件` 的全路径；
+ * "有配方但文件不在盘"由下面的读取直接抛错，不静默跳过。
+ */
+const standaloneInlineFiles = () => {
+  const out = [];
+  for (const p of discoverPackages(ROOT).packages) {
+    if (p.kind !== 'standalone') continue;
+    const recipePath = join(ROOT, p.dir, 'client.build.json');
+    if (!existsSync(recipePath)) continue; // 无浏览器半边的包（如 packages/fonts）本就没有配方
+    const recipe = JSON.parse(readFileSync(recipePath, 'utf8'));
+    for (const mod of recipe.inline || []) out.push(p.dir + '/' + mod.file);
+  }
+  return out;
+};
+const FILES = [...new Set(['src/client.js', ...inlineModuleFiles(), ...standaloneInlineFiles()])];
 const NOTIFY_HELPERS = ['busy', 'done', 'armConfirm', 'disarmConfirm'];
 const WRITES = /(?:setTransient\(|setSetting\(|setFontValues\(|(?<![\w.$])selection\.[\w$]+\s*=(?!=))/;
-const DEF = /^(\s*)(?:function\s+([\w$]+)\s*\(|const\s+([\w$]+)\s*=\s*(?:async\s*)?\([^)]*\)\s*=>|(on[A-Z][\w$]*)\s*:)/;
+/**
+ * 定义形态。`verify-client` ①h/①i 共用**这一份**：形态只许定义一次，两处各抄一份会在补齐时静默分叉。
+ * 覆盖本仓真实用到的全部形态：`async function name(` / `function name(` / `const name = (…) =>` /
+ * `onXxx:` 条目 / `const|let|var name = (…) {` / `onXxx(…) {` 方法简写。
+ * ⚠️ 少认一种形态 = 那批处理器在**处理器级**与**分支级**两条判据里一起静默隐身
+ *（实测 `async function` 形态最容易漏：`src/client.js:1602 changeUploadDir`、`:1633 changeCacheDir`、
+ * `:1671 changeWeAssetsDir` 三个都必须被扫到）。
+ */
+export const DEF = /^(\s*)(?:async\s+function\s+([\w$]+)\s*\(|function\s+([\w$]+)\s*\(|const\s+([\w$]+)\s*=\s*(?:async\s*)?\([^)]*\)\s*=>|(on[A-Z][\w$]*)\s*:|(?:const|let|var)\s+([\w$]+)\s*=\s*(?:async\s*)?(?:function\s*)?\([^)]*\)\s*(?:=>|\{)|((?:on[A-Z]|set[A-Z]|change[A-Z]|toggle[A-Z])[\w$]*)\s*\([^)]*\)\s*\{)/;
+/** 取定义名：七个可选组里第一个命中的。 */
+export const defName = (m) => m[2] || m[3] || m[4] || m[5] || m[6] || m[7];
 const MAX_PATHS = 64;
 
 const indentOf = (l) => (l.match(/^\s*/)[0] || '').length;
@@ -49,7 +89,7 @@ export function definitionsOf(text) {
   ls.forEach((l, i) => {
     const m = DEF.exec(l);
     if (!m) return;
-    const name = m[2] || m[3] || m[4];
+    const name = defName(m);
     const opens = (l.match(/\{/g) || []).length;
     const closes = (l.match(/\}/g) || []).length;
     if (opens === 0 || opens === closes) { out.push({ name, line: i + 1, lines: [l] }); return; }

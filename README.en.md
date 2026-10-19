@@ -8,9 +8,17 @@
 
 A DSH bundle that turns your **Wallpaper Engine** wallpapers into the **background of the DSH web GUI** (`dsh web`).
 
-![Main interface showcase](docs/images/main-interface.gif)
+![Main interface showcase](https://github.com/elysia395/dsh-wallpaper-engine/releases/download/media-v1/main-interface.gif)
 
 > Wallpaper + scrim + iOS liquid glass rendered behind the DSH GUI.
+
+## Optional dsh-pet Integration
+
+This branch adds an optional integration with [dsh-pet](https://github.com/PC2005-cloud/dsh-pet): sidebar pulling, jumping to grab the mascot, native-physics knockback, and a hiss effect synchronized with the actual video. The complete [pet-link subpackage](packages/pet-link/README.md) contains its runtime, explicit installer, required assets, and regression tests.
+
+**No hard dependency on dsh-pet and no automatic installation.** Without an eligible pet, the wallpaper mascot keeps its original behavior. **`Ctrl+Shift+D`** opens the draggable maintenance panel with four independent parameter pages, fixed bubble tracks, resets, and JSON export. Inspection remains available without a pet; test playback is disabled.
+
+The first-time installer explicitly patches a strictly matched `dsh-pet@0.3.6` build after backup and validation. Review the [installation and hot-plug boundaries](packages/pet-link/README.md) before trying it. The default drawer remains unchanged; pet interaction uses the official-sidebar mode. This is a cross-project review implementation, not an official dsh-pet control API.
 
 ## Contents
 
@@ -38,7 +46,8 @@ It discovers the Wallpaper Engine install on your machine, lists your wallpapers
 - **Follows the DSH interface language**: the plugin's UI joins the host language setting (Settings → General → Language) — **the same catalog dsh web ships** (`中文` / `English`, plus any language pack you install). Switching applies instantly with no page reload: settings pages, the picker, the right sidebar / drawer, the mascot, font sets and the update notice all follow.
 - **Liquid glass across the whole settings window (always on)**: the entire native DSH settings window (dialog + left nav + every native section) runs the glass recipe — the old "settings-window glass" master switch is **retired** (that "off" never restored the native solid look). Accent color, glass base tint, transparency and blur stay adjustable, and per-surface fine-tuning lives in **Settings-window glass · independent configuration**.
 - **Text surfaces keep a floor**: every text-bearing surface composites a theme base layer underneath, worst-case body-text contrast **4.63:1** — no slider extreme can make text illegible.
-- **Typography and caret, refined**: fonts are tunable per **color role / typographic role / component** (size, weight and family each), with an independent color for the input caret. A whole look can be saved as a **font set** (a preset ships with the plugin; create / rename / delete / restore, and **export/import** it as `.json` to share).
+- **Typography and caret, refined**: fonts are tunable per **color role / typographic role / component** (size, weight and family each); the UI accent colours everything at once and can also be pointed at the send button / links / file icon / tabs / deep-diving status **individually**; the input caret takes an independent color. A whole look can be saved as a **font set** (a preset ships with the plugin; create / rename / delete / restore, and **export/import** it as `.json` to share).
+- **Presets = whole-configuration snapshots**: the **configuration presets** on the Appearance tab apply **your entire configuration** in one click — no longer just the glass: every look-and-behavior setting is always carried, while fonts / mascot artwork / session avatars are **checked on demand**; presets can be **exported / imported** as `.json` to move between users (importing does not apply them). Old presets that stored only the glass subset are **voided** — save a fresh copy after upgrading.
 - **Wallpaper-to-UI blending**: wallpaper blur, brightness / contrast / saturation, wallpaper opacity, scrim, border and glass blur — all applied instantly.
 
 **Signature features**
@@ -66,7 +75,7 @@ Wallpaper Engine itself splits wallpapers into four types; this plugin supports 
 
 ## How it works
 
-In one line: the **host** (`lib/index.js` + `lib/routes/*.js`) locates Wallpaper Engine and your library
+In one line: the **host** (`lib/index.js` facade + the shared route families in `lib/routes/*.js` + each component's own subpackage `packages/<name>/lib/`) locates Wallpaper Engine and your library
 and feeds media to the browser; the **client** (`lib/client.js`) mounts the selected wallpaper as a fixed
 layer *behind* the app's three columns and registers a first-level "Wallpaper Engine" settings tab.
 
@@ -108,6 +117,26 @@ uses `--profile desktop` and must be **fully closed first**).
 Step-by-step recovery (`ERR_PNPM_UNEXPECTED_VIRTUAL_STORE`, etc.) lives in
 [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md).
 
+### The plugin bundle and its sub-plugins (per-row toggles)
+
+Once installed, this plugin shows up in the plugin manager as **several rows**: the main row (the wallpaper
+engine itself) plus one row per **sub-plugin**. Each row can be **disabled on its own**.
+
+- ⚠️ **A restart / reload is required for a row toggle to take effect.** Row state lives in the bundle's own
+  manifest, which is not on the hot-reload watch list — the UI will **not** change the moment you flip the switch.
+- After disabling a row: that sub-plugin's **host capabilities (its HTTP routes) disappear entirely**, and
+  the **browser-side blocks that belong to it stop rendering** (its UI and its settings go away together).
+- Conversely, **the browser half is loaded per package**: as long as the main row is enabled the whole settings
+  UI is there. Disabling the **main** row disables the entire plugin (wallpaper and UI both go away).
+- `media-bridge` is the **exception**: it is currently a transitional form of the wallpaper sub-plugin, so it does
+  **not** yet participate in this "UI follows the row" semantics (it will be folded into the wallpaper/UI core split later).
+
+| Sub-plugin row | Capabilities that disappear | UI that stops rendering |
+|---|---|---|
+| `about-notice` | `/star-count`, `/about-qr/*` | Star count, the two group-QR images and the update notice inside the About tab (intro and credits stay) |
+| `mascot-avatar` | `/mascot`, `/avatar/<side>` | The mascot form + artwork/avatar uploads on the System tab, the avatar card on the Extensions tab, the message avatar decoration (the tabs and their other sections stay) |
+| `media-bridge` | `/now-playing*`, `/media-status`, `/audio-spectrum`, `/media-control` | (not applicable yet, see above) |
+
 ## Usage
 
 1. Open `dsh web` → the DSH GUI.
@@ -115,17 +144,17 @@ Step-by-step recovery (`ERR_PNPM_UNEXPECTED_VIRTUAL_STORE`, etc.) lives in
 3. Click **选择壁纸** to open the library **in-panel** (**not** a modal, and there is no backdrop), then click a wallpaper in the thumbnail grid (**Application** wallpapers are not supported and stay out of the grid); leaving the library view returns you to the settings page.
 4. Use **暂停/播放** to control a video wallpaper and **关闭** to clear it. Every choice and adjustment applies instantly and persists (see [Configuration](#configuration)).
 
-![Settings UI overview](docs/images/settings-ui.gif)
+![Settings UI overview](https://github.com/elysia395/dsh-wallpaper-engine/releases/download/media-v1/settings-ui.gif)
 
 > The settings page: the liquid-glass card with six tabs (Library / Appearance / Playback / System / Extensions / About).
 
-![Wallpaper library, opened in-panel](docs/images/wallpaper-library.gif)
+![Wallpaper library, opened in-panel](https://github.com/elysia395/dsh-wallpaper-engine/releases/download/media-v1/wallpaper-library.gif)
 
 > The wallpaper library, opened **in-panel** (a drill-in view, not a modal): browse every wallpaper thumbnail, batch-hide, and restore from the hidden tab.
 
 ### The settings tabs
 
-The settings page has **six tabs** — **Library** (selection / rotation / custom uploads) · **Appearance** (colors / glass / caret / glass presets; **global typography and the glass fine-tuning rows live in the sidebar's Appearance pane**, collapsed by default) · **Playback** (effects + audio) · **System** (mascot — you can **import your own artwork** to replace the built-in forms (a re-import overwrites the previous one; the two form cards are disabled while a custom picture is active and come back once it is cleared) + advanced) · **Extensions** (the **module container** for later features: today it holds **custom session avatars** (the **first** item, master switch **off by default**) — turn it on and the host chat reads like a chat between friends: your messages sit on the right with your avatar, the assistant's on the left with its own. Each side can **import its own picture** (stored on this machine only, under the host data directory's `avatars/`, downscaled to 512px on import); without one an inline default is drawn (a person for you, a four-point star for the assistant). Avatars are circles by default, with one slider each for **size** (24–72px) and **corner roundness** (0–100%, 100% = a full circle, 0% = sharp corners). Turn the switch off and the conversation goes back to exactly how it was — every injected node and marker is removed — and it never touches wallpaper, glass or font settings) and **click & trail effects** (its master switch is **off by default** — turn it on when you want it) — they are a neon effect that follows your pointer: **clicks** burst as Ripple (two rings spreading from the hit point), Sparks (a cluster of dots flying outward) or Both, while the **trail** records the path you traced as Comet (a light band that tapers and fades toward its tail) or Dust (dots left behind at a fixed step) and fades out on its own after the trail duration (it keeps fading even when the pointer stops); the whole layer is composited with `lighter`, its color follows the theme accent / Rainbow (a fresh hue per instance, drifting over time) / Custom, and both opacity and the **blend mode** (Screen only brightens the picture — the most neon look; Normal / Overlay / Multiply / Lighten can be picked by hand) are written on the **host element**; clicks landing on the plugin's own controls do not fire, the listeners are passive and never capture the pointer; the layer deliberately never reads wallpaper pixels (so it has no Auto mode) and always sits above the wallpaper, below the scrim; clicks and the trail have one sub-switch each and either one is enough, with the master switch off by default; the **third module, 3D depth**, shifts the wallpaper and the mascot gently in the direction mirrored about the screen center as the cursor moves — the travel is measured as a **percentage of the longest diagonal** (the cursor parked in a screen corner moves a layer by its own percentage of that diagonal): 1% for the wallpaper by default, the mascot riding along with the wallpaper and an adjustable easing smoothness (0 = instant); the wallpaper is scaled up by the same amount so no base color shows at the edges; **Interface follows** (a sub-switch, off by default) makes the composer / conversation text area / sidebar drift as **whole blocks** — the text moves together with the glass underneath it (the nearer a layer is, the further it travels: the interface moves the **same way as** the wallpaper, like a camera pan, and each region's distance is **independent** — one slider each for the conversation text area, the composer, the sidebar and the user bubbles, with no total factor), with the displacement **snapped to whole device pixels** (with hysteresis, so the easing tail no longer flips it back and forth around zero — which is exactly where "it shivers as the cursor crosses the middle" came from), its `translate` **removed entirely** once it settles (the property alone would establish a containing block) and any group holding a fixed-position descendant staying put; **the top-left column is the one exception** — the host's "collapse sidebar" button is a fixed-position descendant of that column, so it is displaced with **relative positioning** (`left` / `top`) and never with `translate`; the click & trail layer deliberately does not move — this layer builds no DOM node at all: each frame it writes the **final, fully multiplied displacement** straight onto **the layers that actually move** as the CSS independent property `translate` (never through an inherited custom property: writing one on the body would re-resolve styles for the whole document every frame; the body keeps a single "wallpaper bleed" multiplier written once per settings change), the stylesheet no longer computes the offsets, frames take zero measurements and follow the display's real refresh rate, and it promotes those layers to compositor layers only while it is really moving, dropping the hint the moment it settles ("arrived" is judged from the displacement still visible on screen, with every multiplier at 0 it schedules no frame at all, and nothing is scheduled while the page is hidden); later features only add one entry to the registry) · **About** (project intro / repo & live star count / community QR codes / contributor credits) — each keeping only the controls that belong to it instead of one long scrolling column. The pill indicator slides smoothly between tabs, and long explanations live in tooltips — each row keeps a one-line hint. **About** reads no panel state and writes no settings: copy plus two QR codes (bundled PNGs served by the plugin's own route — they render even offline); the only external inputs are the **star count** and those two images — fetched by the host from the GitHub API when you open the tab (cached; if GitHub is unreachable it shows the last known value). **One-click starring is not offered**: starring requires your GitHub credentials and the plugin stores no token — the button opens the repo page, and the raw URL is right below it for copying.
+The settings page has **six tabs** — **Library** (selection / rotation / custom uploads) · **Appearance** (colors / glass / caret / **configuration presets** — whole-configuration snapshots, exportable and importable; **global typography and the glass fine-tuning rows exist in both places** (collapsed in the sidebar, open on the settings page)) · **Playback** (effects + audio) · **System** (mascot — you can **import your own artwork** to replace the built-in forms (a re-import overwrites the previous one; the two form cards are disabled while a custom picture is active and come back once it is cleared) + advanced) · **Extensions** (the **module container** for later features: today it holds **custom session avatars** (the **first** item, master switch **off by default**) — turn it on and the host chat reads like a chat between friends: your messages sit on the right with your avatar, the assistant's on the left with its own. Each side can **import its own picture** (stored on this machine only, under the host data directory's `avatars/`, downscaled to 512px on import); without one an inline default is drawn (a person for you, a four-point star for the assistant). Avatars are circles by default, with one slider each for **size** (24–72px) and **corner roundness** (0–100%, 100% = a full circle, 0% = sharp corners). Turn the switch off and the conversation goes back to exactly how it was — every injected node and marker is removed — and it never touches wallpaper, glass or font settings) and **click & trail effects** (its master switch is **off by default** — turn it on when you want it) — they are a neon effect that follows your pointer: **clicks** burst as Ripple (two rings spreading from the hit point), Sparks (a cluster of dots flying outward) or Both, while the **trail** records the path you traced as Comet (a light band that tapers and fades toward its tail) or Dust (dots left behind at a fixed step) and fades out on its own after the trail duration (it keeps fading even when the pointer stops); the whole layer is composited with `lighter`, its color follows the theme accent / Rainbow (a fresh hue per instance, drifting over time) / Custom, and both opacity and the **blend mode** (Screen only brightens the picture — the most neon look; Normal / Overlay / Multiply / Lighten can be picked by hand) are written on the **host element**; clicks landing on the plugin's own controls do not fire, the listeners are passive and never capture the pointer; the layer deliberately never reads wallpaper pixels (so it has no Auto mode) and always sits above the wallpaper, below the scrim; clicks and the trail have one sub-switch each and either one is enough, with the master switch off by default; the **third module, 3D depth**, shifts the wallpaper and the mascot gently in the direction mirrored about the screen center as the cursor moves — the travel is measured as a **percentage of the longest diagonal** (the cursor parked in a screen corner moves a layer by its own percentage of that diagonal): 1% for the wallpaper by default, the mascot riding along with the wallpaper and an adjustable easing smoothness (0 = instant); the wallpaper is scaled up by the same amount so no base color shows at the edges; **Interface follows** (a sub-switch, off by default) makes the composer / conversation text area / sidebar drift as **whole blocks** — the text moves together with the glass underneath it (the nearer a layer is, the further it travels: the interface moves the **same way as** the wallpaper, like a camera pan, and each region's distance is **independent** — one slider each for the conversation text area, the composer, the sidebar and the user bubbles, with no total factor), with the displacement **snapped to whole device pixels** (with hysteresis, so the easing tail no longer flips it back and forth around zero — which is exactly where "it shivers as the cursor crosses the middle" came from), its `translate` **removed entirely** once it settles (the property alone would establish a containing block) and any group holding a fixed-position descendant staying put; **the top-left column is the one exception** — the host's "collapse sidebar" button is a fixed-position descendant of that column, so it is displaced with **relative positioning** (`left` / `top`) and never with `translate`; the click & trail layer deliberately does not move — this layer builds no DOM node at all: each frame it writes the **final, fully multiplied displacement** straight onto **the layers that actually move** as the CSS independent property `translate` (never through an inherited custom property: writing one on the body would re-resolve styles for the whole document every frame; the body keeps a single "wallpaper bleed" multiplier written once per settings change), the stylesheet no longer computes the offsets, frames take zero measurements and follow the display's real refresh rate, and it promotes those layers to compositor layers only while it is really moving, dropping the hint the moment it settles ("arrived" is judged from the displacement still visible on screen, with every multiplier at 0 it schedules no frame at all, and nothing is scheduled while the page is hidden); later features only add one entry to the registry) · **About** (project intro / repo & live star count / community QR codes / contributor credits) — each keeping only the controls that belong to it instead of one long scrolling column. The pill indicator slides smoothly between tabs, and long explanations live in tooltips — each row keeps a one-line hint. **About** reads no panel state and writes no settings: copy plus two QR codes (bundled PNGs served by the plugin's own route — they render even offline); the only external inputs are the **star count** and those two images — fetched by the host from the GitHub API when you open the tab (cached; if GitHub is unreachable it shows the last known value). **One-click starring is not offered**: starring requires your GitHub credentials and the plugin stores no token — the button opens the repo page, and the raw URL is right below it for copying.
 
 ### Selection & filters
 
@@ -156,7 +185,7 @@ The **帧率上限 (fps cap)** control in **Playback → Effects** (selectable s
 
 ### Cache location (moving a few GB off the system drive)
 
-Extracted frames, transcodes, live frames and video thumbnails are **regenerable artefacts** and default to `~/.dsh-wallpaper-engine/cache` — your **system drive**. Over time that adds up to **several GB**. **System → Advanced → 缓存位置 (cache location)** moves it to a folder on any drive (absolute path, `~` supported): existing cache is **migrated automatically** (file by file, so it also works across drives) and the old directory is left behind as empty shells — **never deleted**.
+Extracted frames, transcodes, live frames and video thumbnails are **regenerable artefacts** and default to `~/.dsh-wallpaper-engine/cache` — your **system drive**. Over time that adds up to **several GB**. **System → Advanced → 缓存位置 (cache location)** moves it to a folder on any drive (absolute path, `~` supported): the **Change** button opens a **folder browser** (lists drives and subfolders to click through; the address bar also accepts pasted paths), and on save the existing cache is **migrated automatically** (file by file, so it also works across drives) while the old directory is left behind as empty shells — **never deleted**.
 
 The migration **only moves the plugin's own cache subdirectories**; anything it does not recognise stays where it is. So the target may be an existing folder of yours (say `D:\WallpaperEngineCache`) without the plugin touching anything else inside it. All of it is regenerable (hence the "safe to delete any time" hint in the settings page): the worst case is one extra transcode, never a lost wallpaper or setting.
 
@@ -196,12 +225,17 @@ The **外观** tab controls the look of the **entire native DSH settings window*
 | **玻璃透明度** | Opacity of the glass surfaces (settings window, composer, bubbles, sidebar panels); higher = more transparent | see the control |
 | **左侧栏液态玻璃** (Left sidebar liquid glass) | Makes the host's native **left sidebar** (the session / workspace column) follow Accent / Glass color / Glass opacity / Frost / Border too — off means that column keeps showing the **raw** wallpaper (no frost, no base tint) | off |
 | **雾化** | Glass blur radius — **the same adjustment** drives the conversation cards, the left-sidebar override, the settings window and the plugin popovers (the sidebar is the exception: it has its own 「侧栏模糊」) | see the control |
+| **额外补雾化的选择器** (Extra frost targets) | Give **third-party plugin panels** their own frost — they carry no `backdrop-filter` of their own, so the global Frost slider never reaches them and the readability floor is their only backing. List those panels' CSS selectors (commas or newlines, up to 8, each at most 120 chars; an over-long entry is dropped whole and entries beyond the 8th are dropped whole too (the surviving 8 all apply) — never truncated into a half selector; each target must be positioned itself — fixed / absolute); the carrier rides on its `::before`, so popovers inside a panel keep their anchor. Empty = off (issue [#200](https://github.com/elysia395/dsh-wallpaper-engine/issues/200)) | empty |
 | **Text-surface readability floor** | Every text-bearing surface composites a theme base layer under the glass tint (body text stays ≥4.5:1); **on by default, no switch** | on |
 | **Theme follows the wallpaper** | **A switch, off by default.** With it on, a switch of wallpaper picks the global light/dark theme from the wallpaper (author scheme colour → the picture's most-occupied colour (preview and real frame vote; disagreement ⇒ dark) → leave it alone; an author value of exactly `0 0 0` counts as unfilled; light theme only for clearly bright colours — the 外观 → 主题 row shows the last verdict's source and luminance); changing the theme by hand in DSH stops it for that wallpaper and the next switch resumes | off |
 
 Everything applies instantly and persists; browsers without `backdrop-filter` fall back to a high-opacity solid so text stays readable.
 
 > **Defaults and ranges come from the control itself.** The single source of truth for settings is [`lib/settings-schema.js`](lib/settings-schema.js) (`DEFAULTS` for values, `KINDS` for validation ranges, the enum tables) — both the host and the client derive from it, and the panel renders straight out of it. That is why this document and every other doc **quote none of those numbers**: a copy is one more thing that rots.
+
+### Configuration presets (whole-configuration snapshots)
+
+The **configuration presets** at the top of the Appearance tab are no longer a "glass subset" — they are a **snapshot of this plugin's entire configuration**: one click applies every look-and-behavior setting (rotation, playback, effects, parallax, avatar shapes, and the rest) **in full**; the three **physical assets** — fonts / mascot artwork / session avatars — are **checked on demand** when saving / exporting (an unchecked item falls back to whatever the receiving side currently has — the checks only decide whether images and fonts come along; numeric settings are always saved in full). Presets can be **exported as `.json` files** and **imported** elsewhere (importing only adds them to the list without applying — click them in the list to apply), so they can move between users. A set of presets ships with the plugin; **old presets saved before the upgrade hold only the glass subset and are voided** — the panel names the version as obsolete; just save a fresh copy.
 
 ### Mascot (chat pull-cord)
 
@@ -210,18 +244,34 @@ The **System → 吉祥物** controls the chat **pull-cord** — a draggable rop
 | Control | What it does | Default |
 |---|---|---|
 | **显示吉祥物** | Whether the pull-cord mascot and its wallpaper-library drawer render | on |
-| **吉祥物形态** | Switches artwork: **小女仆** (near-square chibi) or **鲸御姐** (portrait 2:3 full-body) | 小女仆 |
+| **吉祥物形态** | Pick the artwork on a **3D ring dial**: the 10 artworks sit at equal angles on a circle and the whole ring rotates (the ones facing away hide themselves), with **the centre being the one in use**; **drag** the ring, press ← / →, click a dot below, or **click any artwork** to bring it to the centre. Holds **10 built-ins + custom**: **Deepseek_Pro** (formerly 鲸御姐; whale-tailed maid, portrait 2:3 full-body — a **different artwork** from the model girl **DeepSeek** on the same line, so don't go by the name) / **菲比啾比** (portrait), plus eight **model girls** — **Claude · DeepSeek · Gemini · GPT · GLM · Grok · Kimi · Qwen** (each box height follows its own source ratio); the last item imports a **custom picture** (clicking another artwork while a custom one is active asks for confirmation first) | **DeepSeek** |
 | **吉祥物大小** | Scales the mascot (the rope box follows the ratio; drag / snap geometry adapts automatically) | see the control |
 
-![Mascot quick-adjustment drawer](docs/images/mascot-drawer.png)
+![Mascot quick-adjustment drawer](https://github.com/elysia395/dsh-wallpaper-engine/releases/download/media-v1/mascot-drawer.png)
 
-> Pull the top rope mascot to slide out the wallpaper-library drawer. Both artworks are inlined as base64 (transparent background) at build time, so the single-file client bundle stays self-contained; **size** changes only the rope's own box, never the drawer below.
+> Pull the top rope mascot to slide out the wallpaper-library drawer. All artworks are inlined as base64 (transparent background) at build time, so the single-file client bundle stays self-contained; **size** changes only the rope's own box, never the drawer below.
+>
+> The factory artwork list does **not** include the near-square chibi maid (小女仆) — that artwork ships inside the 「作者自用」 preset as an easter egg, and the factory default form is **DeepSeek**.
 
-### Typography & input caret
+### Global UI colors · typography · caret
 
-Two independent groups. **Global typography lives in the sidebar's Appearance pane** (a collapsed-by-default block — the settings dialog covers the page behind it, so you cannot see the live result while tuning; that is why typography and the glass fine-tuning rows moved to the sidebar). The **caret** can be tuned from either place (settings or sidebar):
+Three groups, **reachable from both the settings page and the sidebar's Appearance pane**. The Appearance pane has six sections, in the **same order on both surfaces** (Theme / Details / Glass UI / Sidebar corners / Global UI colors / Global typography), and every one of them can be **collapsed** by clicking its section head; the only difference is the **default**: the **sidebar hides the last three** (Sidebar corners / Global UI colors / Global typography — the pane is narrow and all six would mean scrolling several screens), while the **settings page opens all five gates** (there is room, and it is meant to be read at a glance). Both **remember what you collapsed by hand** (the settings page is a modal dialog that covers the page behind it, so the sidebar copy is the one to use when you want to see the live result while tuning):
 
-- **Global typography** (sidebar **Appearance** pane · collapsed block) — the **master switch defaults to off** (the stock dsh look). Once enabled, everything is refined **per role / per component** and there is **one default font** (**there is no global weight** — a single global value would flatten DSH's weight hierarchy):
+- **Global UI colors** (Appearance pane, sitting **above** "Global typography") — one master color plus five spots you can point at individually:
+  - **Global accent**: one control for everything — the UI accent, buttons, selection states and the spots below all follow it;
+  - **Custom UI colors** (**off by default**): once on, the "Global accent" row is **disabled** and the five items below decide instead; leave an item on "Follow" to go back to the global accent. They cover the spots that used to **ignore** the accent entirely:
+
+    | Item | What it colours |
+    |---|---|
+    | Send button | the round arrow button at the right of the composer (⚠️ its arrow is **hard-coded white by the host**, so mid tones read best) |
+    | Link text | links and emphasised text in the conversation and panels |
+    | File icon | the `</>` file icon on deliverable cards (same source as links; overridden separately here) |
+    | Tabs / focus rings | the conversation's Chat / Trajectory tabs and their underline; focus rings and status dots share the same source and follow along |
+    | Deep-diving status | the "deep diving, elapsed …" line and its shimmer |
+
+  - **Caret color** — when the wallpaper shows through the liquid-glass composer and the caret blends into it ([#83](https://github.com/elysia395/dsh-wallpaper-engine/issues/83)): **Auto** (default, native dsh) / 6 presets / custom picker, applied via `caret-color` to every text input. It is **not** affected by the switch above and is always adjustable.
+  - ⚠️ All five only apply **while this plugin is running** (the anchor is the page-glass marker): with the plugin disabled the interface returns to DSH's native colors.
+- **Global typography** (Appearance pane · collapsed block) — the **master switch defaults to off** (the stock dsh look). Once enabled, everything is refined **per role / per component** and there is **one default font** (**there is no global weight** — a single global value would flatten DSH's weight hierarchy):
   - **Default font (global)**: the default family for the whole interface, **including the fonts installed on your machine** (the host enumerates the system font list; pick from the dropdown and hit "Rescan" when needed). It is a **default, not a force** — any role / component with its own family still wins, and it **never changes any role's size**;
   - **Terminal font**: changes only the **terminal block** in the conversation (the second entry point for the same setting as "Advanced font settings → Terminal");
   - **Text color roles**: tint each of DSH's **color roles** separately (unset = keep the DSH default);
@@ -229,7 +279,6 @@ Two independent groups. **Global typography lives in the sidebar's Appearance pa
   - **Advanced font settings** (sub-switch): refine **code blocks / terminal / markdown / tables** **per component** — effective only for components found by the startup self-probe (if DSH renames one, that entry degrades instead of misfiring).
   - **Font-set presets**: save a whole typography look as a **font set** — one preset ships with the plugin; you can **create one from the current look / rename / delete**, and every edit lands **only in the current set** (with 「restore」 putting it back the way it was). Sets can be **exported / imported** as `.json` (export opens the system "Save as"). It belongs to custom typography: turning the master switch off collapses the whole block.
   Error / danger / warning elements keep their system red; **恢复默认** clears every typography override (it does **not** touch view switches such as 「只看改过的」).
-- **Input caret** — when the wallpaper shows through the liquid-glass composer and the caret blends into it ([#83](https://github.com/elysia395/dsh-wallpaper-engine/issues/83)), this group gives the caret its own color: **自动** (default, native dsh) / 6 presets / custom picker, applied via `caret-color` to every text input.
 
 ### System-audio reaction and Now Playing
 
@@ -266,9 +315,9 @@ This plugin exposes no model-visible tools or prompt text — **zero token cost*
 | `DSH_WE_DATA_DIR` | overrides the plugin data directory (default `~/.dsh-wallpaper-engine`; self-check scripts use it so they never touch your real `config.json`) |
 | `DSH_WE_UPLOAD_DIR` | overrides the custom-wallpaper storage location (takes priority over the in-app 更改 setting and the default) |
 | `DSH_WE_ASSETS_DIR` | overrides the official-assets path (the WE `assets` tree; takes priority over the in-app setting) |
-| `DSH_WE_TRANSCODE_TIMEOUT_MS` | overrides the wall-clock budget for one transcode job (ms; default 15 min) |
+| `DSH_WE_TRANSCODE_TIMEOUT_MS` | overrides the wall-clock budget for one transcode job (ms; default see implementation) |
 
-**Where settings live**: since v0.4.0 every setting lives in the host-side file `~/.dsh-wallpaper-engine/config.json`
+**Where settings live**: every setting lives in the host-side file `~/.dsh-wallpaper-engine/config.json`
 (independent of the browser's port, so a restart / port change / cleared browser data cannot lose it; legacy
 localStorage settings are migrated automatically). File location, multi-device sharing and write behaviour: see the
 "Settings persistence" section of [`docs/UPGRADING.md`](docs/UPGRADING.md).
@@ -309,7 +358,7 @@ near-opaque fill:
 > white); editor / terminal content surfaces have their own near-opaque fill +
 > transparency controls to keep text readable in the narrow panels.
 
-![dsh-better-sidebar compatibility & custom typography](docs/images/better-sidebar-font.png)
+![dsh-better-sidebar compatibility & custom typography](https://github.com/elysia395/dsh-wallpaper-engine/releases/download/media-v1/better-sidebar-font.png)
 
 > The sidebar glass adaptation with the custom typography (行楷) applied at the same time.
 
@@ -334,7 +383,7 @@ Questions, feedback, or want new versions the moment they land? Join one of our 
 | 🐧 QQ group | 🎵 Douyin group |
 |---|---|
 | <img src="lib/about/qq-group.png" alt="QQ group QR code" width="260"> | <img src="lib/about/douyin-group.png" alt="Douyin group QR code" width="260"> |
-| **DSHWE \| LLM discussion** | **dsh community** (group ID 252729465001) |
+| **DSHWE \| LLM discussion** | **dshwe community 2** (group ID 917001335502) |
 
 > The images are the shipped assets `lib/about/*.png` (the plugin serves the very same bytes from its own route); for the source screenshots and how they were derived, see [`assets/about/README.md`](assets/about/README.md).
 
@@ -347,3 +396,7 @@ This plugin is the work of many people — thank you all:
 - **[yuxilao](https://github.com/yuxilao)** — the scene-gl Linux real-time rendering pipeline (WebGL2 official shader driver + several rounds of performance work) and rotation handoff / GPU frame backfill / official assets path ([#65](https://github.com/elysia395/dsh-wallpaper-engine/pull/65), [#108](https://github.com/elysia395/dsh-wallpaper-engine/pull/108)).
 - **[Jerry](https://github.com/ruijiaang-lab)** — before native three-platform support landed, he maintained the macOS side of things (WaifuX workshop directory scanning, vinyl thumbnail fallback, upstream porting, and the macOS contribution paths, [#44](https://github.com/elysia395/dsh-wallpaper-engine/pull/44), [#45](https://github.com/elysia395/dsh-wallpaper-engine/pull/45), [#52](https://github.com/elysia395/dsh-wallpaper-engine/pull/52), [#54](https://github.com/elysia395/dsh-wallpaper-engine/pull/54)).
 - Also [SiriLee](https://github.com/SiriLee) (brightness / contrast / saturation controls, the mascot pull-cord toggle, Steam root discovery from WSL), [libiwolve](https://github.com/libiwolve) (content rating & type filters), [0-007pro](https://github.com/0-007pro) (automatic wallpaper rotation), [jujubaoj646-star](https://github.com/jujubaoj646-star) (the typography & bubble styling panel), [xiahou001](https://github.com/xiahou001) (per-wallpaper audio volume), [wilianyichen](https://github.com/wilianyichen) (on-demand MP4 thumbnails & upload content ratings), [hecoococ](https://github.com/hecoococ) (decoupling sidebar glass from the active wallpaper), [ShamSky88](https://github.com/ShamSky88) (the glass blur positioning fix), [Rekk0](https://github.com/Rekk0) (token-driven glass transparency, registry-based Steam discovery), [Y1X1n](https://github.com/Y1X1n) (the beginner-friendly guide), [wwexplorer](https://github.com/wwexplorer) (wallpaper-layer framing: horizontal / vertical / scale, with typeable values) — and everyone who has helped through issues and PRs. Thank you!
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=elysia395/dsh-wallpaper-engine&type=Date)](https://star-history.com/#elysia395/dsh-wallpaper-engine&Date)

@@ -56,11 +56,6 @@ const HOST_VALUES = {
   globalFamily: 'sys:PingFang SC',
   componentFonts: { markdown: { size: 15 } },
 };
-/** 本地缓存里"上次那份"（与宿主那份**明显不同**，才能分辨谁赢了）。 */
-const CACHED_VALUES = {
-  themeColors: {}, themeDarkSeparate: false, themeSize: { 'markdown-h1': 19 },
-  themeWeight: {}, themeFamily: {}, globalFamily: '', componentFonts: {},
-};
 const CACHE_KEY = 'we-fontset-active';
 
 function makeEl(tag) {
@@ -119,8 +114,8 @@ function mount({ fetchImpl, store }) {
     return fetchImpl(String(url), o);
   };
   const code = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8');
-  const cap = { handoff: null };
-  // 2026-10-09 字体节迁侧栏：这台的面板渲染器必须把**官方侧栏 body** 也注册出来（字体 UI
+  const cap = { handoff: null, handoffs: [] };
+  //  字体节迁侧栏：这台的面板渲染器必须把**官方侧栏 body** 也注册出来（字体 UI
   // 现在只画在侧栏外观页），且要把「外观页 + 字体节展开」的 UI 状态播进 store ——
   // 与 verify-client / verify-system-fonts 同一套手法（qp-* 键仅 UI 状态，不进 config.json）。
   store['dsh-wallpaper-engine:qp-tab'] = 'appearance';
@@ -133,7 +128,7 @@ function mount({ fetchImpl, store }) {
   const stubTimeout = (fn, ms) => { const t = { fn, ms, cleared: false }; timers.push(t); return t; };
   const sandbox = {
     window: {
-      __ModuleLoader__: { load: (h) => { cap.handoff = h; } },
+      __ModuleLoader__: { load: (h) => { cap.handoff = h; cap.handoffs.push(h); } },
       setTimeout: stubTimeout,
       clearTimeout: (t) => { if (t) t.cleared = true; },
       addEventListener() {}, removeEventListener() {},
@@ -147,6 +142,21 @@ function mount({ fetchImpl, store }) {
   vm.createContext(sandbox);
   new vm.Script(code, { filename: 'client.js' }).runInContext(sandbox);
   const exportsObj = cap.handoff.factory((spec) => (spec === 'react' ? React : { createPortal: (n) => n }));
+  // P-C：外观页签第六节「全局字体」随字体包出产物 ⇒ 像真 loader 一样在同一个 vm 里把那份
+  // 子包产物也求值掉（它的 factory 用 require('主包名') 取主 bundle 的显式键集，再登记那一节）。
+  // 少了这一步，面板上就没有「字体集预设」开关与字体节控件 —— 本 smoke 的 33 条会全红。
+  {
+    const fontsRel = '../packages/fonts/lib/client.fonts.js';
+    const before = cap.handoffs.length;
+    new vm.Script(readFileSync(new URL(fontsRel, import.meta.url), 'utf8'), { filename: fontsRel })
+      .runInContext(sandbox);
+    const loaded = cap.handoffs.slice(before);
+    if (loaded.length !== 1) throw new Error(fontsRel + ' 必须恰好注册一份 bundle（实际 ' + loaded.length + ' 份）');
+    loaded[0].factory((spec) => {
+      if (spec === 'dsh-plugin-wallpaper-engine') return exportsObj;
+      throw new Error('unexpected require: ' + spec);
+    });
+  }
   exportsObj.apply({
     // 面板由 `slots.inject(名称, () => slots.register(meta, render))` 装配；产出元素树的是
     // **register 的第二个参数**。`apply()` 期就把首次渲染跑一遍（真机也这样），但那时库存还没到
@@ -176,7 +186,7 @@ function collectTree(root, out = []) {
 }
 
 /** 一个"正常的宿主"：/settings + /fontsets（活动集是 compact）+ /inventory。settings 可参数化。 */
-const hostWith = (settings) => (url, init) => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(
+const hostWith = (settings) => (url) => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(
   String(url).includes('/fontsets/import') ? { ok: true, id: 'imported-1', name: '导入的那份' }
     : url.includes('/fontsets/') ? { ok: true, id: 'compact', name: '紧凑', values: HOST_VALUES }
       : url.includes('/fontsets') ? { fontsets: [{ id: 'compact', name: '紧凑', origin: 'builtin', active: true }], active: 'compact', migrated: false, adopted: false }
@@ -198,7 +208,7 @@ const noFontSetHost = (url) => Promise.resolve(
     ? { ok: false, status: 404, json: () => Promise.resolve({ error: 'not found' }) }
     : goodHost(url));
 
-const waitBoot = () => new Promise((r) => setTimeout(r, 50));
+const waitBoot = () => new Promise((r) => { setTimeout(r, 50); });
 
 (async () => {
   // ── 场景 A：正常宿主 —— 值被整套采用，顺序正确 ──────────────────────────────
@@ -287,18 +297,18 @@ const waitBoot = () => new Promise((r) => setTimeout(r, 50));
   // 「使用中」= **值仍然一致**（不是"宿主指针指着它"）：这里先记下**改之前**的标记，
   // 改完再对照 —— 一组真正的前后对照，而不是只看改完那一眼。
   openFontSetEditor(d);
-  await new Promise((r) => setTimeout(r, 20));
+  await new Promise((r) => { setTimeout(r, 20); });
   const markBefore = panelText(d);
   check('改之前：那一行标「（使用中）」（刚采纳，值一致）',
     markBefore.includes('（使用中）') && !markBefore.includes('（已改）'), markBefore.slice(-64));
   // 先把**启动期**挂起的写放掉（真机里 200ms 后自然落的那次）：否则它会被下面这次
   // `fireTimers(200)` 一起释放，混进"改字号之后发了什么"的窗口里（判据就说不清了）。
   d.fireTimers(200);
-  await new Promise((r) => setTimeout(r, 10));
+  await new Promise((r) => { setTimeout(r, 10); });
   const before = d.requests.length;
   if (sizeInputs.length) sizeInputs[0].props.onChange({ target: { value: '26' } });
   d.fireTimers(200); // 200ms debounce 到点 ⇒ flushFontSet ⇒ PUT
-  await new Promise((r) => setTimeout(r, 10));
+  await new Promise((r) => { setTimeout(r, 10); });
   const written = d.requests.slice(before);
   const fontPuts = written.filter((r) => r.method === 'PUT' && r.url.includes('/fontsets/'));
   const settingsPuts = written.filter((r) => r.method === 'PUT' && r.url.includes('/settings'));
@@ -362,19 +372,76 @@ const waitBoot = () => new Promise((r) => setTimeout(r, 50));
   };
   const e = mount({ fetchImpl: statefulHost, store: eStore });
   await waitBoot();
-  /** 编辑器（含导入 input）在不在树上；顺带把整棵树的文案拼出来看失败态。 */
+  /**
+   * 编辑器（含导入 input）在不在树上；顺带把整棵树的文案拼出来看失败态。
+   *
+   * ⚠️ `fileInput` **不许**用 `find(第一个 accept 含 .json 的 input)` —— 那是个会漂的假设：
+   *    预设块（「玻璃 UI」节，排在「全局字体」节**之前**）也有一枚 `accept` **完全相同**
+   *    的导入 input（`src/glass-panel.js` 的 `gp-import-input`），于是"第一个"拿到的是预设
+   *    那一枚 ⇒ 喂给它的文件走进预设导入、`/fontsets/import` 永远收不到 POST，而这类失败
+   *    看起来像"导入功能坏了"而不是"台架取错了对象"。
+   *    ⇒ 先把树**按容器分组**，取含「导入字体集…」按钮的那一支，再在这一支里取 input：
+   *      定位因此绑定在"字体集编辑器自己那个导入入口"上，与页面上还有几个 .json
+   *      input、以及它们的先后顺序都无关。
+   *    （`verify-fontset.mjs` 那条"树上只有一个 .json input"的断言在**独立树**里成立，
+   *     它守的是另一个不变量，不受本处影响。）
+   */
   const editorTree = () => {
     const all = e.renderPanel().flatMap((t) => collectTree(t));
+    const isJsonInput = (n) => n.type === 'input' && String((n.props || {}).accept || '').includes('.json');
+    const hasImportBtn = (n) => collectTree(n).some((x) => x.type === 'button'
+      && Array.isArray(x.children) && x.children.join('') === '导入字体集…');
+    // ⚠️⚠️ **不许**取"第一个子树含『导入字体集…』按钮的节点** —— 那个"第一个"就是**整棵树的
+    //    根**，而根的子村里，**玻璃预设**那一枚 `.json` input（`gp-import-input`，`accept`
+    //    逐字相同）排在字体节**之前** ⇒ 拿到的是预设那枚：喂进去的文件走预设导入，
+    //    `/fontsets/import` 永远收不到 POST，而失败**看起来像"导入功能坏了"**。
+    //    本档原文就想避开这个陷阱，但"取第一个"恰好**没有**避开它（第一个 = 根）。
+    //
+    //     实测暴露：把设置页的字体节改成**默认展开**之后，设置页树里也出现了那枚
+    //    按钮，"第一个"由**侧栏树**变成**设置页树的根** ⇒ 这个潜伏的定位错误当场现形
+    //    （4 条判据红：POST 没发出、版本不符没文案）。**产品是好的，坏的是这个定位器。**
+    //    ⇒ 取**最小**的候选容器：在"子树里既有那枚按钮、又有 .json input"的节点中，取子树
+    //      **最小**的那个 —— 那就是编辑器自己那一行（按钮与 input 的最近公共祖先），
+    //      与页面上另有几枚 .json input、谁先谁后**都无关**。
+    const cands = all.filter((n) => hasImportBtn(n) && collectTree(n).some(isJsonInput));
+    cands.sort((a, b) => collectTree(a).length - collectTree(b).length);
+    const fontsetCtl = cands[0];
+    // 兜底只在**全树恰好一枚** .json input 时才敢用（唯一 ⇒ 不可能是"拿错了"）；
+    // 多于一枚又找不到容器时返回 undefined，让上面那条判据带着"缺 input"红掉 ——
+    // 那比"随便挑一枚去喂"诚实：后者会把定位错误伪装成功能故障。
+    const allJson = all.filter(isJsonInput);
+    const fileInput = fontsetCtl
+      ? collectTree(fontsetCtl).find(isJsonInput)
+      : (allJson.length === 1 ? allJson[0] : undefined);
     return {
       all,
       text: panelText(e),
-      fileInput: all.find((n) => n.type === 'input' && String((n.props || {}).accept || '').includes('.json')),
+      fileInput,
     };
   };
   check('「字体集预设」开关可驱动（面板上真的有这个 checkbox）', openFontSetEditor(e));
-  await new Promise((r) => setTimeout(r, 20)); // 打开会拉一次清单
+  await new Promise((r) => { setTimeout(r, 20); }); // 打开会拉一次清单
   const opened = editorTree();
   check('点开后编辑器与导入入口都出现', Boolean(opened.fileInput) && opened.text.includes('导入字体集…'));
+  // ⚠️ **定位自证**：拿到的那一枚必须是**字体集编辑器**的 input，不是页面上另一枚 .json input
+  //    （玻璃预设那一枚 accept 逐字相同）。判据：它所在那一行里同时有「新建（以当前外观）」——
+  //    那是字体集编辑器独有的按钮，预设行没有。缺了这条，"拿错了 input"会伪装成功能故障
+  //    （喂进去的是预设导入 ⇒ `/fontsets/import` 收不到 POST ⇒ 看起来像"导入坏了"，
+  //     实测就这么红过 4 条）。
+  if (opened.fileInput) {
+    // ⚠️ 必须**同时**要求"含这枚 input"**且**"含至少一个按钮" —— 只要求含 input 的话，
+    //    最小的那个节点就是 **input 自己**（它的子树当然含它），于是同行按钮恒为空
+    //    （实测踩过：判据红在"同行按钮="，而不是红在真正的定位错误上）。
+    const rowOf = opened.all.filter((n) => collectTree(n).some((x) => x === opened.fileInput)
+      && collectTree(n).some((x) => x.type === 'button'));
+    rowOf.sort((a, b) => collectTree(a).length - collectTree(b).length);
+    const row = rowOf[0];
+    check('定位自证：拿到的 .json input 属于**字体集编辑器**那一行（不是玻璃预设那枚）',
+      Boolean(row) && collectTree(row).some((x) => x.type === 'button'
+        && Array.isArray(x.children) && x.children.join('') === '新建（以当前外观）'),
+      '同行按钮=' + (row ? collectTree(row).filter((x) => x.type === 'button')
+        .map((x) => (Array.isArray(x.children) ? x.children.join('') : '')).filter(Boolean).join(' / ') : '找不到行'));
+  }
 
   const EXPORTED = JSON.stringify({
     $schema: 'dsh-we/fontset@1', id: 'compact', name: '紧凑', values: HOST_VALUES,
@@ -384,7 +451,7 @@ const waitBoot = () => new Promise((r) => setTimeout(r, 50));
     const at = e.requests.length;
     const input = editorTree().fileInput;
     if (input) input.props.onChange({ target: { files: [file], value: 'x.json' } });
-    await new Promise((r) => setTimeout(r, 20));
+    await new Promise((r) => { setTimeout(r, 20); });
     return { posted: e.requests.slice(at), text: editorTree().text };
   };
 
@@ -419,7 +486,7 @@ const waitBoot = () => new Promise((r) => setTimeout(r, 50));
       && Array.isArray(n.children) && n.children.join('') === '新建（以当前外观）');
     check('「新建（以当前外观）」按钮在（面板上点得到）', Boolean(createBtn));
     if (createBtn) createBtn.props.onClick();
-    await new Promise((r) => setTimeout(r, 30));
+    await new Promise((r) => { setTimeout(r, 30); });
     const round = e.requests.slice(at);
     const created = round.filter((r) => r.method === 'PUT' && /\/fontsets\/set-/.test(r.url));
     check('新建 ⇒ PUT 一份新 id 的集，且名字是客户端生成的（面板没问过）',
@@ -432,7 +499,7 @@ const waitBoot = () => new Promise((r) => setTimeout(r, 50));
 
     // ── 激活的语义：**必须真的把那一份的值读回来采用**（只挪指针 ⇒ 界面上什么都不会变）──
     // 新建时快照 = 当前值 ⇒ 建完那一眼应当是「（使用中）」；若 activate 不读值，会停在「（已改）」。
-    await new Promise((r) => setTimeout(r, 20));
+    await new Promise((r) => { setTimeout(r, 20); });
     const afterCreate = panelText(e);
     check('新建/切换之后马上又是「（使用中）」（激活确实采用了那一份，而不是只挪指针）',
       afterCreate.includes('（使用中）') && !afterCreate.includes('（已改）'), afterCreate.slice(-64));
@@ -460,7 +527,7 @@ const waitBoot = () => new Promise((r) => setTimeout(r, 50));
     } });
     await waitBoot();
     openFontSetEditor(g);
-    await new Promise((r) => setTimeout(r, 20));
+    await new Promise((r) => { setTimeout(r, 20); });
     const staleText = panelText(g);
     check('裸 404（无 { error } 信封）⇒ 文案说"宿主里没有字体集路由：重启 DSH 后再试"',
       staleText.includes('重启 DSH 后再试') && staleText.includes('重启 DSH'), staleText.slice(0, 70));
@@ -473,7 +540,7 @@ const waitBoot = () => new Promise((r) => setTimeout(r, 50));
     } });
     await waitBoot();
     openFontSetEditor(h);
-    await new Promise((r) => setTimeout(r, 20));
+    await new Promise((r) => { setTimeout(r, 20); });
     const envText = panelText(h);
     check('成对项：带 `{ error }` 的 404 ⇒ 原话照搬（"not found"），**不**出现"重启 DSH"那句',
       envText.includes('not found') && !envText.includes('重启 DSH 后再试'), envText.slice(0, 70));
@@ -496,7 +563,6 @@ const waitBoot = () => new Promise((r) => setTimeout(r, 50));
     let active = 'compact';
     const twoSets = (url, init) => {
       const u = String(url);
-      const method = String((init && init.method) || 'GET').toUpperCase();
       if (u.includes('/activate')) {
         const m = /\/fontsets\/([^/]+)\/activate/.exec(u);
         if (m) active = decodeURIComponent(m[1]);
@@ -524,7 +590,7 @@ const waitBoot = () => new Promise((r) => setTimeout(r, 50));
     } });
     await waitBoot();
     openFontSetEditor(h);
-    await new Promise((r) => setTimeout(r, 20));
+    await new Promise((r) => { setTimeout(r, 20); });
     const before = panelText(h);
     check('切换前：活动那一份是「（使用中）」、另一份不是',
       before.includes('（使用中）') && !before.includes('（已改）'));
@@ -543,7 +609,7 @@ const waitBoot = () => new Promise((r) => setTimeout(r, 50));
       .find((n) => n.type === 'button' && Array.isArray(n.children) && n.children.join('') === '使用');
     check('待切换那一行点得到「使用」', Boolean(useBtn));
     if (useBtn) useBtn.props.onClick();
-    await new Promise((r) => setTimeout(r, 30));
+    await new Promise((r) => { setTimeout(r, 30); });
     const round = h.requests.slice(at);
     check('「使用」⇒ POST activate 到那一份',
       round.some((r) => r.method === 'POST' && r.url.endsWith('/fontsets/wide/activate')),
@@ -570,14 +636,14 @@ const waitBoot = () => new Promise((r) => setTimeout(r, 50));
         .find((n) => n.type === 'button' && Array.isArray(n.children) && n.children.join('') === '使用');
       check('I 前置：可切回「紧凑」，让「宽敞」重新变成可删的一行', Boolean(back));
       if (back) back.props.onClick();
-      await new Promise((r) => setTimeout(r, 30));
+      await new Promise((r) => { setTimeout(r, 30); });
       const btnByText = (label) => h.renderPanel().flatMap((t) => collectTree(t))
         .find((n) => n.type === 'button' && Array.isArray(n.children) && n.children.join('') === label);
       const delBtn = btnByText('删除');
       check('I 前置：非活动那一行点得到「删除」', Boolean(delBtn));
       const at = h.requests.length;
       if (delBtn) delBtn.props.onClick();
-      await new Promise((r) => setTimeout(r, 20));
+      await new Promise((r) => { setTimeout(r, 20); });
       const asked = panelText(h).includes('删除「宽敞」？');
       check('I 第一下只置令牌：出现问句行，且**一个字节都不发**',
         asked && h.requests.length === at,
@@ -585,7 +651,7 @@ const waitBoot = () => new Promise((r) => setTimeout(r, 50));
       const yes = btnByText('确认');
       check('I 问句行的「确认」在场（正路可达，不是死按钮）', Boolean(yes));
       if (yes) yes.props.onClick();
-      await new Promise((r) => setTimeout(r, 30));
+      await new Promise((r) => { setTimeout(r, 30); });
       const del = h.requests.slice(at).filter((r) => r.method === 'DELETE');
       check('I 「确认」⇒ DELETE 落在**正确的那一份**', del.some((r) => r.url.endsWith('/fontsets/wide')),
         h.requests.slice(at).map((r) => r.method + ' ' + r.url.split('/').pop()).join(' | ') || '(无请求)');
@@ -615,13 +681,13 @@ const waitBoot = () => new Promise((r) => setTimeout(r, 50));
     check('J 前置：面板上有「字体集预设」开关（驱动的是真面板，不是替身）', Boolean(b0));
     if (b0) {
       b0.props.onChange({ target: { checked: true } });
-      await new Promise((r) => setTimeout(r, 20));
+      await new Promise((r) => { setTimeout(r, 20); });
       check('J 打开后编辑器真的渲染出来（「重命名」在场）', /重命名/.test(panelText(j)));
       const opened = boxOf();
       check('J 打开后开关处于开态（checked=true 可由面板读回）',
         Boolean(opened && opened.props.checked === true), 'checked=' + String(opened && opened.props.checked));
       if (opened) opened.props.onChange({ target: { checked: false } });
-      await new Promise((r) => setTimeout(r, 5));
+      await new Promise((r) => { setTimeout(r, 5); });
       check('J 收起后编辑器不在面板里（视图与状态一致）', !/重命名/.test(panelText(j)));
       const closed = boxOf();
       check('J 收起后开关回到关态', Boolean(closed && closed.props.checked === false),

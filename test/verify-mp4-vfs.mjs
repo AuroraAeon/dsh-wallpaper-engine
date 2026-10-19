@@ -397,12 +397,14 @@ const mediaUrl = (token) => '/wallpaper-engine/media/' + token;
 }
 
 // ── D. 旧副本一次性回收 ────────────────────────────────────────────────────
-section('D. 旧版 `fs_*.mp4` 副本：升级即回收，且只碰认识的命名');
+section('D. 旧版 `fs_*.mp4` 副本：升级即回收（当前根 + 旧版写死的根），且只碰认识的命名');
 {
   // 用**真**套件（不是重实现）：清扫是 lib/faststart.js 的导出之一，测副本等于没测。
+  const LEGACY_ROOT = join(DATA_DIR, 'cache');   // ≤ v1.3.1 写死的那个根（不认 DSH_WE_CACHE_DIR）
   const fastFix = createFaststartKit({
     layoutFor: () => ({ kind: 'none' }),
     cacheBaseDir: () => SWEEP_DIR,
+    legacyCacheBaseDir: () => LEGACY_ROOT,
     readConfig: () => ({}),
     mediaMap: new Map(),
   });
@@ -420,6 +422,30 @@ section('D. 旧版 `fs_*.mp4` 副本：升级即回收，且只碰认识的命�
     JSON.stringify(out));
   check('D2 只碰 `fs_*.mp4` 命名：别的文件一个都不动',
     left.join(',') === 'notes.txt,preview.mp4', left.join(','));
+  // 旧版写死在**数据目录**下的 `cache/faststart`（那条 `faststartCacheDir()` 既不看
+  // `DSH_WE_CACHE_DIR` 也不看设置里的「缓存位置」）⇒ 搬过缓存根的用户副本只在那里。
+  mkdirSync(join(LEGACY_ROOT, 'faststart'), { recursive: true });
+  writeFileSync(join(LEGACY_ROOT, 'faststart', 'fs_ffffffffffffffff.mp4'), Buffer.alloc(2048));
+  const out2 = fastFix.sweepLegacyFaststartVariants();  // 当前根此刻只剩不认识的命名 ⇒ 只可能是第二支在干活
+  check('D3 旧版写死的根（数据目录 `cache/faststart`）也在清扫面上，否则那几 GB 永远搁浅',
+    out2.files === 1 && out2.bytes === 2048 && out2.capped === false, JSON.stringify(out2));
+  check('D4 两个根都清干净，且只删认识的命名（旧目录本身不删 —— 插件不替用户删目录）',
+    readdirSync(dir).join(',') === 'notes.txt,preview.mp4'
+      && readdirSync(join(LEGACY_ROOT, 'faststart')).length === 0
+      && existsSync(join(LEGACY_ROOT, 'faststart')));
+  // 负对照：不传旧根（= 只扫当前根）⇒ 旧根里的副本原地不动，证明 D3 不是恒真。
+  const onlyCurrent = createFaststartKit({
+    layoutFor: () => ({ kind: 'none' }),
+    cacheBaseDir: () => SWEEP_DIR,
+    readConfig: () => ({}),
+    mediaMap: new Map(),
+  });
+  const orphan = join(LEGACY_ROOT, 'faststart', 'fs_eeeeeeeeeeeeeeee.mp4');
+  writeFileSync(orphan, Buffer.alloc(1024));
+  const out3 = onlyCurrent.sweepLegacyFaststartVariants();
+  check('D5 negative control: 只扫当前根 ⇒ 旧根里的副本一个都不动（D3 有牙）',
+    out3.files === 0 && out3.capped === false && existsSync(orphan), JSON.stringify(out3));
+  rmSync(orphan, { force: true });
 }
 
 // ── E. 「有缓存转码就直接播转码」：/media-info 的只读缓存回答 ────────────────
@@ -456,8 +482,87 @@ section('E. /media-info 的抽帧缓存回答：只读、键与落盘一致、�
   const other = await runInfo('?fps=60');
   check('E6 别的上限没缓存 ⇒ cached:false（不许把 30 的缓存当成 60 的）',
     other && other.transcode && other.transcode.fps === 60 && other.transcode.cached === false);
-  check('E7 元信息与缓存回答在**同一次**探测里给出（夹具不是真 mp4 ⇒ info 为 null、ok 与之一致）',
-    plain && 'info' in plain && 'transcode' in plain && plain.ok === (plain.info !== null));
+  // E7：`ok` 的期望值**不取自同一响应的 `info`** —— `plain.ok === (plain.info !== null)` 只是把
+  // `lib/routes/media-derived.js:93` 的 `ok: !!info` 再抄一遍：两边**一起**翻（info 变成对象而 ok 仍是
+  // true）它就看不出来。这里给独立期望：夹具是手搓的布局盒（不含 `getMediaInfo` 要的元信息盒）⇒
+  // `info` 必须是 null、于是 `ok` 必须是 false；不带 fps ⇒ `transcode` 必须是 null。
+  // 同一个具名判据再喂一份**共同翻转**的变异响应，必须出来相反。
+  const infoAnswerOk = (r) => Boolean(r) && 'info' in r && 'transcode' in r
+    && r.info === null && r.ok === false && r.transcode === null;
+  check('E7 元信息与缓存回答在**同一次**探测里给出，且否定答案来自独立期望（夹具不是真 mp4）',
+    infoAnswerOk(plain), JSON.stringify(plain));
+  check('E7 对照：`info` 与 `ok` 一起翻转的回答必须被判不合格（旧写法 `ok === (info !== null)` 会放它过）',
+    !infoAnswerOk({ ...(plain || {}), info: { width: 1 }, ok: true }));
+}
+
+// ── G. 接线判据：会话段真的把旧根接到 `pluginDataDir()` 上 ─────────────────────
+// D 段测的是 **kit 内部**逻辑（`legacyCacheBaseDir` 由判据自注入 ⇒ 接线错了也照绿）。
+// 真实故障形态（提交 6385b62e 的回归，已复现）：`hostKernel` 的返回对象漏了 `pluginDataDir`，
+// `lib/kernel/host-session.js` 却从 kernel 解构它 ⇒ `legacyCacheBaseDir = () => join(undefined, 'cache')`
+// 每次调用抛 TypeError，被 `lib/faststart.js:84-90` 吞掉 ⇒ **只扫当前根**，旧版几个 GB 永不回收。
+// 所以这一节必须跑**真会话**（`createHostSession`），而不是再喂一次自注入的 kit。
+// 判据的牙：G2/G3/G4 在"内核返回面漏键"或"会话段改从别处取值"时立刻变红（G4 是负对照，
+// 证明"两个根都在清扫面上"不是恒真）。
+section('G. 接线：旧根来自内核的 `pluginDataDir()`（kit 内部逻辑之外的那一段）');
+{
+  const wireDir = join(ISO, 'wire');
+  const wireData = join(wireDir, 'data');
+  const wireCache = join(wireDir, 'cache');          // 故意与数据目录不同 ⇒ 第二根必须是数据目录
+  rmSync(wireDir, { recursive: true, force: true });
+  mkdirSync(join(wireCache, 'faststart'), { recursive: true });
+  mkdirSync(join(wireData, 'cache', 'faststart'), { recursive: true });
+  // 当前根里的一个副本（清扫的"第一支"）+ 旧根里的一个副本（"第二支"，即回归漏掉的那个）
+  writeFileSync(join(wireCache, 'faststart', 'fs_1111111111111111.mp4'), Buffer.alloc(1024));
+  writeFileSync(join(wireData, 'cache', 'faststart', 'fs_2222222222222222.mp4'), Buffer.alloc(2048));
+
+  const prevData = process.env.DSH_WE_DATA_DIR;
+  const prevCache = process.env.DSH_WE_CACHE_DIR;
+  process.env.DSH_WE_DATA_DIR = wireData;
+  process.env.DSH_WE_CACHE_DIR = wireCache;
+
+  const { hostKernel } = await import('../lib/host-boot.js');
+  const { createHostSession } = await import('../lib/kernel/host-session.js');
+
+  // ① 键面：这是回归的**根因位**，单独断言一次，报错时一眼看出是"漏键"而不是"清扫坏了"。
+  check('G1 内核返回面带 `pluginDataDir`（会话段靠它拼旧根；漏键 ⇒ 下面每条都会红）',
+    typeof hostKernel.pluginDataDir === 'function',
+    'typeof hostKernel.pluginDataDir = ' + typeof hostKernel.pluginDataDir);
+
+  // ② 真会话 + 真清扫：两个根各一个副本 ⇒ 必须都回收。
+  const silence = { error() {}, warn() {}, info() {}, debug() {} };
+  const session = createHostSession(hostKernel, {
+    base: '/wallpaper-engine',
+    ctx: { logger: () => silence },
+  });
+  const out = session.sweepLegacyFaststartVariants();
+  session.dispose();
+
+  const wireLeft = readdirSync(join(wireData, 'cache', 'faststart')).length;
+  check('G2 真会话的清扫覆盖**两个**根（当前根 + 数据目录下的旧根）—— 漏键时这里只有 1',
+    out.files === 2 && out.bytes === 1024 + 2048, JSON.stringify(out));
+  check('G3 旧根（数据目录 `cache/faststart`）被清空，且旧目录本身保留（插件不替用户删目录）',
+    wireLeft === 0 && existsSync(join(wireData, 'cache', 'faststart')), '剩 ' + wireLeft);
+
+  // ③ 负对照：同一份真会话，把旧根挪走（= 只认当前根）⇒ 旧根里的副本原地不动。
+  //    没有这条的话，"G2 恒真"与"清扫真的做了事"分不开。
+  mkdirSync(join(wireData, 'cache', 'faststart'), { recursive: true });
+  const orphan = join(wireData, 'cache', 'faststart', 'fs_3333333333333333.mp4');
+  writeFileSync(orphan, Buffer.alloc(512));
+  writeFileSync(join(wireCache, 'faststart', 'fs_4444444444444444.mp4'), Buffer.alloc(256));
+  const { createFaststartKit } = await import('../lib/faststart.js');
+  const onlyCurrent = createFaststartKit({
+    layoutFor: () => ({ kind: 'none' }),
+    cacheBaseDir: () => wireCache,
+    readConfig: () => ({}),
+    mediaMap: new Map(),
+  });
+  const out2 = onlyCurrent.sweepLegacyFaststartVariants();
+  check('G4 negative control: 不给旧根 ⇒ 旧根里的副本一个都不动（G2/G3 有牙）',
+    out2.files === 1 && out2.bytes === 256 && existsSync(orphan), JSON.stringify(out2));
+
+  if (prevData === undefined) delete process.env.DSH_WE_DATA_DIR; else process.env.DSH_WE_DATA_DIR = prevData;
+  if (prevCache === undefined) delete process.env.DSH_WE_CACHE_DIR; else process.env.DSH_WE_CACHE_DIR = prevCache;
+  rmSync(wireDir, { recursive: true, force: true });
 }
 
 // ── 收尾 ────────────────────────────────────────────────────────────────────
