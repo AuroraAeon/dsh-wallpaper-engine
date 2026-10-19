@@ -213,10 +213,13 @@ const VERIFY_STEPS = [
   step('test/verify-pet-rope-entry.mjs'),
   step('test/verify-pet-tuner.mjs'),
   step('test/verify-pet-bubble-timing.mjs'),
+  step('test/verify-pet-meme-broadcast.mjs'),
   step('test/verify-pet-mascot-motion.mjs'),
   step('test/verify-pet-egg1-motion.mjs'),
   step('test/verify-pet-egg1-rebound.mjs'),
   step('test/verify-pet-sidebar-rebound.mjs'),
+  step('test/verify-pet-sidebar-diag.mjs'),
+  step('test/verify-pet-sidebar-glass.mjs'),
   step('test/verify-pet-egg2-motion.mjs'),
   step('test/verify-pet-follow.mjs'),
   // ⑫ P1 内置桌宠（upstream-fork `dsh-we-pet-builtin`，2026-10-19）：一条**装配/消费链**的验收判据
