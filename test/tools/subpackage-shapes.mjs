@@ -79,7 +79,7 @@ export const UPSTREAM_FORKS = Object.freeze([
       moduleId: 'dsh-we-pet-builtin',
       // 宿主半边与独立模式 CLI 的字节锚点（同一条派生链的另外两个产物）。
       hostEntry: 'lib/index.js',
-      hostSha256: '49047662421d3a176e7ac7c62e37bf81212c8e91b54640d7bcddb67b1d7099dd',
+      hostSha256: '00ccae2482b6850c07ae31df5d153a5413e9564594b3839f0ec87913c0ac7315',
     }),
     hostServiceConsumer: false,
     /**
