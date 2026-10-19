@@ -23,7 +23,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { buildIndex, parseRouteModuleText, SUBPACKAGE_MODULES, rowRegistrationCounts } from './tools/host-route-index.mjs';
+import { buildIndex, parseRouteModuleText, SUBPACKAGE_MODULES, rowRegistrationCounts, classifyRowShape, dynamicRowsWithoutEffectEvidence } from './tools/host-route-index.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 let failed = 0;
@@ -228,15 +228,12 @@ console.log('\n⑤ 索引 == 运行时真实注册的路由（唯一能发现"�
     if (!indexedBySrc.has(r.src)) indexedBySrc.set(r.src, []);
     indexedBySrc.get(r.src).push(r);
   }
-  // 纯函数分流（唯一实现）—— 负对照喂同一个，别另写一份判据。
-  const classifyShape = (fns, indexed) => (fns.length > 0 ? 'countable'
-    : indexed.length === 0 ? 'empty'
-      : indexed.every((r) => r.dynamic) ? 'context-only'
-        : 'unnamed');
+  // 纯函数分流走共享实现（`classifyRowShape` / `dynamicRowsWithoutEffectEvidence`）——
+  // 同一套判据另一个守卫 `verify-bundle-rows.mjs` 也在用，两处各写一份会悄悄分叉。
   const classifyRow = (rel) => {
     const exp = rowRegistrationCounts(rel, modules);
     const indexed = indexedBySrc.get(rel) || [];
-    return { kind: classifyShape(exp.fns, indexed), exp, indexed };
+    return { kind: classifyRowShape(exp.fns, indexed), exp, indexed };
   };
   const skippedDynamic = [];
   for (const rel of SUBPACKAGE_MODULES) {
@@ -269,16 +266,16 @@ console.log('\n⑤ 索引 == 运行时真实注册的路由（唯一能发现"�
   check('每个子包行在同一个 mock 上注册的条数 == 它调用的路由族条数（逐行数据驱动，含零路由空壳行）',
     SUBPACKAGE_MODULES.length >= 1 && countIssues.length === 0,
     countIssues.join('；') || perSubpackage.join(' '));
-  // 分流的负对照：三个分支各喂一个合成输入，判据必须给出各自的分类 —— 少了这条，
-  // 把 classifyShape 写成恒返回 'countable' 也照样全绿（那就会重新回到"pet 一 import 就炸"）。
+  // 分流的负对照：四个分支各喂一个合成输入，**共享的** classifyRowShape 必须给出各自的分类 ——
+  // 少了这条，把 classifyShape 写成恒返回 'countable' 也照样全绿（那就会重新回到"pet 一 import 就炸"）。
   {
     const dyn = { dynamic: true };
     const stat = { dynamic: false };
     const cases = [
-      ['可数（有 register 调用点）', classifyShape(['registerXRoutes'], [stat]) === 'countable'],
-      ['空壳（无调用点、索引里也没静态路由）', classifyShape([], []) === 'empty'],
-      ['只有动态路由（上下文里注册，跳过运行时对账）', classifyShape([], [dyn]) === 'context-only'],
-      ['不可数（无调用点却有静态路由 ⇒ 必须报出来）', classifyShape([], [stat]) === 'unnamed'],
+      ['可数（有 register 调用点）', classifyRowShape(['registerXRoutes'], [stat]) === 'countable'],
+      ['空壳（无调用点、索引里也没静态路由）', classifyRowShape([], []) === 'empty'],
+      ['只有动态路由（上下文里注册，跳过运行时对账）', classifyRowShape([], [dyn]) === 'context-only'],
+      ['不可数（无调用点却有静态路由 ⇒ 必须报出来）', classifyRowShape([], [stat]) === 'unnamed'],
     ];
     const bad = cases.filter((c) => !c[1]).map((c) => c[0]);
     check('负对照：可数性分流对四种合成输入各归其类（含"不可数必须报错"）', bad.length === 0,
@@ -288,19 +285,9 @@ console.log('\n⑤ 索引 == 运行时真实注册的路由（唯一能发现"�
     registered.length === routes.length - skippedDynamic.length,
     `运行时 ${registered.length} / 索引 ${routes.length} 减 上下文注册 ${skippedDynamic.length}`
       + (skippedDynamic.length ? '（' + skippedDynamic.map((r) => r.path + '@' + r.src + ':' + r.line).join(' ') + '）' : ''));
-  // 被跳过的那几条，必须有**静态证据**证明它们真的是「在 ctx.effect 里注册」——
-  // 光凭"索引里标了 dynamic"就能跳过太松：那样把任意行写成动态路径即可逃掉运行时对账。
-  // 这里回到源码逐条核：该行的 `webServer.register` 调用点必须落在 `ctx.effect(...)` 之内。
+  // 被跳过的那几条，必须有**静态证据**证明它们真的是「在 ctx.effect 里注册」（共享实现）。
   {
-    const noEvidence = [];
-    for (const r of skippedDynamic) {
-      const src = readFileSync(join(ROOT, r.src), 'utf8');
-      const lines = src.split('\n');
-      // 从注册点往上找最近的 `ctx.effect(`（注册点是 effect 回调的第一层语句）。
-      const head = lines.slice(Math.max(0, r.line - 40), r.line).join('\n');
-      const inEffect = /ctx\.effect\(/.test(head);
-      if (!inEffect) noEvidence.push(r.path + '@' + r.src + ':' + r.line);
-    }
+    const noEvidence = dynamicRowsWithoutEffectEvidence(skippedDynamic);
     check('被跳过的动态路由都有静态证据：注册点确实包在 ctx.effect(…) 里（防止靠标 dynamic 逃掉对账）',
       noEvidence.length === 0,
       noEvidence.length ? '找不到 ctx.effect 包裹：' + noEvidence.join(' ')
