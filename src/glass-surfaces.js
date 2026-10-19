@@ -56,15 +56,41 @@ function weSurfaceGeometry(target, id, owned) {
     && rect.right <= win.innerWidth + 1 && rect.bottom <= win.innerHeight + 1;
   // 宿主明确声明的 push/fullscreen 才进入右栏安全几何路径；未知模式继续原生回退。
   if (id === "right-sidebar" && !['push', 'fullscreen'].includes(target.getAttribute("data-sidebar-right-panel"))) safeRoot = false;
+
+  // ── 正在跑的有限动画 / 过渡 ≠ 不安全 ──────────────────────────────────────
+  // 宿主开合右栏时在**整个 frame** 上做 `grid-template-columns` 过渡
+  // （AppFrame.module.css：`.frame[data-animating]{transition:grid-template-columns …}`），
+  // 而 frame 是左右两侧栏共同的祖先。旧判据把"祖先链上有任何 getAnimations()"当成
+  // unsafeRoot ⇒ 动画期间两侧玻璃同时退回原生、底板被撤掉、动画结束才回来
+  // （用户原话："侧边栏弹出时会出现丢失左右两侧的玻璃效果…只出现在过程中"）。
+  // 口径改为：**有限**的动画/过渡 ⇒ 记录 moving，逐帧跟住载体几何（见 weSurfaceRefresh
+  // 末尾的 follow 调度）；无限动画不跟（防常驻 rAF）、静态 transform 仍不安全。
+  let moving = false;
+  for (let el = target; el; el = el.parentElement) {
+    if (!el.getAnimations) continue;
+    const running = el.getAnimations().filter((a) => {
+      if (a.playState !== "running" && a.playState !== "pending") return false;
+      const timing = a.effect && typeof a.effect.getComputedTiming === "function" ? a.effect.getComputedTiming() : null;
+      return !timing || Number.isFinite(timing.endTime);
+    });
+    if (running.length) { moving = true; break; }
+  }
   for (let el = target; safeRoot && el; el = el.parentElement) {
     const cs = win.getComputedStyle(el);
-    if (Number(cs.opacity) < 1 || cs.transform !== "none" || cs.perspective !== "none"
+    // 正在做 transform 动画时才放行 transform（几何由 follow 循环跟住）；
+    // 静态 / 无动画的 transform 仍按旧纪律回退原生（守卫有负对照）。
+    const running = el.getAnimations
+      ? el.getAnimations().filter((a) => a.playState === "running" || a.playState === "pending")
+      : [];
+    const transformMotion = running.some((a) => a.transitionProperty === "transform"
+      || (a.effect && typeof a.effect.getKeyframes === "function"
+          && a.effect.getKeyframes().some((k) => k.transform !== undefined)));
+    if (Number(cs.opacity) < 1 || (cs.transform !== "none" && !transformMotion) || cs.perspective !== "none"
       || cs.filter !== "none" || (cs.backdropFilter && cs.backdropFilter !== "none")
       || cs.isolation === "isolate" || cs.mixBlendMode !== "normal" || cs.contain !== "none"
       || /transform|filter|opacity|perspective|contain/.test(cs.willChange)
       || [cs.translate, cs.rotate, cs.scale].some(v => v && v !== "none")
-      || el.closest('[role="dialog"], dialog, [aria-modal="true"]')
-      || (el.getAnimations && el.getAnimations().length)) safeRoot = false;
+      || el.closest('[role="dialog"], dialog, [aria-modal="true"]')) safeRoot = false;
     if (el !== target && (el.scrollTop || el.scrollLeft || /auto|scroll/.test(cs.overflow + cs.overflowX + cs.overflowY))) safeRoot = false;
     const clip = el.getBoundingClientRect();
     if (el !== target && /hidden|clip/.test(cs.overflow + cs.overflowX + cs.overflowY)
@@ -72,7 +98,7 @@ function weSurfaceGeometry(target, id, owned) {
   }
   const pseudo = ["extra", "settings-window", "declared"].includes(id) ? win.getComputedStyle(target, "::before") : null;
   return {
-    visible, safeRoot, nativeBlur, rect, radius: style.borderRadius,
+    visible, safeRoot, nativeBlur, rect, radius: style.borderRadius, moving,
     safeLocal: style.position !== "static" && style.zIndex !== "auto" && Number(style.opacity) === 1
       && style.filter === "none" && style.transform === "none" && style.isolation !== "isolate",
     occupied: !!(pseudo && pseudo.content !== "none" && pseudo.content !== "normal"
@@ -162,6 +188,7 @@ function weSurfaceRefresh(state) {
     if (!entries.has(target)) { weSurfaceUnmark(record); state.records.delete(target); }
   }
   const observed = new Set();
+  let moving = false;
   for (const [target, entry] of entries) {
     let record = state.records.get(target);
     if (record && record.id !== entry.id) { weSurfaceUnmark(record); record = null; }
@@ -170,6 +197,7 @@ function weSurfaceRefresh(state) {
       state.records.set(target, record);
     }
     const facts = weSurfaceGeometry(target, entry.id, record.marked);
+    if (facts.moving) moving = true;
     facts.enabled = entry.enabled;
     facts.software = state.doc.body.hasAttribute("data-we-glass-fallback")
       || !(win.CSS && (win.CSS.supports("backdrop-filter", "blur(1px)") || win.CSS.supports("-webkit-backdrop-filter", "blur(1px)")));
@@ -204,6 +232,19 @@ function weSurfaceRefresh(state) {
   for (const el of observed) if (!state.observed.has(el)) state.resize.observe(el);
   state.observed = observed;
   if (state.root && !state.root.children.length) { state.root.remove(); state.root = null; }
+  // ── 动画跟随（宿主开合侧栏时的 grid-template-columns 过渡）──────────────────
+  // 过渡期间目标的 border-box 尺寸可能不变、只是位置在动（右栏贴着右边缘，
+  // 轨道加宽时它整体平移）⇒ ResizeObserver 不会触发。既然已经决定"有限动画期间
+  // 继续接管"，就必须逐帧重算载体矩形，否则底板会停在动画开始时的位置。
+  // ⚠️ 只在真有 running/pending 的**有限**动画时才续帧；静止后立即停（守卫
+  //    「静止不持续安排帧扫描」有断言），并有 MAX_FOLLOW_FRAMES 兜底防死循环。
+  state.moving = moving;
+  if (moving && state.followFrames < 600) {
+    state.followFrames += 1;
+    state.schedule();
+  } else {
+    state.followFrames = 0;
+  }
 }
 
 function syncGlassSurfaces(selection) {
@@ -215,7 +256,7 @@ function syncGlassSurfaces(selection) {
   let state = weSurfaceRuntime;
   if (state && state.doc !== document) { disposeGlassSurfaces(); state = null; }
   if (!state) {
-    state = { doc: document, win, selection, selectors: [], records: new Map(), observed: new Set(), root: null, frame: null, listeners: [] };
+    state = { doc: document, win, selection, selectors: [], records: new Map(), observed: new Set(), root: null, frame: null, moving: false, followFrames: 0, listeners: [] };
     weSurfaceRuntime = state;
     state.schedule = () => {
       if (state !== weSurfaceRuntime || state.doc.hidden || state.frame !== null) return;
