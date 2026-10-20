@@ -1,11 +1,29 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { applyImpl } from '../packages/pet-link/lib/index.js';
+import { clientEntryFixture } from './tools/official-performer.mjs';
 
 const root = new URL('../', import.meta.url);
 const built = readFileSync(new URL('packages/pet-link/lib/client.pet-link.js', root), 'utf8');
 assert.doesNotMatch(built, /\n\s*exports\.apply = \(\) => undefined;/, '构建不得覆盖官方桥接的 apply');
-assert.match(built, /exports\.inject = \['dsh-client-runtime'\]/, '构建保留正式客户端服务依赖');
+const manifest = JSON.parse(readFileSync(new URL('packages/pet-link/package.json', root), 'utf8'));
+assert.deepEqual(manifest.dsh.client.inject, ['@deepseek-ai/dsh-client-runtime'], '包依赖仍由客户端清单声明');
+const { plugin: clientEntry, bridge, listeners } = clientEntryFixture(built);
+assert.deepEqual(clientEntry.inject, [], '包名不是 Cordis 服务；可选官方服务不得阻塞客户端激活');
+const services = new Map(), cleanups = [];
+const page = {
+  get(name) { return services.get(name); },
+  provide(name, value) { services.set(name, value); },
+  effect(setup) { cleanups.push(setup()); },
+};
+clientEntry.apply(page);
+try {
+  assert.equal(await bridge.warmup(), false, '未安装官方 pet 时客户端仍激活并正常降级');
+  page.provide('petApi7340', { pose: () => ({ x: 0.4, y: 0.6, facing: 'left' }), progress: () => null });
+  assert.equal(await bridge.warmup(), true, '激活后仍能读取同页后到的官方服务');
+  assert.equal(listeners.size, 1, '调参入口只安装一次');
+} finally { for (const cleanup of cleanups.reverse()) cleanup(); }
+assert.equal(listeners.size, 0, '卸载后清理客户端监听器');
 const routes = new Map();
 const dispose = applyImpl({ webServer: { port: 7341, register(route) {
   routes.set(route.path, route); return () => routes.delete(route.path);

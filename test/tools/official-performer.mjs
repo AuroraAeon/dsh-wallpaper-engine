@@ -1,4 +1,26 @@
 import { readFileSync } from 'node:fs';
+import assert from 'node:assert/strict';
+
+export function clientEntryFixture(built) {
+  let registration, bridge;
+  const listeners = new Set();
+  const document = {
+    addEventListener(event, handler) { listeners.add(handler); },
+    removeEventListener(event, handler) { listeners.delete(handler); },
+    querySelector() { return null; },
+  };
+  new Function('window', 'document', built)({ __ModuleLoader__: { load(value) { registration = value; } } }, document);
+  const facade = {
+    weT: value => value, apiUrl: path => path,
+    apiFetch: async () => ({ data: { ok: true, pets: [{ id: 'main', size: 180, display: 'web' }] } }),
+    wallSidebarOpen: () => true, wallSidebarClose: () => true, wallSidebarToggle: () => true,
+    registerPetLink(value) { bridge = value; },
+  };
+  const plugin = registration.factory(spec => {
+    assert.equal(spec, 'dsh-plugin-wallpaper-engine'); return facade;
+  });
+  return { plugin, bridge, listeners };
+}
 
 const source = readFileSync(new URL('../../packages/pet-link/src/official-pet.js', import.meta.url), 'utf8')
   + '\n' + readFileSync(new URL('../../packages/pet-link/src/pet-link.js', import.meta.url), 'utf8');

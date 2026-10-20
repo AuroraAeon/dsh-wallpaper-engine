@@ -44,7 +44,7 @@ const petLinkDispose = petLink.dispose;
 petLink.dispose = () => { petTuner.dispose(); petLinkDispose(); };
 registerPetLink(petLink);
 
-exports.inject = ['dsh-client-runtime'];
+exports.inject = [];
 exports.apply = ctx => {
   petLinkContext = ctx;
   petLink.warmup();

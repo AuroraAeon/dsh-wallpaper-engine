@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { clientEntryFixture } from './tools/official-performer.mjs';
 import { setTimeout as delay } from 'node:timers/promises';
 import { createSubpackageHost } from '../lib/subpackage-boot.js';
 import { name, inject, apply } from '../packages/pet-link/lib/index.js';
@@ -9,6 +11,19 @@ const moduleUrl = process.env.PET_TEST_CORDIS_MODULE
   ? pathToFileURL(resolve(process.env.PET_TEST_CORDIS_MODULE)).href
   : import.meta.resolve('@deepseek-ai/cordis');
 const { Context, Service } = await import(moduleUrl);
+const entry = clientEntryFixture(readFileSync(new URL('../packages/pet-link/lib/client.pet-link.js', import.meta.url), 'utf8'));
+assert.deepEqual(entry.plugin.inject, [], '可选官方服务不得阻塞客户端激活');
+const page = new Context();
+const client = page.plugin({ name: 'official-pet-client-regression', ...entry.plugin });
+try {
+  await client.await();
+  assert.equal(await entry.bridge.warmup(), false, '官方服务缺席时仍能激活并降级');
+  page.provide('petApi7340', { pose: () => ({ x: 0.4, y: 0.6, facing: 'left' }), progress: () => null });
+  assert.equal(await entry.bridge.warmup(), true, '真实同页上下文可读取后到的官方服务');
+  assert.equal(entry.listeners.size, 1, '客户端只安装一次监听');
+} finally { await client.dispose(); }
+assert.equal(entry.listeners.size, 0, '真实 Cordis 卸载归还客户端监听');
+console.log('PASS 真实 Cordis 客户端：构建产物激活、官方服务缺席与晚到、卸载清理');
 const routes = new Map();
 class WebServer extends Service {
   constructor(ctx) { super(ctx, 'webServer'); }
