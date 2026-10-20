@@ -25,7 +25,7 @@
 | `verify-adapter.mjs` | `lib/index.js` `lib/settings-schema.js` `src/adapter.js` `src/client.js` `src/effects.js` `src/panel-tabs-advanced.js` `src/panel-tabs-appearance.js` `src/panel-tabs-effects.js` `src/panel-tabs-mascot.js` `src/panel-tabs-wallpaper.js` `src/panel-tabs.js` `src/persistence.js` `src/styles-base.js` `src/styles-chrome.js` `src/styles-ext.js` `src/styles-panel.js` `src/styles-quick.js` `src/styles-settings.js` `src/styles-shell.js` `src/styles-sidebar.js` `src/styles.js` |  |
 | `verify-api-client.mjs` | `src/api-client.js` `src/client.js` `src/panel-tabs.js` | ✅ |
 | `verify-asset-paths.mjs` | `lib/media/media-dirs.js` `lib/upload-dir.js` `lib/we-assets.js` |  |
-| `verify-avatar-interval-and-rotation.mjs` | `lib/inventory.js` `lib/media/image-preview.js` `lib/routes/media-bytes.js` `lib/settings-schema.js` `src/avatar-layer.js` `src/client.js` `src/ext-avatar.js` `src/panel-tabs-wallpaper.js` `src/video-layer.js` |  |
+| `verify-avatar-interval-and-rotation.mjs` | `lib/fs-paths.js` `lib/inventory.js` `lib/media/image-preview.js` `lib/routes/inventory.js` `lib/routes/media-bytes.js` `lib/serve.js` `lib/settings-schema.js` `lib/upload-dir.js` `lib/upload-store.js` `src/avatar-layer.js` `src/client.js` `src/ext-avatar.js` `src/panel-tabs-wallpaper.js` `src/video-layer.js` |  |
 | `verify-body-caps.mjs` | `lib/http-body.js` `lib/routes/upload.js` | ✅ |
 | `verify-bridge-ci.mjs` | — |  |
 | `verify-bundle-rows.mjs` | `lib/host-boot.js` `lib/index.js` `lib/kernel/component-session.js` `lib/kernel/host-kernel.js` `lib/subpackage-boot.js` |  |
@@ -139,7 +139,7 @@
 | `lib/component-visibility.js` | 1 | `verify-component-visibility` |
 | `lib/diag-trace.js` | 2 | `verify-host-diag` `verify-scene-live` |
 | `lib/faststart.js` | 3 | `verify-cache-dir` `verify-mp4-vfs` `verify-scene-live` |
-| `lib/fs-paths.js` | 2 | `verify-scene-live` `verify-wallpaper-scan` |
+| `lib/fs-paths.js` | 3 | `verify-avatar-interval-and-rotation` `verify-scene-live` `verify-wallpaper-scan` |
 | `lib/host-boot.js` | 7 | `verify-about` `verify-bundle-rows` `verify-component-face` `verify-contracts` `verify-logging` `verify-mp4-vfs` `verify-subpackage-purity` |
 | `lib/http-body.js` | 2 | `verify-body-caps` `verify-package-files` |
 | `lib/http-lifecycle.js` | 1 | `verify-scene-live` |
@@ -168,7 +168,7 @@
 | `lib/pkg-read.js` | 4 | `verify-package-files` `verify-package-publish` `verify-scene-probe` `verify-scene` |
 | `lib/routes/cache-dir.js` | 1 | `verify-cache-dir` |
 | `lib/routes/diag.js` | 2 | `verify-logging` `verify-scene-live` |
-| `lib/routes/inventory.js` | 2 | `verify-component-visibility` `verify-route-index` |
+| `lib/routes/inventory.js` | 3 | `verify-avatar-interval-and-rotation` `verify-component-visibility` `verify-route-index` |
 | `lib/routes/live-frame.js` | 1 | `verify-scene` |
 | `lib/routes/media-bytes.js` | 4 | `verify-avatar-interval-and-rotation` `verify-route-index` `verify-scene-live` `verify-scene` |
 | `lib/routes/media-derived.js` | 1 | `verify-transcode-state` |
@@ -182,14 +182,14 @@
 | `lib/routes/upload.js` | 2 | `verify-body-caps` `verify-package-files` |
 | `lib/routes/we-assets.js` | 1 | `verify-scene-live` |
 | `lib/scene-manifest.js` | 2 | `verify-scene-probe` `verify-scene` |
-| `lib/serve.js` | 2 | `verify-logging` `verify-scene-live` |
+| `lib/serve.js` | 3 | `verify-avatar-interval-and-rotation` `verify-logging` `verify-scene-live` |
 | `lib/settings-schema.js` | 16 | `verify-adapter` `verify-avatar-interval-and-rotation` `verify-client` `verify-component-fonts` `verify-contracts` `verify-extra-glass` `verify-fontset` `verify-glass-compat` `verify-glass-surfaces` `verify-module-layout` `verify-presets` `verify-scene-live` `verify-settings-namespaces` `verify-system-fonts` `verify-theme-follow` `verify-theme-layer` |
 | `lib/shim-seed.js` | 1 | `verify-scene-live` |
 | `lib/startup-sweep.js` | 1 | `verify-scene-live` |
 | `lib/steam-discovery.js` | 2 | `verify-steam-discovery` `verify-we-install-probe` |
 | `lib/subpackage-boot.js` | 10 | `verify-bundle-rows` `verify-inject-contracts` `verify-json-response` `verify-pet-hotplug-integration` `verify-pet-package` `verify-settings-schema-exports` `verify-subpackage-boot` `verify-subpackage-manifests` `verify-subpackage-purity` `verify-subpackage-toggle-roundtrip` |
-| `lib/upload-dir.js` | 4 | `verify-asset-paths` `verify-cache-dir` `verify-scene-live` `verify-upload-store` |
-| `lib/upload-store.js` | 2 | `verify-scene-live` `verify-upload-store` |
+| `lib/upload-dir.js` | 5 | `verify-asset-paths` `verify-avatar-interval-and-rotation` `verify-cache-dir` `verify-scene-live` `verify-upload-store` |
+| `lib/upload-store.js` | 3 | `verify-avatar-interval-and-rotation` `verify-scene-live` `verify-upload-store` |
 | `lib/wallpaper-scan.js` | 1 | `verify-wallpaper-scan` |
 | `lib/we-assets.js` | 2 | `verify-asset-paths` `verify-scene-live` |
 | `lib/we-focus-guard.js` | 1 | `verify-scene-live` |

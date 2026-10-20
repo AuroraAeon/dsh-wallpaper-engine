@@ -172,38 +172,30 @@ try {
       await until('!!document.querySelector("[data-we-surface-plate=right-sidebar]")');
       check(tag + ' 隐藏会话的右栏面板不夺走接管资格', await evaluate(`document.querySelector('#right').getAttribute('data-we-surface-runtime')==='right-sidebar' && !document.querySelector('#ghost-right').hasAttribute('data-we-surface-runtime') && !!document.querySelector('[data-we-surface-plate="right-sidebar"]')`));
       await evaluate("document.querySelector('#ghost-session').remove();__glass.sync()");
-      // ── 亚像素裁剪容差（2026-10-20 用户报障："非全屏下右栏玻璃又丢了"）──────────────
-      // 真实形态：DPR 1.25 下宿主 AppFrame 的右边缘算出 1281.5999755859375，右栏面板的
-      // 右边缘算出 1281.6000366210938 —— 相差 0.000061px。祖先裁剪判据用严格 `>`，
-      // 于是"贴合同一条网格边"被读成"超出裁剪框" ⇒ safeRoot 恒假 ⇒ 永不认领 ⇒
-      // 右栏退回 --we-panel-color 实色。这里用**同样的机制**复现：给面板套一个
-      // overflow:hidden 的祖先，其右边缘比面板右边缘小一个浮点误差量级。
+      // Blink 布局以 1/64 CSS px 量化；用可精确表达的 1/8 px，避免 0.0001px 被取整。
       await evaluate(`(() => {
-        const app=document.querySelector('#app');
         const wrap=document.createElement('div');wrap.id='clip-wrap';
-        wrap.style.cssText='position:fixed;top:0;left:0;width:'+(innerWidth-0.0001)+'px;height:'+innerHeight+'px;overflow:hidden';
+        wrap.style.cssText='position:fixed;top:0;left:0;width:'+(innerWidth-0.125)+'px;height:'+innerHeight+'px;overflow:hidden';
         document.body.append(wrap);
         const right=document.querySelector('#right');
         right.style.width='25%'; right.style.height='180px';
         wrap.append(right);
         __glass.sync();return true;
       })()`);
-      check(tag + ' 祖先裁剪框与目标相差 0.0001px（浮点/取整噪声）不否定接管',
-        await evaluate(`(()=>{
-          const r=document.querySelector('#right');
-          const w=document.querySelector('#clip-wrap');
-          const rr=r.getBoundingClientRect(), wr=w.getBoundingClientRect();
-          const delta=rr.right-wr.right;
-          return delta>0 && delta<0.01                       /* 前提：确实只超了一个浮点误差量级 */
-            && r.getAttribute('data-we-surface-runtime')==='right-sidebar'
-            && !!document.querySelector('[data-we-surface-plate="right-sidebar"]');
-        })()`),
-        await evaluate(`(()=>{const r=document.querySelector('#right').getBoundingClientRect(),w=document.querySelector('#clip-wrap').getBoundingClientRect();return {delta:r.right-w.right,rt:document.querySelector('#right').getAttribute('data-we-surface-runtime'),plate:!!document.querySelector('[data-we-surface-plate="right-sidebar"]')};})()`));
-      // 负对照：真被裁掉 2px（远超容差）时仍必须回退原生 —— 容差不是"取消裁剪判据"。
-      await evaluate("document.querySelector('#clip-wrap').style.width=(innerWidth-2)+'px';__glass.sync()");
-      check(tag + ' 负对照：真被祖先裁掉 2px 仍回退原生（容差没有取消裁剪判据）',
-        await evaluate(`document.querySelector('#right').getAttribute('data-we-surface-runtime')!=='right-sidebar' && !document.querySelector('[data-we-surface-plate="right-sidebar"]')`),
-        await evaluate(`(()=>{const r=document.querySelector('#right').getBoundingClientRect(),w=document.querySelector('#clip-wrap').getBoundingClientRect();return {delta:(r.right-w.right).toFixed(2),rt:document.querySelector('#right').getAttribute('data-we-surface-runtime')};})()`));
+      for (const scale of [1, 1.25, 1.5]) {
+        await send('Emulation.setDeviceMetricsOverride', { width, height: 820, deviceScaleFactor: scale, mobile: false });
+        await evaluate("document.querySelector('#clip-wrap').style.width=(innerWidth-0.125)+'px';__glass.sync()");
+        const subpixel = await evaluate(`(()=>{const r=document.querySelector('#right'),w=document.querySelector('#clip-wrap');return {delta:r.getBoundingClientRect().right-w.getBoundingClientRect().right,rt:r.getAttribute('data-we-surface-runtime'),plate:!!document.querySelector('[data-we-surface-plate="right-sidebar"]')};})()`);
+        check(tag + ' DPR ' + scale + ' 祖先裁剪差 0.125px 仍接管',
+          Math.abs(subpixel.delta - 0.125) < 0.001 && subpixel.rt === 'right-sidebar' && subpixel.plate,
+          subpixel);
+        await evaluate("document.querySelector('#clip-wrap').style.width=(innerWidth-2)+'px';__glass.sync()");
+        const clipped = await evaluate(`(()=>{const r=document.querySelector('#right'),w=document.querySelector('#clip-wrap');return {delta:r.getBoundingClientRect().right-w.getBoundingClientRect().right,rt:r.getAttribute('data-we-surface-runtime'),plate:!!document.querySelector('[data-we-surface-plate="right-sidebar"]')};})()`);
+        check(tag + ' DPR ' + scale + ' 负对照：真裁掉 2px 仍回退原生',
+          Math.abs(clipped.delta - 2) < 0.001 && clipped.rt !== 'right-sidebar' && !clipped.plate,
+          clipped);
+      }
+      await send('Emulation.setDeviceMetricsOverride', { width, height: 820, deviceScaleFactor: 1, mobile: false });
       // 复原夹具：面板回到 #app 下，裁剪包装移除。
       await evaluate(`(() => {
         const wrap=document.querySelector('#clip-wrap'), app=document.querySelector('#app'), right=document.querySelector('#right');

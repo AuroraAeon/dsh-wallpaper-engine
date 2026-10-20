@@ -17,7 +17,7 @@
 
 | # | 路径 | 来源 | 形态 | 依赖（闭包状态 / `c` 字段） | 守卫提及 |
 |---|---|---|---|---|---|
-| 1 | `/inventory` | lib/routes/inventory.js:90 | async 箭头 | disposers base mediaOriginApi buildInventory componentsProbe | 24 |
+| 1 | `/inventory` | lib/routes/inventory.js:90 | async 箭头 | disposers base mediaOriginApi buildInventory componentsProbe | 25 |
 | 2 | `/media-info` | lib/routes/media-derived.js:60 | 箭头 | disposers base mediaMap log getMediaInfo faststartVariant …(+1) | 10 |
 | 3 | `/transcode-progress` | lib/routes/media-derived.js:103 | 箭头 | disposers base mediaMap transcodeJobs | 2 |
 | 4 | `/transcoded` | lib/routes/media-derived.js:156 | 箭头 | disposers base mediaMap serveFile transcodeToFps registerTranscodeWaiter | 1 |
