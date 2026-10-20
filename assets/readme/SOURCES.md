@@ -1,5 +1,16 @@
 # README 视觉素材来源
 
+## 当前首图
+
+- 中文主 README 使用维护者于 2026-10-20 提供的 JPEG 原图，未裁剪、重编码或修改画面；4096 × 2304，3,455,318 字节。
+- 托管在 [GitHub Release `media-v1` 的 CDN 资产](https://github.com/elysia395/dsh-wallpaper-engine/releases/download/media-v1/readme-hero-20261020-2a33bb1d.jpg)，不将图片二进制加入 Git。
+- SHA-256：`2a33bb1d0f930cc3f9ad5a551b7dfe29081ae5f2aee78e7d9eb59ea22c4dafdd`。
+- 图中的 `NODE.JS 18+` 为原图文字；实际安装要求仍以 README 正文和 `package.json` 的 Node.js `>=22.12.0` 为准。角色及其他素材的权利保持原有归属。
+
+## 既有视觉素材
+
+以下记录保留用于原双主题首图与分节横条的来源追溯；当前首图不由 `hero.html` 或 `metadata.json` 生成。
+
 本轮 README 首屏与分节横条按维护者提供的 [MaiBot README](https://github.com/Mai-with-u/MaiBot) 截图复刻视觉结构：立体窗口边框、像素标题、通风栅格、状态灯、四格信息卡与键帽入口。对应项目的公开 SVG 用于核对布局和色值，未复制它的 SVG 路径、人物图、鱼形装饰、遥测数据或趋势排名徽章。
 
 - 排版源稿：[hero.html](hero.html)。深浅主题 PNG 是真实 HTML / CSS 的静态截图，不是产品运行截图或生成式插图。

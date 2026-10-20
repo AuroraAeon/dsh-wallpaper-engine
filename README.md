@@ -7,10 +7,7 @@
 </p>
 
 <h1>
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/readme/hero-dark.png">
-    <img src="assets/readme/hero-light.png" alt="DSH Wallpaper Engine：把喜欢的壁纸，带进每一次对话" width="1440" height="560">
-  </picture>
+  <img src="https://github.com/elysia395/dsh-wallpaper-engine/releases/download/media-v1/readme-hero-20261020-2a33bb1d.jpg" alt="DSH Wallpaper Engine：把喜欢的壁纸，带进每一次对话" width="1440" height="810">
 </h1>
 
 <p>
