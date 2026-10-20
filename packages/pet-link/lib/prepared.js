@@ -5,22 +5,23 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /**
- * prepared.js —— 桌宠联动的**就绪面**（P1：内置 provider）。
+ * prepared.js —— 桌宠联动的**就绪面**（2026-10-20 起：provider 待接入）。
  *
- * 这个文件以前回答的是「外部 dsh-pet 是否已被打补丁装好」：读 `$DSH_HOME/dsh-pet/pet-link-install.json`
- * 的补丁指纹、比对 `<profile>/node_modules/dsh-pet` 的版本。P1 之后桌宠是**内置子包**
- * `dsh-we-pet-builtin`（`packages/pet`），那条外部链已退役 —— 再拿外部安装记录当就绪条件，
- * 结果是「内置包明明在，capability 却恒报不可用」，或反过来「外部旧安装恰好还在，就冒认通过」。
+ * 历史：本文件先后服务过两条链 —— ① 外部 `dsh-pet` 补丁安装（读 `$DSH_HOME/dsh-pet/pet-link-install.json`
+ * 的补丁指纹）；② 内置受控副本 `dsh-we-pet-builtin`（`packages/pet`）。
  *
- * 所以这里改成**内置就绪面**，回答三件可复算的事：
- *   ① 内置包在位且身份/版本对（`dsh-we-pet-builtin@0.3.7`）—— 解析根与宿主同一落脚处；
- *   ② 它的两半产物字节与 `client.build.json` 里登记的锚点逐字相等（受控派生的证据，
- *      与 `scripts/build-client.mjs` 的 `assertPrebuiltBundle` 同一个锚点，两处对账同一份）；
- *   ③ 联动资源（九动画 + 五气泡）在**内置资源面**齐全 —— 发行包里就带着，不需要用户准备。
+ * **2026-10-20：内置副本已从本包解耦。** 它把 `electron`（optional）带进安装树，而 electron 42+
+ * 在缺 `dist/` 时会在 `require('electron')` 里**同步**下载约 140MB 二进制 ⇒ 宿主启动被堵到
+ * 60 秒超时、整个 profile 起不来。桌宠本体不值得承担这个风险，故整体移除；本联动子包保留，
+ * 作为上游 dsh-pet 提供正式联动接口后的**唯一接入点**。
  *
- * 返回形状不变：`{ available, reason }`（`test/verify-pet-package.mjs` 与
- * `test/verify-pet-hotplug-integration.mjs` 的断言依赖它）。reason 文案仍然逐字稳定 ——
- * 浏览器半边的降级文案与负控都按这几个字符串对账。
+ * 因此当前的就绪面只有一个诚实答案：**不可用**（`available:false` + 稳定 reason），
+ * 直到外部 provider 被显式接上。这条降级路径是产品行为的一部分，不是错误：
+ * 浏览器半边据此保留吉祥物原生行为，绝不静默假装桌宠可用。
+ *
+ * 就绪判据（provider 存在时才继续）：① 包在位且身份/版本对；② 两半产物字节与
+ * `client.build.json` 登记的锚点逐字相等；③ 联动资源（九动画 + 五气泡）在资源面齐全。
+ * 返形 `{ available, reason }` 不变，reason 文案逐字稳定（浏览器降级文案与负控按它取。
  */
 
 export const PET_NAMES = Object.freeze([
@@ -89,7 +90,11 @@ const ASSETS_ROOT = fileURLToPath(new URL('../assets/', import.meta.url));
 export function checkPetPrepared(home, profile) {
   try {
     const pkgRoot = resolvePetPackageRoot(profile);
-    if (!pkgRoot) return { available: false, reason: '内置桌宠包未安装（' + PET_PACKAGE_NAME + '）' };
+    // 2026-10-20：内置副本已解耦 ⇒ 全新安装必然落到这里。文案要说清"这是预期状态"，
+    // 而不是让用户以为装坏了、去反复重装一个不存在的包。
+    if (!pkgRoot) {
+      return { available: false, reason: '桌宠本体未安装（内置副本已解耦，等待上游 dsh-pet 联动接口接入）' };
+    }
     const manifest = JSON.parse(readFileSync(join(pkgRoot, 'package.json'), 'utf8'));
     // 身份与版本分开报：这两类故障的修法不同（装错包 vs 装了别的版本），合成一句会让人查错方向。
     if (manifest.name !== PET_PACKAGE_NAME) {

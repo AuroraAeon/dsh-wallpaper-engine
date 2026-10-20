@@ -11,8 +11,8 @@ const cache = join(ROOT, '.test-cache', 'deployment');
 mkdirSync(cache, { recursive: true });
 const home = mkdtempSync(join(cache, 'home-'));
 const plan = sourcePlan({ home, profile: 'web' });
-assert.equal(plan.subs.length, 8);
-assert.equal(plan.specs.length, 9);
+assert.equal(plan.subs.length, 7);
+assert.equal(plan.specs.length, 8);
 assert.throws(() => sourcePlan({ profile: 'web' }), /Specify/);
 assert.throws(() => sourcePlan({ home, profile: '../desktop' }), /Specify/);
 assert.throws(() => assertNodeVersion('22.11.0'), /22.12/);
@@ -35,12 +35,10 @@ assert.equal(retained.dsh.profile.other, 2);
 assert.equal(retained.dependencies.unrelated, '1.0.0');
 const children = plan.subs.map((p) => JSON.parse(readFileSync(p.manifest, 'utf8')));
 const manifest = releaseManifest(plan.main, children);
-assert.equal(manifest.dependencies['dsh-we-pet-builtin'], '0.3.7');
 assert.equal(manifest.devDependencies, undefined);
 assert.equal(manifest.scripts, undefined);
 for (const child of children) assert.equal(manifest.dependencies[child.name], child.version);
-assert(plan.main.devDependencies['dsh-we-pet-builtin'].startsWith('file:'));
-console.log('Deployment unit checks passed: explicit target, 9 packages, bundle ownership, real child versions.');
+console.log('Deployment unit checks passed: explicit target, 8 packages, bundle ownership, real child versions.');
 
 if (process.argv.includes('--live')) {
   const cliAt = process.argv.indexOf('--dsh-cli');
@@ -62,7 +60,7 @@ if (process.argv.includes('--live')) {
 
 if (process.argv.includes('--pack')) {
   const result = packRelease();
-  assert.equal(result.packages.length, 9);
+  assert.equal(result.packages.length, 8);
   assert.equal(result.packages.at(-1).name, plan.main.name);
   writeFileSync(join(cache, 'last-release.json'), JSON.stringify(result, null, 2) + '\n');
   console.log('Nine-tarball release set verified: ' + result.dir);

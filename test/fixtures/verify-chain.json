@@ -721,14 +721,6 @@
         {
           "kind": "guard",
           "npm": null,
-          "file": "test/verify-pet-builtin.mjs",
-          "args": [],
-          "tier": "hard",
-          "probe": false
-        },
-        {
-          "kind": "guard",
-          "npm": null,
           "file": "test/tools/packages.mjs",
           "args": [
             "selftest"
@@ -1607,14 +1599,6 @@
           "kind": "guard",
           "npm": null,
           "file": "test/verify-pet-follow.mjs",
-          "args": [],
-          "tier": "hard",
-          "probe": false
-        },
-        {
-          "kind": "guard",
-          "npm": null,
-          "file": "test/verify-pet-builtin.mjs",
           "args": [],
           "tier": "hard",
           "probe": false

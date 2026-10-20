@@ -223,13 +223,11 @@ const VERIFY_STEPS = [
   step('test/verify-pet-sidebar-glass.mjs'),
   step('test/verify-pet-egg2-motion.mjs'),
   step('test/verify-pet-follow.mjs'),
-  // ⑫ P1 内置桌宠（upstream-fork `dsh-we-pet-builtin`，2026-10-19）：一条**装配/消费链**的验收判据
-  //    （派生身份与来源登记、root 接线、内置 provider 五类故障 reason、九动画五气泡可达与只追加 main、
-  //    浏览器换血、生命周期七项、负控七项）。归 hard：它是"内置包真的接上了 main"的唯一证据。
-  //    ⚠️ 它的静态兼容姊妹 `test/verify-pet-eslint-compat.mjs` **有意脱链**（它 `import { ESLint }
-  //    from 'eslint'`，而链的口径是零裸依赖 —— 见 `test/tools/guard-chain.mjs` 的 OFF_CHAIN_WHY；
-  //    与 `verify-static.mjs` 同理，devDependencies 只能由独立 CI 步骤消费）。
-  step('test/verify-pet-builtin.mjs'),
+  // ⑫ 内置桌宠副本（upstream-fork `dsh-we-pet-builtin`）**已解耦**（2026-10-20）：
+  //    它把 electron（optional）带进安装树，而 electron 42+ 缺 dist/ 时会在 require('electron')
+  //    里同步下载约 140MB ⇒ 宿主启动堵到 60 秒超时。`packages/pet` 与 `verify-pet-builtin.mjs`
+  //    一并移除；pet-link 保留并如实报 unavailable，作为上游接口接入点。
+  //    等 provider 重新接入时，把那组判据（身份/来源登记/产物锚点/资源面）挂回新入口再加回本链。
   // ⑥ 包发现层 `test/tools/packages.mjs` 的**自检**（P-B 基石）：上面这一批"包面"判据
   //    （client-sync 的产物集合 / bundle-rows 的行⇄包对账 / subpackage-manifests 的清单面 /
   //    host-route-index 一族的行·包解析）与 `scripts/build-client.mjs` 都读它 ⇒ 它自己坏了会

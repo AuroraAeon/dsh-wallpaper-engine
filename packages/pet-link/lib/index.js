@@ -66,5 +66,5 @@ export function applyImpl(ctx, config = {}, c) {
   return dispose;
 }
 
-/** 诊断用：内置 provider 的身份（`verify-pet-builtin` 与报告引用同一份字面量）。 */
+/** 诊断用：provider 的身份（报告与就绪面引用同一份字面量；内置副本已解耦，见 prepared.js）。 */
 export const builtinProvider = Object.freeze({ packageName: PET_PACKAGE_NAME, dataDir: PET_DATA_DIR });

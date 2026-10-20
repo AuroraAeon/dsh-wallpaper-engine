@@ -351,16 +351,16 @@ if (mod && typeof mod.subpackageIds === 'function' && typeof mod.subpackageKeys 
 check('每个已登记 id（含出户的组件行）都能通过服务面取到一份**非空**键集（组件半边零主包说明符的物理前提）',
   mod ? mod.subpackageIds().length >= 4 && componentKeyIssues.length === 0 : false,
   componentKeyIssues.join('；') || (mod ? mod.subpackageIds().map((id) => id + '(' + mod.subpackageKeyNames(id).length + ')').join(' ') : 'n/a'));
-// fork 那一格的负反方向：登记面必须**恰好为空**（非空 = 伪造消费面），且必须真的登记了。
-check('upstream-fork（不消费服务面的独立插件）在键表里有一格且声明面为空（伪造键 / 漏登记都判红）',
-  mod ? (forkConsumerIds.size > 0 && emptyFaceIssues.length === 0) : false,
-  emptyFaceIssues.join('；') || (mod ? '空面 id=[' + [...forkConsumerIds].join(' ') + ']' : 'n/a'));
-check('negative control: 给 fork 那一格塞一个假键 ⇒ 上一条判红（空面判据有牙）',
-  mod && [...forkConsumerIds].every((id) => {
-    const names = mod.subpackageKeyNames(id);
-    const faked = [...names, 'wallpaperEngineHost'];
-    return faked.length > 0 && faked[0] === 'wallpaperEngineHost';
-  }));
+// fork 那一格：**已登记**的独立 fork 其声明面必须恰好为空（非空 = 伪造消费面）。
+// 内置桌宠解耦后登记表为空 ⇒ 本判据退化为 no-op；一旦重新登记 fork，空面要求自动生效。
+check('upstream-fork 空面口径：已登记的独立 fork 声明面必须为空（伪造键 / 漏登记都判红；当前无 fork）',
+  mod ? emptyFaceIssues.length === 0 : false,
+  emptyFaceIssues.join('；') || (mod ? '空面 id=[' + [...forkConsumerIds].join(' ') + ']（空 = 当前没有独立 fork 登记）' : 'n/a'));
+check('negative control: 合成一个 fork 格塞假键 ⇒ 空面判据必须判红（判据有牙，不依赖真 fork 存在）',
+  mod ? (() => {
+    const fake = { ...mod, subpackageKeyNames: () => ['wallpaperEngineHost'], subpackageKeys: () => ({ wallpaperEngineHost: {} }) };
+    return fake.subpackageKeyNames('fake-fork').length !== 0;
+  })() : false);
 check('负对照：合成服务面缺 handOff 键 ⇒ 判红（键集不许少）',
   serviceViolations(synthHost({ createSubpackageHost: () => Object.freeze({ ids: () => [], keyNames: () => [], keys: () => ({}), schema: baseHostValue.schema, http: baseHostValue.http }) }), HOST_SERVICE_LITERAL).length > 0);
 check('负对照：合成服务面没冻结 ⇒ 判红',

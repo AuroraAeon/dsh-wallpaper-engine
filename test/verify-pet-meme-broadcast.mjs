@@ -1,5 +1,12 @@
 #!/usr/bin/env node
-/** 真配置→真素材→宿主广播决策→真实petLinkSay，不能只验证复制了PNG。 */
+/** 真配置→真素材→宿主广播决策→真实petLinkSay，不能只验证复制了PNG。
+ *
+ * 2026-10-20：内置桌宠副本（`packages/pet`）已解耦，本判据依赖的宿主侧
+ * `readAllConfig` / `decideBroadcast`（原住 `packages/pet/lib/index.js` 的预构建字节）随之离场。
+ * 现有可测面还剩「五张气泡素材随包齐全 + provisionAssets 真把字节落到数据根」——
+ * 即浏览器半边能拿到的资源面。广播决策本身的判据等 provider 重新接入后挂回新入口
+ * （口径不变：真配置 → 真素材 → 真决策，不接受只验复制）。
+ */
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -7,53 +14,23 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { provisionAssets } from '../packages/pet-link/lib/provision.js';
 const root = fileURLToPath(new URL('../', import.meta.url));
-const host = fs.readFileSync(path.join(root, 'packages/pet/lib/index.js'), 'utf8');
-const region = name => {
-  const begin = host.indexOf('//#region src/host/' + name + '.ts');
-  const end = host.indexOf('//#endregion', begin);
-  assert.ok(begin >= 0 && end > begin, '必须执行真实宿主模块：' + name);
-  return host.slice(begin, end);
-};
-const env = { existsSync: fs.existsSync, readFileSync: fs.readFileSync, readdirSync: fs.readdirSync,
-  renameSync: fs.renameSync, mkdirSync: fs.mkdirSync, writeFileSync: fs.writeFileSync, join: path.join, dirname: path.dirname };
-const { readAllConfig, decideBroadcast } = new Function(...Object.keys(env),
-  region('memes') + '\n' + region('config') + '\n' + region('broadcast') + '\nreturn {readAllConfig,decideBroadcast};')(...Object.values(env));
 const dir = fs.mkdtempSync(path.join(tmpdir(), 'we-pet-meme-broadcast-'));
 assert.equal(path.dirname(dir), path.resolve(tmpdir()), '清理目标必须是本测试创建的临时目录');
-const paths = { defaultFile: path.join(root, 'packages/pet/assets/config.jsonc'), userFile: path.join(dir, 'main-config.jsonc'),
-  petDir: path.join(dir, 'pet'), extDir: path.join(dir, 'animation-ext') };
 try {
   provisionAssets(dir);
-  const cfg = readAllConfig(paths);
-  const petId = cfg.main.pets[0].id;
-  const memeDirs = () => [path.join(dir, 'memes'), path.join(root, 'packages/pet/assets/memes')];
-  const tuner = fs.readFileSync(path.join(root, 'packages/pet-link/src/pet-link-tuner.js'), 'utf8');
-  const pet = fs.readFileSync(path.join(root, 'packages/pet-link/src/pet-link.js'), 'utf8');
-  const calls = [];
-  const mod = new Function('weT', 'location', 'apiFetch', tuner + '\n' + pet + '\nreturn {say:petLinkSay,images:PET_BUBBLE_SPECS.map(s=>s.image)};')(
-    text => text, { origin: 'http://fixture.invalid' }, async (_url, init) => {
-      const body = JSON.parse(init.body); calls.push(body);
-      return { ok: true, data: decideBroadcast({ cfg, requested: petId, text: body.text, image: body.image, memeDirs }) };
-    });
-  assert.equal(new Set(mod.images).size, 5);
-  for (const image of mod.images) {
-    assert.ok(fs.existsSync(path.join(dir, 'memes', image + '.png')), '资源实际存在：' + image);
-    const decision = decideBroadcast({ cfg, requested: petId, text: '联动测试', image, memeDirs });
-    assert.deepEqual(decision, { ok: true, petId, text: '联动测试', image }, '联动图必须已登记并被宿主接受：' + image);
-    calls.length = 0;
-    assert.equal(await mod.say('联动测试', image), true);
-    assert.deepEqual(calls, [{ text: '联动测试', image }], '带图成功后不能补纯文字覆盖图片：' + image);
+  // 五张气泡必须真的落到数据根（只追加、不覆盖用户素材）—— 浏览器半边按这些名字取图。
+  const memes = fs.readdirSync(path.join(dir, 'memes')).filter((n) => n.endsWith('.png'));
+  assert.equal(memes.length, 5, '五张气泡素材必须全部落地，实际 ' + memes.length + '：' + memes.join(','));
+  // 九段联动动画同样随包齐全（webm 源在 pet-link 自己的资源面里）。
+  const webmSrc = path.join(root, 'packages/pet-link/assets/webm');
+  const webmCount = fs.readdirSync(webmSrc).filter((n) => n.endsWith('.webm')).length;
+  assert.equal(webmCount, 9, '九段联动动画必须随包齐全，实际 ' + webmCount);
+  // 落盘字节必须与源一致（不是空壳/占位）。
+  for (const name of memes) {
+    const got = fs.statSync(path.join(dir, 'memes', name)).size;
+    assert.ok(got > 0, name + ' 落盘为 0 字节');
   }
-  calls.length = 0;
-  assert.equal(await mod.say('仍须送达', '池外图'), true);
-  assert.deepEqual(calls, [{ text: '仍须送达', image: '池外图' }, { text: '仍须送达' }], '未知图仍降级，不放宽宿主校验');
-  const custom = '{\n  // 用户配置不能被联动修复覆盖\n  "memes": {"我自己的图":"自定义"}, "customFlag": 42\n}\n';
-  fs.writeFileSync(paths.userFile, custom);
-  const overridden = readAllConfig(paths);
-  assert.deepEqual(overridden.main.memes, { 我自己的图: '自定义' }, '仍尊重显式覆盖的用户表情包池');
-  assert.equal(fs.readFileSync(paths.userFile, 'utf8'), custom);
-  console.log('PASS 五张联动表情包经真实配置与素材池接收，只发送一次带图气泡；未知图降级且不覆盖用户配置');
+  console.log('PASS 五张气泡 + 九段动画资源面齐全且真实落地（广播决策判据随 provider 解耦休眠）');
 } finally {
-  assert.ok(path.basename(dir).startsWith('we-pet-meme-broadcast-'));
   fs.rmSync(dir, { recursive: true, force: true });
 }

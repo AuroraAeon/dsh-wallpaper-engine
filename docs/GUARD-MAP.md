@@ -5,7 +5,7 @@
 > 口径：只统计守卫**代码**里真正碰到的模块（先剥注释），并区分"直接读源文件"与"隔着产物 `lib/client.js`"。
 > 写法：字面量路径 / `join(...)` 拼接 / 唯一 basename / 产物配方 / **前缀族读法** `scopeFiles|scopeText(<前缀>)` / **经共享族助手读**（`import { panelText } from './tools/src-scope.mjs'` + 真调用；族口径封在那个库里，见 DEV-GUIDE §4.6「同时是守卫的库」）/ **真源定位读**（`locate('符号')` / `locateFile('文件名')`，`test/tools/source-locator.mjs`：符号唯一声明在哪就是读了哪个模块）。
 
-模块面 174 个 · 守卫 120 个
+模块面 171 个 · 守卫 118 个
 
 ## 守卫 → 模块
 
@@ -31,7 +31,7 @@
 | `verify-bundle-rows.mjs` | `lib/host-boot.js` `lib/index.js` `lib/kernel/component-session.js` `lib/kernel/host-kernel.js` `lib/subpackage-boot.js` |  |
 | `verify-cache-dir.mjs` | `lib/faststart.js` `lib/index.js` `lib/kernel/data-dir.js` `lib/media/frame-store.js` `lib/media/media-dirs.js` `lib/media/transcode.js` `lib/media/video-preview.js` `lib/routes/cache-dir.js` `lib/upload-dir.js` `packages/media-bridge/lib/backend.js` `packages/media-bridge/lib/legacy.js` `packages/media-bridge/lib/routes/now-playing.js` |  |
 | `verify-cache-prune.mjs` | `lib/media/transcode.js` `lib/media/video-preview.js` |  |
-| `verify-child-kill.mjs` | `lib/media/transcode.js` `packages/media-bridge/lib/legacy.js` `packages/pet/lib/index.js` `packages/pet/lib/standalone.js` | ✅ |
+| `verify-child-kill.mjs` | `lib/media/transcode.js` `packages/media-bridge/lib/legacy.js` | ✅ |
 | `verify-ci-routing.mjs` | — |  |
 | `verify-ci-steps.mjs` | — |  |
 | `verify-client-sync.mjs` | — | ✅ |
@@ -69,13 +69,11 @@
 | `verify-package-files.mjs` | `lib/http-body.js` `lib/index.js` `lib/pkg-read.js` `lib/routes/upload.js` | ✅ |
 | `verify-package-publish.mjs` | `lib/index.js` `lib/pkg-read.js` `src/client.js` | ✅ |
 | `verify-pet-bubble-timing.mjs` | `packages/pet-link/src/pet-link-tuner.js` `packages/pet-link/src/pet-link.js` |  |
-| `verify-pet-builtin.mjs` | `lib/subpackage-boot.js` `packages/pet-link/lib/prepared.js` `packages/pet-link/lib/provision.js` `packages/pet-link/lib/routes/pet-link.js` `packages/pet-link/src/pet-link.js` `packages/pet/lib/index.js` `packages/pet/lib/standalone.js` | ✅ |
 | `verify-pet-egg1-motion.mjs` | `packages/pet-link/src/pet-link-tuner.js` `packages/pet-link/src/pet-link.js` |  |
 | `verify-pet-egg1-native-browser.mjs` | `packages/pet-link/src/pet-link-tuner.js` `packages/pet-link/src/pet-link.js` |  |
 | `verify-pet-egg1-rebound.mjs` | `packages/pet-link/src/pet-link-tuner.js` `packages/pet-link/src/pet-link.js` |  |
 | `verify-pet-egg2-browser-case.mjs` | `src/client.js` |  |
 | `verify-pet-egg2-motion.mjs` | `packages/pet-link/src/pet-link-tuner.js` `packages/pet-link/src/pet-link.js` |  |
-| `verify-pet-eslint-compat.mjs` | `packages/pet/lib/index.js` `packages/pet/lib/standalone.js` |  |
 | `verify-pet-follow.mjs` | `packages/pet-link/src/pet-link-tuner.js` `packages/pet-link/src/pet-link.js` |  |
 | `verify-pet-hotplug-browser.mjs` | `packages/pet-link/lib/prepared.js` `packages/pet-link/src/pet-link-tuner.js` `packages/pet-link/src/pet-link.js` | ✅ |
 | `verify-pet-hotplug-client.mjs` | `packages/pet-link/src/pet-link-tuner.js` `packages/pet-link/src/pet-link.js` |  |
@@ -83,7 +81,7 @@
 | `verify-pet-hotplug-integration.mjs` | `lib/index.js` `lib/subpackage-boot.js` `packages/pet-link/lib/index.js` `packages/pet-link/lib/prepared.js` | ✅ |
 | `verify-pet-link.mjs` | — |  |
 | `verify-pet-mascot-motion.mjs` | `packages/pet-link/src/pet-link-tuner.js` `packages/pet-link/src/pet-link.js` |  |
-| `verify-pet-meme-broadcast.mjs` | `packages/pet-link/lib/provision.js` `packages/pet-link/src/pet-link-tuner.js` `packages/pet-link/src/pet-link.js` `packages/pet/lib/index.js` |  |
+| `verify-pet-meme-broadcast.mjs` | `packages/pet-link/lib/provision.js` |  |
 | `verify-pet-package.mjs` | `lib/index.js` `lib/subpackage-boot.js` `packages/pet-link/lib/compatibility.js` `packages/pet-link/lib/index.js` `src/sidebar-right.js` |  |
 | `verify-pet-phase-browser.mjs` | `packages/pet-link/src/pet-link-tuner.js` `packages/pet-link/src/pet-link.js` |  |
 | `verify-pet-rope-entry.mjs` | `src/client.js` |  |
@@ -137,7 +135,7 @@
 | 模块 | 守卫数 | 守卫 |
 |---|---:|---|
 | `lib/cache-dir.js` | 1 | `verify-scene-live` |
-| `lib/client.js` | 48 | `fontset-load-smoke` `live-frame-async-identity-smoke` `live-frame-backfill-smoke` `rotation-live-smoke` `rotation-prepared-leak-smoke` `rotation-smoke` `verify-about` `verify-api-client` `verify-body-caps` `verify-child-kill` `verify-client-sync` `verify-client` `verify-component-fonts` `verify-extra-glass` `verify-fontset` `verify-glass-compositing` `verify-glass-runtime-browser` `verify-glass-runtime` `verify-glass-surfaces` `verify-host-paint-scope` `verify-i18n` `verify-json-response` `verify-module-layout` `verify-occlusion-client` `verify-package-files` `verify-package-publish` `verify-pet-builtin` `verify-pet-hotplug-browser` `verify-pet-hotplug-integration` `verify-picker-model` `verify-picker-props` `verify-picker-upload` `verify-playback-controls` `verify-presets` `verify-reachability` `verify-readability` `verify-scene-live` `verify-scene` `verify-settings-schema-exports` `verify-softrender` `verify-subpackage-client-half` `verify-subpackage-toggle-roundtrip` `verify-system-fonts` `verify-theme-follow` `verify-theme-layer` `verify-transcode-state` `verify-types` `verify-windows-caption` |
+| `lib/client.js` | 47 | `fontset-load-smoke` `live-frame-async-identity-smoke` `live-frame-backfill-smoke` `rotation-live-smoke` `rotation-prepared-leak-smoke` `rotation-smoke` `verify-about` `verify-api-client` `verify-body-caps` `verify-child-kill` `verify-client-sync` `verify-client` `verify-component-fonts` `verify-extra-glass` `verify-fontset` `verify-glass-compositing` `verify-glass-runtime-browser` `verify-glass-runtime` `verify-glass-surfaces` `verify-host-paint-scope` `verify-i18n` `verify-json-response` `verify-module-layout` `verify-occlusion-client` `verify-package-files` `verify-package-publish` `verify-pet-hotplug-browser` `verify-pet-hotplug-integration` `verify-picker-model` `verify-picker-props` `verify-picker-upload` `verify-playback-controls` `verify-presets` `verify-reachability` `verify-readability` `verify-scene-live` `verify-scene` `verify-settings-schema-exports` `verify-softrender` `verify-subpackage-client-half` `verify-subpackage-toggle-roundtrip` `verify-system-fonts` `verify-theme-follow` `verify-theme-layer` `verify-transcode-state` `verify-types` `verify-windows-caption` |
 | `lib/component-visibility.js` | 1 | `verify-component-visibility` |
 | `lib/diag-trace.js` | 2 | `verify-host-diag` `verify-scene-live` |
 | `lib/faststart.js` | 3 | `verify-cache-dir` `verify-mp4-vfs` `verify-scene-live` |
@@ -189,7 +187,7 @@
 | `lib/shim-seed.js` | 1 | `verify-scene-live` |
 | `lib/startup-sweep.js` | 1 | `verify-scene-live` |
 | `lib/steam-discovery.js` | 2 | `verify-steam-discovery` `verify-we-install-probe` |
-| `lib/subpackage-boot.js` | 11 | `verify-bundle-rows` `verify-inject-contracts` `verify-json-response` `verify-pet-builtin` `verify-pet-hotplug-integration` `verify-pet-package` `verify-settings-schema-exports` `verify-subpackage-boot` `verify-subpackage-manifests` `verify-subpackage-purity` `verify-subpackage-toggle-roundtrip` |
+| `lib/subpackage-boot.js` | 10 | `verify-bundle-rows` `verify-inject-contracts` `verify-json-response` `verify-pet-hotplug-integration` `verify-pet-package` `verify-settings-schema-exports` `verify-subpackage-boot` `verify-subpackage-manifests` `verify-subpackage-purity` `verify-subpackage-toggle-roundtrip` |
 | `lib/upload-dir.js` | 4 | `verify-asset-paths` `verify-cache-dir` `verify-scene-live` `verify-upload-store` |
 | `lib/upload-store.js` | 2 | `verify-scene-live` `verify-upload-store` |
 | `lib/wallpaper-scan.js` | 1 | `verify-wallpaper-scan` |
@@ -227,18 +225,15 @@
 | `packages/parallax/src/client.js` | 0 | **（无）** |
 | `packages/parallax/src/ext-parallax.js` | 1 | `verify-scene-live` |
 | `packages/parallax/src/parallax-layer.js` | 1 | `verify-scene-live` |
-| `packages/pet-link/lib/client.pet-link.js` | 3 | `verify-client-sync` `verify-client` `verify-pet-builtin` |
+| `packages/pet-link/lib/client.pet-link.js` | 2 | `verify-client-sync` `verify-client` |
 | `packages/pet-link/lib/compatibility.js` | 1 | `verify-pet-package` |
 | `packages/pet-link/lib/index.js` | 2 | `verify-pet-hotplug-integration` `verify-pet-package` |
-| `packages/pet-link/lib/prepared.js` | 3 | `verify-pet-builtin` `verify-pet-hotplug-browser` `verify-pet-hotplug-integration` |
-| `packages/pet-link/lib/provision.js` | 2 | `verify-pet-builtin` `verify-pet-meme-broadcast` |
-| `packages/pet-link/lib/routes/pet-link.js` | 2 | `verify-pet-builtin` `verify-pet-hotplug-host` |
+| `packages/pet-link/lib/prepared.js` | 2 | `verify-pet-hotplug-browser` `verify-pet-hotplug-integration` |
+| `packages/pet-link/lib/provision.js` | 1 | `verify-pet-meme-broadcast` |
+| `packages/pet-link/lib/routes/pet-link.js` | 1 | `verify-pet-hotplug-host` |
 | `packages/pet-link/src/client.js` | 0 | **（无）** |
-| `packages/pet-link/src/pet-link-tuner.js` | 13 | `verify-pet-bubble-timing` `verify-pet-egg1-motion` `verify-pet-egg1-native-browser` `verify-pet-egg1-rebound` `verify-pet-egg2-motion` `verify-pet-follow` `verify-pet-hotplug-browser` `verify-pet-hotplug-client` `verify-pet-mascot-motion` `verify-pet-meme-broadcast` `verify-pet-phase-browser` `verify-pet-tuner-browser` `verify-pet-tuner` |
-| `packages/pet-link/src/pet-link.js` | 14 | `verify-pet-bubble-timing` `verify-pet-builtin` `verify-pet-egg1-motion` `verify-pet-egg1-native-browser` `verify-pet-egg1-rebound` `verify-pet-egg2-motion` `verify-pet-follow` `verify-pet-hotplug-browser` `verify-pet-hotplug-client` `verify-pet-mascot-motion` `verify-pet-meme-broadcast` `verify-pet-phase-browser` `verify-pet-tuner-browser` `verify-pet-tuner` |
-| `packages/pet/lib/client.js` | 28 | `fontset-load-smoke` `live-frame-async-identity-smoke` `live-frame-backfill-smoke` `rotation-live-smoke` `rotation-prepared-leak-smoke` `rotation-smoke` `verify-body-caps` `verify-client-sync` `verify-client` `verify-component-fonts` `verify-extra-glass` `verify-fontset` `verify-glass-surfaces` `verify-i18n` `verify-json-response` `verify-pet-builtin` `verify-picker-model` `verify-picker-props` `verify-picker-upload` `verify-playback-controls` `verify-presets` `verify-scene-live` `verify-scene` `verify-softrender` `verify-system-fonts` `verify-theme-layer` `verify-transcode-state` `verify-types` |
-| `packages/pet/lib/index.js` | 4 | `verify-child-kill` `verify-pet-builtin` `verify-pet-eslint-compat` `verify-pet-meme-broadcast` |
-| `packages/pet/lib/standalone.js` | 3 | `verify-child-kill` `verify-pet-builtin` `verify-pet-eslint-compat` |
+| `packages/pet-link/src/pet-link-tuner.js` | 12 | `verify-pet-bubble-timing` `verify-pet-egg1-motion` `verify-pet-egg1-native-browser` `verify-pet-egg1-rebound` `verify-pet-egg2-motion` `verify-pet-follow` `verify-pet-hotplug-browser` `verify-pet-hotplug-client` `verify-pet-mascot-motion` `verify-pet-phase-browser` `verify-pet-tuner-browser` `verify-pet-tuner` |
+| `packages/pet-link/src/pet-link.js` | 12 | `verify-pet-bubble-timing` `verify-pet-egg1-motion` `verify-pet-egg1-native-browser` `verify-pet-egg1-rebound` `verify-pet-egg2-motion` `verify-pet-follow` `verify-pet-hotplug-browser` `verify-pet-hotplug-client` `verify-pet-mascot-motion` `verify-pet-phase-browser` `verify-pet-tuner-browser` `verify-pet-tuner` |
 | `src/about-assets.js` | 1 | `verify-about` |
 | `src/adapter.js` | 1 | `verify-adapter` |
 | `src/api-client.js` | 3 | `verify-api-client` `verify-contracts` `verify-occlusion-client` |
