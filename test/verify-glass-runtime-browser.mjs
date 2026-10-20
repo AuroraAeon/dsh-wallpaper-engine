@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, existsSync, openSync, closeSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { cssBodyOf } from './tools/src-scope.mjs';
@@ -27,10 +27,15 @@ const browsers = process.platform === 'win32'
 const browser = process.env.WE_TEST_BROWSER || browsers.find(existsSync);
 assert.ok(browser && existsSync(browser), '缺少 Chromium 浏览器；请用 WE_TEST_BROWSER 指定可执行文件，浏览器回归不会跳过。');
 const profile = mkdtempSync(join(out, 'profile-'));
+const browserLogPath = join(profile, 'browser-stderr.log');
+const browserLog = openSync(browserLogPath, 'w');
 const child = spawn(browser, [
   '--headless=new', '--no-first-run', '--remote-debugging-port=0', '--user-data-dir=' + profile,
   ...(process.env.WE_TEST_BROWSER_LOG ? ['--enable-logging=stderr', '--log-level=0'] : []), 'about:blank',
-], { stdio: process.env.WE_TEST_BROWSER_LOG ? 'inherit' : 'ignore' });
+], { stdio: process.env.WE_TEST_BROWSER_LOG ? 'inherit' : ['ignore', 'ignore', browserLog] });
+closeSync(browserLog);
+const launchDetails = () => JSON.stringify({ browser, exitCode: child.exitCode, signal: child.signalCode,
+  stderr: readFileSync(browserLogPath, 'utf8').slice(-16384) });
 let socket, launchError, counter = 0;
 const pending = new Map(), failures = [], report = [];
 child.on('error', error => { launchError = error; });
@@ -72,11 +77,12 @@ try {
   const deadline = Date.now() + 20000;
   while (!port && Date.now() < deadline) {
     if (launchError) throw launchError;
+    assert.ok(child.exitCode === null && child.signalCode === null, '浏览器在调试端口就绪前退出：' + launchDetails());
     try { port = Number(readFileSync(join(profile, 'DevToolsActivePort'), 'utf8').split('\n')[0]); }
     catch (error) { if (!['ENOENT', 'EBUSY'].includes(error.code)) throw error; }
     if (!port) await delay(100);
   }
-  assert.ok(port, '浏览器调试端口未就绪');
+  assert.ok(port, '浏览器调试端口未就绪：' + launchDetails());
   const pages = await (await fetch('http://127.0.0.1:' + port + '/json/list')).json();
   socket = new WebSocket(pages.find(page => page.type === 'page').webSocketDebuggerUrl);
   await new Promise((resolve, reject) => { socket.onopen = resolve; socket.onerror = reject; });
