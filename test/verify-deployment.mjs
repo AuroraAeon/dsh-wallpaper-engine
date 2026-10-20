@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { dirname, join, resolve } from 'node:path';
+import { delimiter, dirname, join, resolve } from 'node:path';
 import { sourcePlan, retainMainBundle, installSource } from '../scripts/install-source.mjs';
 import { releaseManifest, releaseSetMatches, packRelease } from '../scripts/pack-release.mjs';
 import { assertNodeVersion, ROOT, runTool, toolLaunch } from '../scripts/deploy-tools.mjs';
@@ -35,6 +35,12 @@ assert.equal(retained.dsh.profile.other, 2);
 assert.equal(retained.dependencies.unrelated, '1.0.0');
 const children = plan.subs.map((p) => JSON.parse(readFileSync(p.manifest, 'utf8')));
 const manifest = releaseManifest(plan.main, children);
+for (const name of ['dsh-we-pet-builtin', 'dsh-pet', 'electron', '@electron/get']) {
+  assert.equal(manifest.dependencies[name], undefined);
+  assert.equal(plan.main.devDependencies[name], undefined);
+}
+const lock = JSON.parse(readFileSync(join(ROOT, 'package-lock.json'), 'utf8'));
+assert.ok(!Object.keys(lock.packages).some(path => /(?:^|\/)(?:electron|@electron\/get|dsh-we-pet-builtin)$/.test(path)));
 assert.equal(manifest.devDependencies, undefined);
 assert.equal(manifest.scripts, undefined);
 for (const child of children) assert.equal(manifest.dependencies[child.name], child.version);
@@ -75,11 +81,12 @@ assert.equal(spawnSync(missingLaunch.command, missingLaunch.args, { stdio: 'igno
 assert.throws(() => runTool('npm', ['--fail'], { env: cliEnv }), /exited with 7/);
 const npmFallback = toolLaunch('npm', ['--version'], { env: { npm_execpath: '' } });
 if (process.platform === 'win32') {
-  const stockEnv = { npm_execpath: '', Path: dirname(process.execPath), DSH_HOME: home, HOME: home, USERPROFILE: home };
+  const stockPath = [...new Set([dirname(process.execPath), resolve(dirname(npmFallback.args[0]), '../../..')])].join(delimiter);
+  const stockEnv = { npm_execpath: '', Path: stockPath, DSH_HOME: home, HOME: home, USERPROFILE: home };
   const fallback = toolLaunch('npm', ['--version'], { env: stockEnv });
   assert.equal(fallback.command, process.execPath);
-  assert.equal(fallback.args[0], join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js'));
-  assert.equal(fallback.env.PATH, dirname(process.execPath));
+  assert.equal(fallback.args[0], npmFallback.args[0]);
+  assert.equal(fallback.env.PATH, stockPath);
   assert(!Object.keys(fallback.env).some((key) => key !== 'PATH' && key.toUpperCase() === 'PATH'));
   const npmVersion = spawnSync(fallback.command, fallback.args, { env: fallback.env, encoding: 'utf8' });
   if (npmVersion.error) throw npmVersion.error;

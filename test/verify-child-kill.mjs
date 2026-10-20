@@ -99,8 +99,6 @@ function unmonitoredSpawns(code) {
 function listLib(dir = LIB, out = []) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const abs = join(dir, entry.name);
-    // 与 guard-targets 的发行面一致；历史恢复点不是当前运行的宿主入口。
-    if (relative(ROOT, abs).split('\\').join('/') === 'packages/pet/lib/pet-link-backups') continue;
     if (entry.isDirectory()) { listLib(abs, out); continue; }
     if (!entry.name.endsWith('.js')) continue;
     const rel = relative(ROOT, abs).split('\\').join('/');

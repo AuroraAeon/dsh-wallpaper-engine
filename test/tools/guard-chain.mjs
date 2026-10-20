@@ -136,13 +136,9 @@ export function compositionDiff(chains) {
  * 判据见 `test/verify-guard-chain.mjs` ⑤（正判据与负对照走 `offChainDiff` 同一个函数）。
  */
 export const OFF_CHAIN_WHY = {
-  'verify-pet-link.mjs': '快捷汇总入口 npm run verify:pet-link；其十二个离线用例已逐项接入默认 verify 链，不重复运行汇总器。',
-  'verify-pet-hotplug-integration.mjs': '显式安装集成入口，需要受支持原版桌宠夹具与真实 Cordis 模块；不得在离线 verify 链隐式下载或修改用户安装。',
-  'verify-pet-hotplug-browser.mjs': '完整 React 与真实视频集成，需要独立 Edge、ReactDOM 和已准备隔离 profile，使用 verify:pet-link:browser 显式运行。',
+  'verify-pet-link.mjs': '快捷汇总入口 npm run verify:pet-link；其离线用例已逐项接入默认 verify 链，不重复运行汇总器。',
+  'verify-pet-hotplug-integration.mjs': '真实 Cordis 正式桥接生命周期入口；需要宿主 peer 模块，独立运行，不下载或修改官方 pet。',
   'verify-pet-sidebar-glass-browser-case.mjs': '用例模块由链上的 verify-glass-runtime-browser.mjs 导入并执行，使用其 CDP 会话，不是独立命令。',
-  'verify-pet-egg2-browser-case.mjs': '完整浏览器入口导入的彩蛋二用例模块，依赖其 CDP 会话与真实视频，不是独立命令。',
-  'verify-pet-egg1-native-browser.mjs': '真实原生抛掷与媒体验收，需要独立 Edge 和显式 PET_TEST_CLIENT 隔离客户端。',
-  'verify-pet-phase-browser.mjs': '真实阶段接管验收，需要独立 Edge 和显式 PET_TEST_CLIENT 隔离客户端。',
   'verify-pet-tuner-browser.mjs': '真实面板几何和动效验收，需要独立 Edge；默认链保留无外部依赖的面板 DOM 回归。',
   'compat-harness-live.mjs': '真跑**活** harness 页面（需要宿主实际启动）：本地/CI 都按需手动跑，由 .github/workflows/harness-compat.yml 单独触发；verify 链要求零外部环境依赖。',
   'compat-harness-pages.mjs': '同族：活 harness 的页面面普查，断言依赖真实宿主实例，不进链。',

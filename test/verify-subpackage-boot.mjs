@@ -351,16 +351,13 @@ if (mod && typeof mod.subpackageIds === 'function' && typeof mod.subpackageKeys 
 check('每个已登记 id（含出户的组件行）都能通过服务面取到一份**非空**键集（组件半边零主包说明符的物理前提）',
   mod ? mod.subpackageIds().length >= 4 && componentKeyIssues.length === 0 : false,
   componentKeyIssues.join('；') || (mod ? mod.subpackageIds().map((id) => id + '(' + mod.subpackageKeyNames(id).length + ')').join(' ') : 'n/a'));
-// fork 那一格：**已登记**的独立 fork 其声明面必须恰好为空（非空 = 伪造消费面）。
-// 内置桌宠解耦后登记表为空 ⇒ 本判据退化为 no-op；一旦重新登记 fork，空面要求自动生效。
-check('upstream-fork 空面口径：已登记的独立 fork 声明面必须为空（伪造键 / 漏登记都判红；当前无 fork）',
-  mod ? emptyFaceIssues.length === 0 : false,
-  emptyFaceIssues.join('；') || (mod ? '空面 id=[' + [...forkConsumerIds].join(' ') + ']（空 = 当前没有独立 fork 登记）' : 'n/a'));
-check('negative control: 合成一个 fork 格塞假键 ⇒ 空面判据必须判红（判据有牙，不依赖真 fork 存在）',
-  mod ? (() => {
-    const fake = { ...mod, subpackageKeyNames: () => ['wallpaperEngineHost'], subpackageKeys: () => ({ wallpaperEngineHost: {} }) };
-    return fake.subpackageKeyNames('fake-fork').length !== 0;
-  })() : false);
+// 不再捆绑 fork：服务登记必须与实际目录逐项一致，不允许残留 pet 幽灵项。
+const expectedIds = PACKAGE_DIRS_ON_DISK.map(dir => dir.slice(PACKAGES_PREFIX.length)).sort();
+const idsMatch = ids => JSON.stringify([...ids].sort()) === JSON.stringify(expectedIds);
+check('外置官方桌宠：无内置 fork，服务登记与磁盘七子包严格双射',
+  mod && forkConsumerIds.size === 0 && emptyFaceIssues.length === 0 && idsMatch(mod.subpackageIds()));
+check('negative control: 残留 pet 服务登记必须判红',
+  mod && !idsMatch([...mod.subpackageIds(), 'pet']));
 check('负对照：合成服务面缺 handOff 键 ⇒ 判红（键集不许少）',
   serviceViolations(synthHost({ createSubpackageHost: () => Object.freeze({ ids: () => [], keyNames: () => [], keys: () => ({}), schema: baseHostValue.schema, http: baseHostValue.http }) }), HOST_SERVICE_LITERAL).length > 0);
 check('负对照：合成服务面没冻结 ⇒ 判红',
