@@ -17,9 +17,9 @@ const off = apply({ wallpaperEngineHost: createSubpackageHost(),
   webServer: { port: 49123, register(route) { routes.set(route.path, route); return () => routes.delete(route.path); } },
   effect(fn) { cleanup = fn(); } }, { linkEnabled: false });
 try {
-  assert.equal(routes.size, 3);
+  assert.equal(routes.size, 2);
   let body;
-  await routes.get('/wallpaper-engine/pet-link/official/targets').handler({ method: 'GET' }, {
+  await routes.get('/wallpaper-engine/pet-link/official').handler({ method: 'GET' }, {
     setHeader() {}, end(value) { body = JSON.parse(value); },
   });
   assert.deepEqual(body, { ok: false, reason: 'bridge-disabled' });

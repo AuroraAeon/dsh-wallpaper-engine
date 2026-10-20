@@ -10,11 +10,11 @@ let petLinkContext = null;
 const petLink = createOfficialPetPerformer({
   getContext: () => petLinkContext,
   async fetchTargets() {
-    const response = await apiFetch(apiUrl('/pet-link/official/targets'));
+    const response = await apiFetch(apiUrl('/pet-link/official'));
     return response.data || { ok: false, reason: response.error || 'transport-error' };
   },
   async request(payload) {
-    const response = await apiFetch(apiUrl('/pet-link/official/run'), {
+    const response = await apiFetch(apiUrl('/pet-link/official'), {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
     });
     return response.data || { ok: false, reason: response.error || 'transport-error' };

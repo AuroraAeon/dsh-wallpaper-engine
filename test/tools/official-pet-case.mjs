@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { PET_NAMES } from '../../packages/pet-link/lib/prepared.js';
+import { sendJson } from '../../lib/json-response.js';
 
 export async function verifyOfficialPet({ createOfficialPetCoordinator, registerOfficialPetRoutes, clientSource }) {
   let time = 1000;
@@ -119,9 +120,9 @@ export async function verifyOfficialPet({ createOfficialPetCoordinator, register
     routes.set(route.path, route); return () => routes.delete(route.path);
   } };
   try {
-    registerOfficialPetRoutes(web, { base: '/wall', disposers }, { request });
-    const url = origin + '/wall/pet-link/official/run';
-    assert.equal((await fetch(url)).status, 405);
+    registerOfficialPetRoutes(web, { base: '/wall', disposers, http: { sendJson } }, { request });
+    const url = origin + '/wall/pet-link/official';
+    assert.equal((await fetch(url, { method: 'PUT' })).status, 405);
     assert.equal((await fetch(url, { method: 'POST', headers: { Origin: 'https://evil.invalid' }, body: '{}' })).status, 403);
     assert.equal((await fetch(url, { method: 'POST', headers: { Origin: 'http://127.0.0.1:1' }, body: '{}' })).status, 403);
     assert.equal((await fetch(url, { method: 'POST', body: '{' })).status, 400);
@@ -136,7 +137,11 @@ export async function verifyOfficialPet({ createOfficialPetCoordinator, register
     assert.equal((await fetch(media, { method: 'HEAD' })).headers.get('content-type'), 'video/webm');
     assert.equal((await fetch(media, { headers: { Range: 'bytes=99999999999999-' } })).status, 416);
     assert.equal((await fetch(origin + '/wall/pet-link/official/assets/not-a-file')).status, 404);
-    assert.equal((await fetch(origin + '/wall/pet-link/official/targets')).status, 200);
+    const targets = await fetch(origin + '/wall/pet-link/official');
+    assert.equal(targets.status, 200);
+    assert.equal(targets.headers.get('cache-control'), 'no-store');
+    assert.equal(targets.headers.get('content-type'), 'application/json; charset=utf-8');
+    assert.equal((await targets.json()).ok, true);
   } finally {
     disposers.splice(0).reverse().forEach(off => off());
     server.closeAllConnections();

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { applyImpl } from '../packages/pet-link/lib/index.js';
+import { httpView } from '../lib/subpackage-boot.js';
 import { clientEntryFixture } from './tools/official-performer.mjs';
 
 const root = new URL('../', import.meta.url);
@@ -27,9 +28,9 @@ assert.equal(listeners.size, 0, '卸载后清理客户端监听器');
 const routes = new Map();
 const dispose = applyImpl({ webServer: { port: 7341, register(route) {
   routes.set(route.path, route); return () => routes.delete(route.path);
-} } }, {}, { base: '/wallpaper-engine' });
+} } }, {}, { base: '/wallpaper-engine', http: httpView });
 try {
-  assert.ok(routes.has('/wallpaper-engine/pet-link/official/run'), '默认联动必须直接注册官方控制，不再留内置或预览开关');
+  assert.ok(routes.has('/wallpaper-engine/pet-link/official'), '默认联动必须直接注册官方控制，不再留内置或预览开关');
   assert.ok(!routes.has('/wallpaper-engine/pet-link/capability'), '不再签发内置资格');
 } finally { dispose(); }
 assert.equal(routes.size, 0, '正式路由退出后全部归还');

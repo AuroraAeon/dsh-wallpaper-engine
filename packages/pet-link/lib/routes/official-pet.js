@@ -3,11 +3,11 @@ import { fileURLToPath } from 'node:url';
 import { createOfficialPetCoordinator } from '../official-provider.js';
 import { PET_NAMES, MEME_NAMES } from '../prepared.js';
 
-export const DEPS = ['disposers', 'base'];
+export const DEPS = ['disposers', 'base', 'http'];
 
 /** 正式官方桥接；端口来自宿主服务，不能把页面请求变成任意 URL 代理。 */
 export function registerOfficialPetRoutes(webServer, c, options = {}) {
-  const { disposers, base } = c;
+  const { disposers, base, http } = c;
   const BASE = base;
   const origin = () => {
     const port = webServer.port;
@@ -44,23 +44,13 @@ export function registerOfficialPetRoutes(webServer, c, options = {}) {
     streams.clear();
     void coordinator.dispose();
   });
-  const send = (res, status, value) => {
-    res.statusCode = status;
-    res.setHeader('Cache-Control', 'no-store');
-    res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.end(JSON.stringify(value));
-  };
+  const send = (res, status, value) => http.sendJson(res, status, value);
   const enabled = () => active && (!options.isLinkEnabled || options.isLinkEnabled());
-  disposers.push(webServer.register({ kind: 'exact', path: `${BASE}/pet-link/official/targets`,
+  disposers.push(webServer.register({ kind: 'exact', path: `${BASE}/pet-link/official`,
     handler: async (req, res) => {
-      if (req.method !== 'GET') return send(res, 405, { ok: false, reason: 'method-not-allowed' });
+      if (req.method !== 'GET' && req.method !== 'POST') return send(res, 405, { ok: false, reason: 'method-not-allowed' });
       if (!enabled()) return send(res, 200, { ok: false, reason: 'bridge-disabled' });
-      return send(res, 200, await coordinator.targets());
-    } }));
-  disposers.push(webServer.register({ kind: 'exact', path: `${BASE}/pet-link/official/run`,
-    handler: async (req, res) => {
-      if (req.method !== 'POST') return send(res, 405, { ok: false, reason: 'method-not-allowed' });
-      if (!enabled()) return send(res, 200, { ok: false, reason: 'bridge-disabled' });
+      if (req.method === 'GET') return send(res, 200, await coordinator.targets());
       // 本地 API 没有认证，仍拒绝浏览器的跨站写入；不信任 Host 头构造上游地址。
       let sameOrigin = true;
       if (req.headers?.origin) {

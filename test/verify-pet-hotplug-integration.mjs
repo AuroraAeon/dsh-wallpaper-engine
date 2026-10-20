@@ -36,7 +36,7 @@ class WebServer extends Service {
 const ctx = new Context();
 const service = ctx.plugin(WebServer);
 const plugin = { name, inject, apply };
-const path = '/wallpaper-engine/pet-link/official/targets';
+const path = '/wallpaper-engine/pet-link/official';
 let fiber;
 async function get(handler = routes.get(path)?.handler, method = 'GET') {
   assert.ok(handler, '正式官方路由必须在场');
@@ -55,8 +55,8 @@ try {
   ctx.provide('wallpaperEngineHost', createSubpackageHost());
   fiber = ctx.plugin(plugin, { linkEnabled: true });
   await fiber.await();
-  assert.equal(routes.size, 3);
-  assert.equal((await get(undefined, 'POST')).reason, 'method-not-allowed');
+  assert.equal(routes.size, 2);
+  assert.equal((await get(undefined, 'PUT')).reason, 'method-not-allowed');
   const initial = routes.get(path).handler;
   fiber.update({ linkEnabled: false }, true);
   await until(() => routes.get(path)?.handler !== initial);
@@ -65,13 +65,13 @@ try {
   const disabled = routes.get(path).handler;
   fiber.update({ linkEnabled: true }, true);
   await until(() => routes.get(path)?.handler !== disabled);
-  assert.equal((await get(undefined, 'POST')).reason, 'method-not-allowed');
+  assert.equal((await get(undefined, 'PUT')).reason, 'method-not-allowed');
   await fiber.dispose(); fiber = null;
   assert.equal(routes.size, 0);
   for (let i = 0; i < 10; i++) {
     fiber = ctx.plugin(plugin, { linkEnabled: false });
     await fiber.await();
-    assert.equal(routes.size, 3);
+    assert.equal(routes.size, 2);
     assert.equal((await get()).reason, 'bridge-disabled');
     await fiber.dispose(); fiber = null;
     assert.equal(routes.size, 0);
