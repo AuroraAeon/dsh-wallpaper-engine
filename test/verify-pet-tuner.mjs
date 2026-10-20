@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { performerFixture } from './tools/official-performer.mjs';
+import { parseInlineModules } from './tools/src-scope.mjs';
+import { stripExportBlocks } from './tools/js-text.mjs';
 const source = readFileSync(new URL('../packages/pet-link/src/pet-link-tuner.js', import.meta.url), 'utf8');
 const definitions = readFileSync(new URL('../packages/pet-link/src/pet-link.js', import.meta.url), 'utf8');
 const make = new Function(definitions + '\n' + source + ';return createOfficialPetTuner;')();
@@ -56,5 +58,14 @@ exported.children.find(node => node.title === '导出 JSON').events.get('click')
 assert.equal(JSON.parse(root.querySelector('textarea').value).target, 'second');
 panel.close(); assert.equal(panel.isOpen(), false);
 panel.dispose(); assert.equal(listeners.size, 0); assert.equal(root.removed, true);
+const copies = parseInlineModules().map(item => item.file).filter(file => /(?:^|\/)i18n-copy(?:-[^/]+)?\.js$/.test(file));
+const dictionary = new Function(copies.map(file => stripExportBlocks(readFileSync(new URL('../' + file, import.meta.url), 'utf8'))).join('\n') + ';return WE_I18N_EN;')();
+const english = make(h.api, { document: doc, translate: value => dictionary[value] || value });
+english.open();
+const englishRoot = doc.body.children.at(-1);
+assert.equal(englishRoot.getAttribute('aria-label'), 'Pet link tuning');
+const texts = node => [node.textContent || '', node.title || '', node.getAttribute('aria-label') || '', ...node.children.flatMap(texts)];
+assert.equal(texts(englishRoot).filter(value => /[\u3400-\u9fff]/.test(value)).length, 0, '英文面板的标签、按钮、气泡标题和可访问名称全部翻译');
+english.dispose();
 h.api.dispose();
 console.log('PASS 官方调参：四逻辑、15参数、目标选择、非法输入、JSON导出、监听器回收');

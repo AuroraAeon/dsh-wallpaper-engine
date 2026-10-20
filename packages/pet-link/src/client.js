@@ -8,6 +8,7 @@ for (const key of PET_LINK_HOST_REQUIRED) {
 const { weT, apiUrl, apiFetch, wallSidebarOpen, wallSidebarClose, wallSidebarToggle, registerPetLink } = host;
 let petLinkContext = null;
 const petLink = createOfficialPetPerformer({
+  translate: weT,
   getContext: () => petLinkContext,
   async fetchTargets() {
     const response = await apiFetch(apiUrl('/pet-link/official'));

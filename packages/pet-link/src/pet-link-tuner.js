@@ -2,16 +2,17 @@
 function createOfficialPetTuner(link, options = {}) {
   const doc = options.document || document;
   let root = null, logic = 'sidebar', installed = false;
+  const weT = options.translate || (value => value);
   const fields = [
-    ['sidebarWalkMs', '走位时长（毫秒）'], ['braceMs', '准备时长（毫秒）'],
-    ['slowOpenMs', '侧栏展开（毫秒）'], ['openDelayMs', '展开延迟（毫秒）'],
-    ['bubbleMs', '气泡时长（毫秒）'], ['holdMaxMs', '等待关闭（毫秒）'], ['eggAt', '彩蛋触发次数'],
-    ['mascotOpenAtMs', '抓绳触发（毫秒）'], ['mascotRopeDownPx', '绳子下拉（像素）'],
-    ['mascotReleaseAtMs', '绳子释放（毫秒）'], ['egg1FlingPower', '原生抛掷力度'],
-    ['egg1LeadMs', '踢腿提前量（毫秒）'], ['egg1PostLandMs', '落地停留（毫秒）'],
-    ['egg2LeadMs', '哈气提前量（毫秒）'], ['egg2OpenAtPct', '哈气展开进度（%）'],
+    ['sidebarWalkMs', weT('走位时长（毫秒）')], ['braceMs', weT('准备时长（毫秒）')],
+    ['slowOpenMs', weT('侧栏展开（毫秒）')], ['openDelayMs', weT('展开延迟（毫秒）')],
+    ['bubbleMs', weT('气泡时长（毫秒）')], ['holdMaxMs', weT('等待关闭（毫秒）')], ['eggAt', weT('彩蛋触发次数')],
+    ['mascotOpenAtMs', weT('抓绳触发（毫秒）')], ['mascotRopeDownPx', weT('绳子下拉（像素）')],
+    ['mascotReleaseAtMs', weT('绳子释放（毫秒）')], ['egg1FlingPower', weT('原生抛掷力度')],
+    ['egg1LeadMs', weT('踢腿提前量（毫秒）')], ['egg1PostLandMs', weT('落地停留（毫秒）')],
+    ['egg2LeadMs', weT('哈气提前量（毫秒）')], ['egg2OpenAtPct', weT('哈气展开进度（%）')],
   ];
-  const labels = { sidebar: '拉动侧边栏', mascot: '抓绳互动', egg1: '踢开并弹飞', egg2: '站立哈气' };
+  const labels = { sidebar: weT('拉动侧边栏'), mascot: weT('抓绳互动'), egg1: weT('踢开并弹飞'), egg2: weT('站立哈气') };
   const text = value => options.translate ? options.translate(value) : value;
   function element(tag, label) {
     const node = doc.createElement(tag);
@@ -28,7 +29,7 @@ function createOfficialPetTuner(link, options = {}) {
   function sync() {
     if (!root) return;
     const value = link.tuner.snapshot();
-    root.querySelector('[data-status]').textContent = value.busy ? value.phase : value.reason || text('联动可用');
+    root.querySelector('[data-status]').textContent = value.busy ? value.phase : value.reason || text(weT('联动可用'));
     const target = root.querySelector('[data-target]');
     target.replaceChildren();
     const pets = value.pets.filter(item => ['web', 'both'].includes(item.display));
@@ -57,14 +58,14 @@ function createOfficialPetTuner(link, options = {}) {
   function open() {
     if (!root) {
       root = element('section'); root.setAttribute('data-pet-tuner', 'official');
-      root.setAttribute('aria-label', text('桌宠联动调参')); root.setAttribute('role', 'dialog');
+      root.setAttribute('aria-label', text(weT('桌宠联动调参'))); root.setAttribute('role', 'dialog');
       root.style.cssText = 'position:fixed;inset:8px 8px auto auto;width:min(460px,calc(100vw - 16px));max-height:calc(100vh - 16px);overflow:auto;box-sizing:border-box;padding:12px;border:1px solid GrayText;border-radius:8px;background:Canvas;color:CanvasText;z-index:1000;font:13px/1.5 system-ui;letter-spacing:0';
       const header = element('header'); header.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:8px';
-      const heading = element('strong', '桌宠联动调参'); heading.style.flex = '1'; header.appendChild(heading);
-      header.appendChild(button('↻', '刷新桌宠', () => { link.warmup().then(sync); }));
-      header.appendChild(button('■', '停止联动', () => { link.tuner.cancel(); sync(); }));
-      header.appendChild(button('×', '关闭', close)); root.appendChild(header);
-      const targetLabel = element('label', '目标桌宠'); targetLabel.style.cssText = 'display:grid;grid-template-columns:100px minmax(0,1fr);gap:8px';
+      const heading = element('strong', weT('桌宠联动调参')); heading.style.flex = '1'; header.appendChild(heading);
+      header.appendChild(button('↻', weT('刷新桌宠'), () => { link.warmup().then(sync); }));
+      header.appendChild(button('■', weT('停止联动'), () => { link.tuner.cancel(); sync(); }));
+      header.appendChild(button('×', weT('关闭'), close)); root.appendChild(header);
+      const targetLabel = element('label', weT('目标桌宠')); targetLabel.style.cssText = 'display:grid;grid-template-columns:100px minmax(0,1fr);gap:8px';
       const target = element('select'); target.setAttribute('data-target', ''); target.style.minWidth = '0';
       target.addEventListener('change', () => { link.tuner.setTarget(target.value); link.warmup().then(sync); });
       targetLabel.appendChild(target); root.appendChild(targetLabel);
@@ -85,24 +86,24 @@ function createOfficialPetTuner(link, options = {}) {
       for (const spec of PET_BUBBLE_SPECS) {
         const group = element('fieldset'); group.setAttribute('data-bubble-group', spec.id);
         group.style.cssText = 'margin:10px 0 0;padding:8px;min-width:0;border:1px solid GrayText';
-        group.appendChild(element('legend', spec.text));
-        for (const [edge, label] of [['show', '出现'], ['hide', '隐藏']]) {
+        group.appendChild(element('legend', spec.text(weT)));
+        for (const [edge, label] of [['show', weT('出现')], ['hide', weT('隐藏')]]) {
           const row = element('div'); row.setAttribute('data-bubble-rule', edge);
           row.style.cssText = 'display:grid;grid-template-columns:32px minmax(0,1fr) 60px 72px;gap:4px;margin:4px 0;align-items:center';
           row.appendChild(element('span', label));
           const action = element('select'); action.setAttribute('data-bubble-action', '');
-          action.setAttribute('aria-label', text(label + '动作')); action.style.minWidth = '0';
-          for (const [key, name] of [['', '默认'], ...Object.keys(PET_ANIM).map(key => [key, key])]) {
+          action.setAttribute('aria-label', edge === 'show' ? weT('出现动作') : weT('隐藏动作')); action.style.minWidth = '0';
+          for (const [key, name] of [['', weT('默认')], ...Object.keys(PET_ANIM).map(key => [key, key])]) {
             const option = element('option', name); option.value = key; action.appendChild(option);
           }
           const anchor = element('select'); anchor.setAttribute('data-bubble-edge', '');
-          anchor.setAttribute('aria-label', text(label + '时间锚点'));
-          for (const [key, name] of [['start', '开始'], ['end', '结束']]) {
+          anchor.setAttribute('aria-label', edge === 'show' ? weT('出现时间锚点') : weT('隐藏时间锚点'));
+          for (const [key, name] of [['start', weT('开始')], ['end', weT('结束')]]) {
             const option = element('option', name); option.value = key; anchor.appendChild(option);
           }
           const offset = element('input'); offset.type = 'number'; offset.min = '-180000'; offset.max = '180000'; offset.step = '1';
           offset.style.cssText = 'width:100%;min-width:0;box-sizing:border-box';
-          offset.setAttribute('data-bubble-offset', ''); offset.setAttribute('aria-label', text(label + '偏移毫秒'));
+          offset.setAttribute('data-bubble-offset', ''); offset.setAttribute('aria-label', edge === 'show' ? weT('出现偏移（毫秒）') : weT('隐藏偏移（毫秒）'));
           const change = () => {
             const config = { ...link.tuner.snapshot().bubbleTiming[spec.id] };
             if (action.value) config[edge] = { action: action.value, edge: anchor.value, offsetMs: Number(offset.value) };
@@ -115,14 +116,14 @@ function createOfficialPetTuner(link, options = {}) {
         root.appendChild(group);
       }
       const actions = element('div'); actions.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;margin-top:10px';
-      actions.appendChild(button('▶', '运行当前逻辑', () => { link.tuner.run(logic).then(sync); sync(); }));
-      actions.appendChild(button('↶', '重置当前逻辑', () => { link.tuner.reset(logic); sync(); }));
-      actions.appendChild(button('↓', '导出 JSON', () => {
+      actions.appendChild(button('▶', weT('运行当前逻辑'), () => { link.tuner.run(logic).then(sync); sync(); }));
+      actions.appendChild(button('↶', weT('重置当前逻辑'), () => { link.tuner.reset(logic); sync(); }));
+      actions.appendChild(button('↓', weT('导出 JSON'), () => {
         const out = root.querySelector('textarea'); out.value = JSON.stringify(link.tuner.snapshot(), null, 2); out.hidden = false; out.focus(); out.select();
       })); root.appendChild(actions);
       const status = element('output'); status.setAttribute('data-status', ''); status.setAttribute('aria-live', 'polite'); root.appendChild(status);
       const out = element('textarea'); out.hidden = true; out.readOnly = true; out.rows = 6;
-      out.setAttribute('aria-label', text('当前调参 JSON')); out.style.cssText = 'width:100%;box-sizing:border-box;margin-top:8px'; root.appendChild(out);
+      out.setAttribute('aria-label', text(weT('当前调参 JSON'))); out.style.cssText = 'width:100%;box-sizing:border-box;margin-top:8px'; root.appendChild(out);
       doc.body.appendChild(root);
     }
     root.hidden = false; sync(); link.warmup().then(sync); return true;

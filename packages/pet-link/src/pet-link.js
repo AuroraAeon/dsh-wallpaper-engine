@@ -16,11 +16,11 @@ const PET_TUNE_DEFAULTS = {
 };
 const PET_TUNER_LOGICS = ['sidebar', 'mascot', 'egg1', 'egg2'];
 const PET_BUBBLE_SPECS = [
-  { id: 'sidebar', logic: 'sidebar', image: 0, text: '累死本鲸了，给我添两碗饭' },
-  { id: 'mascot', logic: 'mascot', image: 1, text: '可以换壁纸了，不要用××√哦' },
-  { id: 'egg1Angry', logic: 'egg1', image: 2, text: '偶鲸鲸！！！' },
-  { id: 'egg1Land', logic: 'egg1', image: 3, text: '哇啊啊啊啊啊！！！' },
-  { id: 'egg2', logic: 'egg2', image: 4, text: '？！欺负一只肥鱼！？' },
+  { id: 'sidebar', logic: 'sidebar', image: 0, text(weT = value => value) { return weT('累死本鲸了，给我添两碗饭'); } },
+  { id: 'mascot', logic: 'mascot', image: 1, text(weT = value => value) { return weT('可以换壁纸了，不要用××√哦'); } },
+  { id: 'egg1Angry', logic: 'egg1', image: 2, text(weT = value => value) { return weT('偶鲸鲸！！！'); } },
+  { id: 'egg1Land', logic: 'egg1', image: 3, text(weT = value => value) { return weT('哇啊啊啊啊啊！！！'); } },
+  { id: 'egg2', logic: 'egg2', image: 4, text(weT = value => value) { return weT('？！欺负一只肥鱼！？'); } },
 ];
 
 function createOfficialPetPerformer(options) {
@@ -108,7 +108,7 @@ function createOfficialPetPerformer(options) {
         const spec = PET_BUBBLE_SPECS.find(item => item.id === id);
         if (!spec) return;
         shown.clear(); shown.set(id, now());
-        client.showBubble({ text: spec.text, image: spec.image, duration: Math.max(1, tune('bubbleMs')) });
+        client.showBubble({ text: spec.text(options.translate), image: spec.image, duration: Math.max(1, tune('bubbleMs')) });
       };
       const node = (action, seconds, duration) => {
         for (const spec of PET_BUBBLE_SPECS.filter(item => item.logic === logic)) {
