@@ -172,6 +172,44 @@ try {
       await until('!!document.querySelector("[data-we-surface-plate=right-sidebar]")');
       check(tag + ' 隐藏会话的右栏面板不夺走接管资格', await evaluate(`document.querySelector('#right').getAttribute('data-we-surface-runtime')==='right-sidebar' && !document.querySelector('#ghost-right').hasAttribute('data-we-surface-runtime') && !!document.querySelector('[data-we-surface-plate="right-sidebar"]')`));
       await evaluate("document.querySelector('#ghost-session').remove();__glass.sync()");
+      // ── 亚像素裁剪容差（2026-10-20 用户报障："非全屏下右栏玻璃又丢了"）──────────────
+      // 真实形态：DPR 1.25 下宿主 AppFrame 的右边缘算出 1281.5999755859375，右栏面板的
+      // 右边缘算出 1281.6000366210938 —— 相差 0.000061px。祖先裁剪判据用严格 `>`，
+      // 于是"贴合同一条网格边"被读成"超出裁剪框" ⇒ safeRoot 恒假 ⇒ 永不认领 ⇒
+      // 右栏退回 --we-panel-color 实色。这里用**同样的机制**复现：给面板套一个
+      // overflow:hidden 的祖先，其右边缘比面板右边缘小一个浮点误差量级。
+      await evaluate(`(() => {
+        const app=document.querySelector('#app');
+        const wrap=document.createElement('div');wrap.id='clip-wrap';
+        wrap.style.cssText='position:fixed;top:0;left:0;width:'+(innerWidth-0.0001)+'px;height:'+innerHeight+'px;overflow:hidden';
+        document.body.append(wrap);
+        const right=document.querySelector('#right');
+        right.style.width='25%'; right.style.height='180px';
+        wrap.append(right);
+        __glass.sync();return true;
+      })()`);
+      check(tag + ' 祖先裁剪框与目标相差 0.0001px（浮点/取整噪声）不否定接管',
+        await evaluate(`(()=>{
+          const r=document.querySelector('#right');
+          const w=document.querySelector('#clip-wrap');
+          const rr=r.getBoundingClientRect(), wr=w.getBoundingClientRect();
+          const delta=rr.right-wr.right;
+          return delta>0 && delta<0.01                       /* 前提：确实只超了一个浮点误差量级 */
+            && r.getAttribute('data-we-surface-runtime')==='right-sidebar'
+            && !!document.querySelector('[data-we-surface-plate="right-sidebar"]');
+        })()`),
+        await evaluate(`(()=>{const r=document.querySelector('#right').getBoundingClientRect(),w=document.querySelector('#clip-wrap').getBoundingClientRect();return {delta:r.right-w.right,rt:document.querySelector('#right').getAttribute('data-we-surface-runtime'),plate:!!document.querySelector('[data-we-surface-plate="right-sidebar"]')};})()`));
+      // 负对照：真被裁掉 2px（远超容差）时仍必须回退原生 —— 容差不是"取消裁剪判据"。
+      await evaluate("document.querySelector('#clip-wrap').style.width=(innerWidth-2)+'px';__glass.sync()");
+      check(tag + ' 负对照：真被祖先裁掉 2px 仍回退原生（容差没有取消裁剪判据）',
+        await evaluate(`document.querySelector('#right').getAttribute('data-we-surface-runtime')!=='right-sidebar' && !document.querySelector('[data-we-surface-plate="right-sidebar"]')`),
+        await evaluate(`(()=>{const r=document.querySelector('#right').getBoundingClientRect(),w=document.querySelector('#clip-wrap').getBoundingClientRect();return {delta:(r.right-w.right).toFixed(2),rt:document.querySelector('#right').getAttribute('data-we-surface-runtime')};})()`));
+      // 复原夹具：面板回到 #app 下，裁剪包装移除。
+      await evaluate(`(() => {
+        const wrap=document.querySelector('#clip-wrap'), app=document.querySelector('#app'), right=document.querySelector('#right');
+        app.append(right); wrap.remove(); __glass.sync(); return true;
+      })()`);
+      await until('document.querySelector("#right").getAttribute("data-we-surface-runtime")==="right-sidebar"');
       // ── 宿主开合侧栏时的**祖先动画**（用户报障："侧边栏弹出时会出现丢失左右两侧的
       //    玻璃效果…只出现在过程中"）──────────────────────────────────────────────
       // 真实来源：ui-layout 的 AppFrame 在 `.frame[data-animating]` 上做

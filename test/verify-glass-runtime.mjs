@@ -28,4 +28,25 @@ assert.equal(weResolveSurface('extra', {}, { ...safe, safeLocal: false }).mode, 
 assert.equal(weResolveSurface('extra', {}, { ...safe, safeLocal: true }).mode, 'local');
 assert.equal(weResolveSurface('extra', {}, { ...safe, safeLocal: true, occupied: true }).reason, 'carrier-busy');
 assert.equal(weResolveSurface('left-sidebar', {}, { ...safe, software: true }).mode, 'plate');
+
+// ── 亚像素裁剪容差（2026-10-20 用户报障）───────────────────────────────────────
+// 右栏在 DPR 1.25 下永不接管：宿主 AppFrame 右边缘 1281.5999755859375、面板右边缘
+// 1281.6000366210938，相差 0.000061px，而祖先裁剪判据用严格 `>` ⇒ safeRoot 恒假
+// ⇒ 永不认领 ⇒ 右栏退回 --we-panel-color 实色。这条判据在**源码层**钉住容差必须
+// 存在（浏览器腿在 verify-glass-runtime-browser 里用真实几何复现正/负两向）。读源码
+// 而不是跑 DOM，才能在无头环境与 CI 上都守住。
+const surfacesSrc = readFileSync(path, 'utf8');
+// 精确定位**祖先裁剪**那一条（文件里有四处 safeRoot = false，不能用第一次出现）。
+const clipIdx = surfacesSrc.search(/hidden\|clip\/\.test\(cs\.overflow/);
+assert.ok(clipIdx > 0, '必须能定位祖先裁剪判据（否则下面的容差判据恒真）');
+const clipWindow = surfacesSrc.slice(clipIdx, clipIdx + 500);
+assert.ok(/safeRoot = false;/.test(clipWindow), '定位到的片段必须包含裁剪判据本体');
+assert.ok(/CLIP_EPSILON/.test(clipWindow),
+  '祖先裁剪判据必须带亚像素容差（DPR 1.25 下贴边盒子差 0.0001px，严格比较会让表面永不接管）');
+assert.ok(/clip\.(left|right|top|bottom)\s*[-+]\s*CLIP_EPSILON/.test(clipWindow),
+  '容差必须真的参与比较（只声明常量但不用等于没有容差）');
+const epsDecl = surfacesSrc.match(/const CLIP_EPSILON = ([0-9.]+);/);
+assert.ok(epsDecl && Number(epsDecl[1]) > 0 && Number(epsDecl[1]) < 1,
+  '容差必须是 (0, 1) 之间的正数（0 = 没有容差；≥1 会掩盖真实的裁剪回退）');
+
 console.log('PASS | 真实构建无侧栏祖先围栏，解析器遵守策略、保留、可见性与安全回退');
