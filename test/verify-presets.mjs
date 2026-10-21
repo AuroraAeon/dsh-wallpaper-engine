@@ -1569,6 +1569,34 @@ section('④ 客户端形态棘轮：新编排链（合并→落盘→reapplyAll
       .filter((x) => x.json && x.json.assets && x.json.assets.theme);
     check('其余六套出厂预设不携带 theme 段（缺席 = 不动对方主题）',
       others.length === 0, others.map((x) => x.id).join(' ') || '六套均未携带');
+
+    // ⑥ **宿主 GET 的白名单必须放行 theme 段**（实测事故：作者自用声明了 dark，
+    //    但 `publicAssets()` 只白名单 font/mascot/avatar ⇒ theme 在宿主侧被整个丢掉，
+    //    客户端收不到 ⇒ 套用预设永远不切深色，而且**不报错**）。
+    //    这条判据盯的是"声明存在"与"能穿过宿主白名单"之间那个缝 —— 光有 ⑤ 不够。
+    const presetsRouteSrc = readFileSync(join(root, 'lib', 'routes', 'presets.js'), 'utf8');
+    const publicAssetsOk = (s) => {
+      const at = s.indexOf('function publicAssets(');
+      if (at < 0) return false;
+      const body = s.slice(at, s.indexOf('\n}', at) + 2);
+      return /assets\.theme/.test(body) && /out\.theme\s*=/.test(body);
+    };
+    check('theme 段能穿过宿主 publicAssets 白名单（漏了 = 静默不切主题）',
+      publicAssetsOk(presetsRouteSrc));
+    check('negative control: 把 publicAssets 里的 theme 分支删掉会被判出（判据有牙）',
+      !publicAssetsOk(presetsRouteSrc.replace(/const th = assets\.theme;/, 'const th = null;')));
+
+    // ⑦ **端到端**：真实 GET /glass-presets/factory-author 的响应体里必须带 theme 段。
+    //    ⑥ 只证明"源码里有那个分支"；这一条证明"请求真的拿到它" —— 中间还隔着
+    //    readPresetAt → sanitizePresetAssets → publicAssets 三道，任何一道丢段都在这里红。
+    {
+      const res = await get1('factory-author');
+      const body = bodyJson(res) || {};
+      const seg = body && body.assets && body.assets.theme;
+      check('★ 端到端：GET /glass-presets/factory-author 响应携带 assets.theme.preference = "dark"',
+        seg && seg.preference === 'dark',
+        'status=' + res.__state.status + ' theme=' + JSON.stringify(seg || null));
+    }
   }
 }
 
