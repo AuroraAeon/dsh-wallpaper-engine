@@ -112,9 +112,13 @@ assert.ok(presetIntroKey, 'PRESET_INTRO_SEEN_KEY 取不到');
 const profile = mkdtempSync(join(ROOT, '.artifacts', 'preset-intro-profile-'));
 const logPath = join(profile, 'browser.log');
 const logFd = openSync(logPath, 'w');
+// ⚠️ 启动参数与 `verify-glass-runtime-browser.mjs` **逐字对齐**（那份在 windows-latest /
+// ubuntu-latest 上长期为绿）：不加 `--disable-gpu`（CI 的 Edge 在无 GPU 时会起不来，
+// 实测首投红在"调试端口未就绪"），也不带 `about:blank` 导航参数（随后用 Page.navigate 到
+// 本地 http 源，localStorage 才可用）。
 const child = spawn(browser, [
-  '--headless=new', '--no-first-run', '--disable-gpu', '--remote-debugging-port=0',
-  '--user-data-dir=' + profile, 'about:blank',
+  '--headless=new', '--no-first-run', '--remote-debugging-port=0',
+  '--user-data-dir=' + profile,
 ], { stdio: ['ignore', 'ignore', logFd] });
 closeSync(logFd);
 
@@ -134,18 +138,22 @@ const evaluate = async (expression) => {
 };
 
 try {
-  // 等调试端口
+  // 等调试端口。
+  // ⚠️ 20s 在 windows-latest 上不够（实测 CI 首投就红在这条：`浏览器调试端口未就绪`）。
+  // 与 verify-glass-runtime-browser 同口径放宽到 60s；失败时**把浏览器 stderr 带出来** ——
+  // 只报"端口未就绪"等于让人猜是"慢"还是"根本起不来"。
   let port;
-  const deadline = Date.now() + 20000;
+  const deadline = Date.now() + 60000;
   while (!port && Date.now() < deadline) {
     if (child.exitCode !== null) {
-      throw new Error('浏览器提前退出：' + readFileSync(logPath, 'utf8').slice(-2000));
+      throw new Error('浏览器提前退出（exit=' + child.exitCode + '）：' + readFileSync(logPath, 'utf8').slice(-2000));
     }
     try {
       port = Number(readFileSync(join(profile, 'DevToolsActivePort'), 'utf8').split('\n')[0]);
-    } catch { await delay(100); }
+    } catch { await delay(150); }
   }
-  assert.ok(port, '浏览器调试端口未就绪');
+  assert.ok(port, '浏览器调试端口未就绪（60s）：browser=' + browser
+    + ' · exit=' + child.exitCode + ' · stderr=' + readFileSync(logPath, 'utf8').slice(-1200));
 
   const list = await (await fetch('http://127.0.0.1:' + port + '/json/list')).json();
   const page = list.find((t) => t.type === 'page');
