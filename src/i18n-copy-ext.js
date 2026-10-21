@@ -185,6 +185,8 @@ const WE_I18N_EN_EXT = {
   // 的提交（判据见 test/tools/ci-routing.mjs 的 judgeNoticeEdit：区块外逐字节一致 +
   // 区块内代码骨架一致）。增删键 = 改结构 ⇒ 骨架变 ⇒ 回落全量验证链。
   "🎉 更新：拆成八包可自选 · 头像与轮播修复 · 玻璃优化": "🎉 Update: eight togglable packages · avatar & rotation fixes · glass polish",
+  "关掉也能再看": "You can always read it again",
+  "：本公告点「知道了」后不再自动弹出，想回顾就到「设置 → 壁纸引擎 → 关于」点「重新查看本版更新公告」。": ": after you dismiss this notice it won't pop up again — to read it later, open Settings → Wallpaper Engine → About and click “Show this version's update notice again”.",
   "插件拆成八个包了": "Now eight packages",
   "：主包 + 七个功能包，插件管理器里各占一行，可只留你要的；关掉的行连界面一起退出，重启生效。": ": one main package plus seven feature packages, each its own row in the plugin manager — keep only what you want; a disabled row takes its UI with it. Restart to apply.",
   "头像修复": "Avatar fixes",

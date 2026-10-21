@@ -217,6 +217,14 @@
         {
           "kind": "guard",
           "npm": null,
+          "file": "test/verify-preset-intro-browser.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
           "file": "test/verify-extra-glass.mjs",
           "args": [],
           "tier": "hard",
@@ -726,6 +734,14 @@
           "kind": "guard",
           "npm": null,
           "file": "test/verify-notice-routing.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-issue-claim-policy.mjs",
           "args": [],
           "tier": "hard",
           "probe": false
@@ -1062,6 +1078,14 @@
         {
           "kind": "guard",
           "npm": null,
+          "file": "test/verify-preset-intro-browser.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
           "file": "test/verify-extra-glass.mjs",
           "args": [],
           "tier": "hard",
@@ -1571,6 +1595,14 @@
           "kind": "guard",
           "npm": null,
           "file": "test/verify-notice-routing.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-issue-claim-policy.mjs",
           "args": [],
           "tier": "hard",
           "probe": false

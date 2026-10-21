@@ -5,7 +5,7 @@
 > 口径：只统计守卫**代码**里真正碰到的模块（先剥注释），并区分"直接读源文件"与"隔着产物 `lib/client.js`"。
 > 写法：字面量路径 / `join(...)` 拼接 / 唯一 basename / 产物配方 / **前缀族读法** `scopeFiles|scopeText(<前缀>)` / **经共享族助手读**（`import { panelText } from './tools/src-scope.mjs'` + 真调用；族口径封在那个库里，见 DEV-GUIDE §4.6「同时是守卫的库」）/ **真源定位读**（`locate('符号')` / `locateFile('文件名')`，`test/tools/source-locator.mjs`：符号唯一声明在哪就是读了哪个模块）。
 
-模块面 171 个 · 守卫 109 个
+模块面 171 个 · 守卫 111 个
 
 ## 守卫 → 模块
 
@@ -58,6 +58,7 @@
 | `verify-i18n.mjs` | `src/client.js` `src/i18n-copy.js` `src/i18n.js` `src/nav-icon.js` `src/quick-panel.js` `src/sidebar-right.js` `src/styles-base.js` `src/styles-chrome.js` `src/styles-ext.js` `src/styles-panel.js` `src/styles-quick.js` `src/styles-settings.js` `src/styles-shell.js` `src/styles-sidebar.js` `src/styles.js` | ✅ |
 | `verify-inject-contracts.mjs` | `lib/subpackage-boot.js` |  |
 | `verify-inventory-index.mjs` | `lib/inventory.js` |  |
+| `verify-issue-claim-policy.mjs` | — |  |
 | `verify-json-response.mjs` | `lib/json-response.js` `lib/subpackage-boot.js` | ✅ |
 | `verify-logging.mjs` | `lib/host-boot.js` `lib/index.js` `lib/kernel/host-kernel.js` `lib/kernel/host-session.js` `lib/log.js` `lib/notice.js` `lib/routes/diag.js` `lib/routes/scene-serve.js` `lib/serve.js` `lib/webwallgl/renderer.js` `src/live-layer-diag.js` `src/live-layer-gate.js` `src/live-layer-pointer.js` `src/live-layer-underlay.js` `src/live-layer-watch.js` `src/live-layer.js` |  |
 | `verify-media-bridge.mjs` | `packages/media-bridge/lib/backend.js` `packages/media-bridge/lib/provision.js` `packages/media-bridge/lib/supervisor.js` |  |
@@ -86,6 +87,7 @@
 | `verify-picker-props.mjs` | — | ✅ |
 | `verify-picker-upload.mjs` | — | ✅ |
 | `verify-playback-controls.mjs` | — | ✅ |
+| `verify-preset-intro-browser.mjs` | `src/i18n.js` | ✅ |
 | `verify-presets.mjs` | `lib/index.js` `lib/media/media-dirs.js` `lib/routes/presets.js` `lib/settings-schema.js` `src/client.js` `src/glass-panel.js` `src/i18n-copy-core.js` `src/i18n-copy-ext.js` `src/i18n-copy-font.js` `src/i18n-copy-glass.js` `src/i18n-copy-live.js` `src/i18n-copy-panel.js` `src/i18n-copy-pet-link.js` `src/i18n-copy-picker.js` `src/i18n-copy.js` `src/preset-store.js` `src/quick-panel.js` | ✅ |
 | `verify-reachability.mjs` | `lib/index.js` | ✅ |
 | `verify-readability.mjs` | `src/styles-base.js` `src/styles-chrome.js` `src/styles-ext.js` `src/styles-panel.js` `src/styles-quick.js` `src/styles-settings.js` `src/styles-shell.js` `src/styles-sidebar.js` `src/styles.js` | ✅ |
@@ -126,7 +128,7 @@
 | 模块 | 守卫数 | 守卫 |
 |---|---:|---|
 | `lib/cache-dir.js` | 1 | `verify-scene-live` |
-| `lib/client.js` | 45 | `fontset-load-smoke` `live-frame-async-identity-smoke` `live-frame-backfill-smoke` `rotation-live-smoke` `rotation-prepared-leak-smoke` `rotation-smoke` `verify-about` `verify-api-client` `verify-body-caps` `verify-child-kill` `verify-client-sync` `verify-client` `verify-component-fonts` `verify-extra-glass` `verify-fontset` `verify-glass-compositing` `verify-glass-runtime-browser` `verify-glass-runtime` `verify-glass-surfaces` `verify-host-paint-scope` `verify-i18n` `verify-json-response` `verify-module-layout` `verify-occlusion-client` `verify-package-files` `verify-package-publish` `verify-picker-model` `verify-picker-props` `verify-picker-upload` `verify-playback-controls` `verify-presets` `verify-reachability` `verify-readability` `verify-scene-live` `verify-scene` `verify-settings-schema-exports` `verify-softrender` `verify-subpackage-client-half` `verify-subpackage-toggle-roundtrip` `verify-system-fonts` `verify-theme-follow` `verify-theme-layer` `verify-transcode-state` `verify-types` `verify-windows-caption` |
+| `lib/client.js` | 46 | `fontset-load-smoke` `live-frame-async-identity-smoke` `live-frame-backfill-smoke` `rotation-live-smoke` `rotation-prepared-leak-smoke` `rotation-smoke` `verify-about` `verify-api-client` `verify-body-caps` `verify-child-kill` `verify-client-sync` `verify-client` `verify-component-fonts` `verify-extra-glass` `verify-fontset` `verify-glass-compositing` `verify-glass-runtime-browser` `verify-glass-runtime` `verify-glass-surfaces` `verify-host-paint-scope` `verify-i18n` `verify-json-response` `verify-module-layout` `verify-occlusion-client` `verify-package-files` `verify-package-publish` `verify-picker-model` `verify-picker-props` `verify-picker-upload` `verify-playback-controls` `verify-preset-intro-browser` `verify-presets` `verify-reachability` `verify-readability` `verify-scene-live` `verify-scene` `verify-settings-schema-exports` `verify-softrender` `verify-subpackage-client-half` `verify-subpackage-toggle-roundtrip` `verify-system-fonts` `verify-theme-follow` `verify-theme-layer` `verify-transcode-state` `verify-types` `verify-windows-caption` |
 | `lib/component-visibility.js` | 1 | `verify-component-visibility` |
 | `lib/diag-trace.js` | 2 | `verify-host-diag` `verify-scene-live` |
 | `lib/faststart.js` | 3 | `verify-cache-dir` `verify-mp4-vfs` `verify-scene-live` |
@@ -256,7 +258,7 @@
 | `src/i18n-copy-pet-link.js` | 2 | `verify-about` `verify-presets` |
 | `src/i18n-copy-picker.js` | 2 | `verify-about` `verify-presets` |
 | `src/i18n-copy.js` | 3 | `verify-about` `verify-i18n` `verify-presets` |
-| `src/i18n.js` | 1 | `verify-i18n` |
+| `src/i18n.js` | 2 | `verify-i18n` `verify-preset-intro-browser` |
 | `src/layer-core.js` | 1 | `verify-scene-live` |
 | `src/live-layer-diag.js` | 5 | `verify-glass-surfaces` `verify-logging` `verify-occlusion-client` `verify-scene-live` `verify-theme-follow` |
 | `src/live-layer-gate.js` | 5 | `verify-glass-surfaces` `verify-logging` `verify-occlusion-client` `verify-scene-live` `verify-theme-follow` |

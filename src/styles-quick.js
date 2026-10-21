@@ -74,6 +74,12 @@ body[data-we-glass-floaters] .we-update-notice {
     position: fixed; left: 50%; bottom: 26px; z-index: 1100;
     transform: translateX(-50%);
     width: min(600px, 92vw);
+    /* 条目增多后（6 条 16pt 大字）总高会顶出矮视口 ⇒ 面板自身限高 + 正文区滚动。
+       max-height 用 dvh（移动端地址栏伸缩时 vh 会虚高），并给「知道了」留出底部空间：
+       按钮在滚动容器**之外**，永远可点 —— 内容再长也不会把关闭键挤出屏幕。
+       ⚠️ 本段在模板字符串里：注释里的反引号会**提前闭合模板**（实测：后面整片 CSS
+       变成 JS 代码，i18n 守卫当场判成裸中文）。写 CSS 属性名一律不加反引号。 */
+    max-height: min(78dvh, 720px);
     box-sizing: border-box;
     display: flex; flex-direction: column; gap: 10px;
     padding: 16px 18px; border-radius: 14px;
@@ -87,8 +93,11 @@ body[data-we-glass-floaters] .we-update-notice {
     animation: we-notice-in 240ms var(--we-ease, cubic-bezier(0.16, 1, 0.3, 1));
   }
   @keyframes we-notice-in { from { opacity: 0; transform: translate(-50%, 12px); } }
-  .we-update-notice__title { font-weight: 600; font-size: 0.95em; }
-  .we-update-notice__body { font-size: 0.82em; line-height: 1.5; opacity: 0.92; }
+  .we-update-notice__title { font-weight: 600; font-size: 0.95em; flex: 0 0 auto; }
+  /* 正文区是**唯一**可滚动的那一块（面板限高后条目再多也不顶出屏幕）；min-height: 0
+     是 flex 子项能真正缩小/滚动的前提 —— 少了它 overflow-y: auto 永远不触发
+     （与侧栏列表那处踩过的坑同形）。配图在正文区里一起滚。 */
+  .we-update-notice__body { font-size: 0.82em; line-height: 1.5; opacity: 0.92; overflow-y: auto; min-height: 0; overscroll-behavior: contain; }
   .we-update-notice__body p { margin: 0 0 6px; }
   .we-update-notice__hint { font-size: 0.78em; opacity: 0.6; }
   .we-update-notice__btn { align-self: flex-end; }
@@ -96,8 +105,11 @@ body[data-we-glass-floaters] .we-update-notice {
      已经很高，小窗口会顶出视口）——限高 26vh、宽度跟随、居中（用户口径：38vh 在 1080p 下
      ≈410px，几乎独占半屏，压到 26vh 给正文让位）。发丝边 + 投影让它贴着玻璃面板的既有语言，
      而不是一块浮贴的截图。 */
-  .we-update-notice__art { display: block; margin: 0 auto; width: auto; max-width: 100%; max-height: 26vh; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.22); box-shadow: 0 10px 26px rgba(0, 0, 0, 0.28); }
-  .we-update-notice__art-cap { font-weight: 600; font-size: 0.85em; text-align: center; }
+  .we-update-notice__art { display: block; margin: 0 auto; width: auto; max-width: 100%; max-height: 26vh; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.22); box-shadow: 0 10px 26px rgba(0, 0, 0, 0.28);
+    /* 面板限高后允许配图先让位（min-height: 0 是 img 能在 flex 里缩小的前提：
+       img 的固有尺寸会当 min-content，不给 0 就永远不缩）；正文区随后才滚动。 */
+    flex: 0 1 auto; min-height: 0; }
+  .we-update-notice__art-cap { font-weight: 600; font-size: 0.85em; text-align: center; flex: 0 0 auto; }
   /* 大字提示（用户口径）：用户总忽略公告 ⇒ 「侧边栏只是简略版」这一段用 16pt（≈21px，
      约正文两倍）放大喊话。pt 是绝对单位，不吃正文 0.82em 的缩放，行高单独给 1.45
      免得大字挤成一团。 */

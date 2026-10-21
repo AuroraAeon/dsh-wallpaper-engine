@@ -138,6 +138,12 @@ const VERIFY_STEPS = [
   step('test/verify-glass-compat.mjs'),
   step('test/verify-glass-runtime.mjs'),
   step('test/verify-glass-runtime-browser.mjs'),
+  // 「作者自用」推广弹窗的**真浏览器**实测（14 条）：三个门控态（pending/ok/no）的可见性、
+  // B 键点了要消失且写哨兵、A 键要真的走 applyPreset 且失败留弹窗不写哨兵、
+  // 两按钮几何不重叠、深色玻璃底与 z-index 到位。
+  // 为什么要在链上：源码形态判据（verify-presets 那 7 条）挡不住"渲染出来但没有样式"
+  // 或"按钮叠在一起"这两类只有浏览器才看得见的失效。
+  step('test/verify-preset-intro-browser.mjs'),
   step('test/verify-extra-glass.mjs'),
   step('test/verify-package-files.mjs'),
   step('test/verify-package-publish.mjs'),
@@ -256,6 +262,7 @@ const VERIFY_STEPS = [
   //    在区块外插一行代码断言判红 —— 判据恒真时这条会静默变绿，所以必须有真数据对照。
   //    归硬档：这条通道写宽 = 整份客户端免检（安全面，比 docs 通道更贵）。
   step('test/verify-notice-routing.mjs'),
+  step('test/verify-issue-claim-policy.mjs'),
 ];
 
 /** `npm run verify:docs` —— 软档（只出声）。全部经 warn-only 降级。 */
