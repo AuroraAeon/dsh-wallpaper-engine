@@ -241,13 +241,15 @@ jobs:
           fi
           node scripts/ci-routing.mjs docs "${BASE_ARGS[@]}"
 
-  # 公告快通道：`changes` 判定"恰好改了两个公告文件"时**只**跑内容级判定。
-  # 边界（判据：test/verify-notice-routing.mjs 33 条 + test/tools/ci-routing.mjs 的 judgeNoticeEdit）：
+  # 公告快通道：`changes` 判定"改动全落在两个公告文件内"时**只**跑内容级判定。
+  # 边界（判据：test/verify-notice-routing.mjs 36 条 + test/tools/ci-routing.mjs 的 judgeNoticeEdit）：
   #   · 核心步是**真 notice CLI**（`node scripts/ci-routing.mjs notice`），它自己会再分类一遍
   #     ——差异不是纯公告 ⇒ exit 3 明确拒绝，不是假成功；
-  #   · 判定是**内容级**的：两个文件里 `UPDATE NOTICE COPY` 区块**之外**逐字节一致、
+  #   · 判定是**内容级**的：公告文件的 `UPDATE NOTICE COPY` 区块**之外**逐字节一致、
   #     区块**之内**代码骨架一致（只许改引号里的字）。增删条目 / 改 props / 加分支都会
   #     让骨架变 ⇒ exit 1 ⇒ `ci/result` 不放行 ⇒ 作者必须回去跑 `npm run verify:all`；
+  #   · **允许只改单文件**（改中文措辞时英文常可原样复用）；漏译另有一条定向检查：
+  #     区块内每个 `weT("原文")` 都必须在词表族里有键（跨域查，含 i18n-copy-core.js）；
   #   · 不装依赖、不跑任何 `npm run` 步 —— 这条通道的全部价值就是"不跑重活"，
   #     而内容判据本身零依赖（纯字符串比对）；
   #   · 必须 `fetch-depth: 0` + checkout 到 head 树：判据要 `git show <base>:<path>` 取**旧版内容**，
