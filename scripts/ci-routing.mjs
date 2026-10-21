@@ -42,10 +42,25 @@ import {
 import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { parseInlineModules } from '../test/tools/src-scope.mjs';
 import {
   MODES, MODE_FULL, MODE_NOTICE, SYMLINK_MODE, NOTICE_FILES,
   parseRawDiff, classify, auditDocs, judgeResult, judgeNoticeEdit,
 } from '../test/tools/ci-routing.mjs';
+
+/**
+ * 词表族文件（`src/i18n-copy.js` + 各 `src/i18n-copy-*.js`）。
+ * 从构建脚本的 INLINE_MODULES 现解析（单一真源，不抄第二份）；解析失败就退回只查公告
+ * 词表文件 —— 缺文件的真实缺陷由 full 链的 `verify-i18n` 判，不在这里重复实现。
+ */
+function dictionaryFamilyFiles() {
+  try {
+    return parseInlineModules().map(({ file }) => file)
+      .filter((file) => /(?:^|\/)i18n-copy(?:-[^/]+)?\.js$/.test(file));
+  } catch {
+    return ['src/i18n-copy-ext.js'];
+  }
+}
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const posix = (p) => String(p == null ? '' : p).split('\\').join('/');
@@ -406,10 +421,21 @@ export function noticeMain(args, deps) {
   for (const rel of NOTICE_FILES) {
     const show = git(['show', diff.baseRef + ':' + rel]);
     before[rel] = show.ok ? show.out : null;
+    // ⚠️ **两个文件的当前内容都要读**（不只改动那个）：译文覆盖检查要拿未改动的那一侧
+    // 现读的词表来核 —— 只改中文时正需要这条。
     after[rel] = readCurrent(rel);
   }
+  const changed = diff.entries.map((e) => e.path).filter((p) => NOTICE_FILES.includes(p));
 
-  const verdict = judgeNoticeEdit({ before, after });
+  // 译文覆盖检查要**整个词表族**：公告里的「知道了」等词条住在别的域文件
+  // （`src/i18n-copy-core.js`），只查 `i18n-copy-ext.js` 会误判成漏译。族清单从构建脚本的
+  // INLINE_MODULES 现解析（不抄第二份），文件读不到就跳过（缺文件由 full 链判）。
+  const dictionary = dictionaryFamilyFiles()
+    .map((rel) => readCurrent(rel))
+    .filter((t) => t != null)
+    .join('\n');
+
+  const verdict = judgeNoticeEdit({ before, after, changed, dictionary });
   const payload = {
     ok: verdict.ok,
     mode: MODE_NOTICE,

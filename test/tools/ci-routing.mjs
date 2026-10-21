@@ -254,19 +254,20 @@ export function classify(entries) {
   // ⑥ 包清单 / 锁文件 / CI 接线：改了它们就改变了"门禁跑什么"这件事本身。
   const pinned = list.filter((e) => isPinnedPath(e.path));
   if (pinned.length) reasons.push('改动包清单 / 锁文件 / CI 接线：' + pinned.slice(0, 5).map((e) => e.path).join(' '));
-  // ⑦ 公告快通道的**候选**：恰好改动 NOTICE_FILES 这两个文件（且都是新增/修改）。
+  // ⑦ 公告快通道的**候选**：改动文件全都落在 NOTICE_FILES 里（至少一个）。
   // ⚠️ 这条必须在"白名单外"之前判：那两个文件本来就不在文档白名单里，先落到 ⑦ 就永远
   // 走不到这里。同时它只判"候选"，**不判内容** —— 分类层拿不到文件内容（纯函数、不读盘）。
   // 真正的放行由 `notice` 作业调 `judgeNoticeEdit()` 做内容级判定；内容不通过 ⇒ 该作业
   // 退出码 1 ⇒ `ci/result` 不放行。
+  // ⚠️ **允许只改一个**：改中文正文时英文译文常常原样可用（措辞/数字微调）。漏译由
+  // `judgeNoticeEdit` 的译文覆盖检查抓（它读当前词表族，不需要那个文件也被改）。
   const noticeSet = new Set(NOTICE_FILES);
-  const isPureNoticeSet = list.length === NOTICE_FILES.length
-    && list.every((e) => noticeSet.has(norm(e.path)));
+  const isPureNoticeSet = list.length > 0 && list.every((e) => noticeSet.has(norm(e.path)));
   if (isPureNoticeSet && !reasons.length) {
     return {
       mode: MODE_NOTICE,
-      reasons: ['恰好改动公告快通道登记的两个文件（' + NOTICE_FILES.join(' + ') + '）⇒ 交 notice 作业做**内容级**判定'
-        + '（区块外逐字节一致 · 区块内代码骨架一致；结构一变即判红）'],
+      reasons: ['改动全部落在公告快通道登记的文件（' + NOTICE_FILES.join(' / ') + '）⇒ 交 notice 作业做**内容级**判定'
+        + '（区块外逐字节一致 · 区块内代码骨架一致 · 区块内译文覆盖完整；结构一变即判红）'],
       files,
     };
   }
@@ -644,34 +645,41 @@ function firstDiff(a, b) {
 }
 
 /**
- * 公告快通道判定（纯函数）：两份文件内容快照 → `{ ok, reasons }`。
+ * 公告快通道判定（纯函数）：内容快照 + 改动文件集 → `{ ok, reasons }`。
  *
- * `before` / `after` 是 `{ [relPath]: content|null }`（null = 该侧读不到）。只有**恰好**
- * `NOTICE_FILES` 这两个文件、两侧都有内容、且逐条判据全过 ⇒ `ok:true`。
+ * `before` / `after` 是 `{ [relPath]: content|null }` —— **两个文件的快照都要给**
+ * （`null` = 该侧读不到），因为译文覆盖检查需要读**未改动**那一侧的当前内容。
+ * `changed` 是本次**真正改动**的路径列表（缺省取 `after` 的键，便于负对照直喂）。
+ * `dictionary` 是整个**词表族**的拼接文本（可选；缺省用 `after[i18n-copy-ext.js]`）。
+ * 传全族的理由：公告里的「知道了」等词条住在别的域文件（`i18n-copy-core.js`），
+ * 只查单文件会误判成漏译。
+ *
+ * 放行条件：改动文件 ⊆ `NOTICE_FILES`；每个改动文件的公告区块外逐字节一致、区块内骨架一致；
+ * 且公告区块里每个 `weT("原文")` 在词表里有对应键。
  * 失败时的 `reasons` 直接进 CI 日志，说明**为什么回落 full**。
  *
- * @param {{before?: Record<string,string|null>, after?: Record<string,string|null>}} input
+ * @param {{before?: Record<string,string|null>, after?: Record<string,string|null>,
+ *   changed?: string[], dictionary?: string}} input
  * @returns {{ok:boolean, reasons:string[]}}
  */
 export function judgeNoticeEdit(input) {
   const src = input || {};
   const before = src.before || {};
   const after = src.after || {};
-  const paths = Object.keys(after);
+  const changed = (Array.isArray(src.changed) ? src.changed : Object.keys(after)).map((p) => norm(p));
   const reasons = [];
   const fail = (r) => ({ ok: false, reasons: reasons.concat([r]) });
 
-  if (!paths.length) return fail('公告快通道：差异为空');
-  const extra = paths.filter((p) => !NOTICE_FILES.includes(norm(p)));
+  if (!changed.length) return fail('公告快通道：差异为空');
+  const extra = changed.filter((p) => !NOTICE_FILES.includes(p));
   if (extra.length) {
     return fail('公告快通道只覆盖 ' + NOTICE_FILES.join(' / ') + '，本次还改了：'
       + extra.slice(0, 5).join(' ') + (extra.length > 5 ? ' …共 ' + extra.length : ''));
   }
-  if (paths.length !== NOTICE_FILES.length) {
-    return fail('公告快通道要求 ' + NOTICE_FILES.join(' + ') + ' **两个文件同时**在场（公告换血 = 中文正文 + 英文词条），'
-      + '本次只改了：' + paths.join(' ') + ' ⇒ 回落 full');
-  }
-  for (const rel of NOTICE_FILES) {
+  // ⚠️ **允许只改一个文件**：改中文正文时英文译文常常原样可用（措辞微调、改个数字），
+  // 强制两个文件同改只会逼人为凑数去改译文。但"只改中文、英文漏了"仍是真缺陷，
+  // 所以下面 ③ 单独核一次**公告区块内**的译文覆盖（只查这一段，不跑整条 i18n 守卫）。
+  for (const rel of changed) {
     const b = before[rel];
     const a = after[rel];
     if (a == null) return fail('公告快通道：' + rel + ' 新版读不到（删除 / 读失败）');
@@ -695,6 +703,60 @@ export function judgeNoticeEdit(input) {
         + firstDiff(kb, ka));
     }
   }
-  reasons.push('两个文件的公告区块外逐字节一致 · 区块内代码骨架一致 ⇒ 只改了公告文案');
+  // ③ 公告区块内的**译文覆盖**：区块里每个 `weT("原文")` 都必须能在那份词表里找到键。
+  //    只核这一段 —— 不动整条 i18n 守卫（它管全仓 700+ 条，那是 full 链的事）。
+  //    读的是**当前**内容（未改的那个文件也读），所以"只改中文、漏译文"照样能被抓到。
+  //
+  //    ⚠️ 两个范围限制，都有实测理由：
+  //      · 查**整份词表文件**而不是只查它的公告区块 —— 配图 caption / 求星入口这几条的
+  //        词条**故意住在公告区块外**（它们不随公告换血，是稳定面）；
+  //      · 「知道了」的词条住在**另一个域文件**（`src/i18n-copy-core.js`）⇒ 调用方必须把
+  //        整个词表族的内容拼起来传进来（`scripts/ci-routing.mjs` 那边按 DICT_FAMILY 拼）。
+  //        只传 `i18n-copy-ext.js` 会把它误判成漏译（实测：1 条假红）。
+  const clientText = after[NOTICE_FILES[0]];
+  const dictText = after[NOTICE_FILES[1]];
+  if (clientText == null || dictText == null) {
+    return fail('公告快通道：两个文件的当前内容都要可读（client=' + (clientText == null ? '缺失' : 'ok')
+      + ' dict=' + (dictText == null ? '缺失' : 'ok') + '）—— 译文覆盖检查需要两份');
+  }
+  const clientBlock = sliceNoticeBlock(clientText).block;
+  const missing = noticeKeysWithoutTranslation(clientBlock, src.dictionary == null ? dictText : String(src.dictionary));
+  if (missing.length) {
+    return fail('公告区块里有 ' + missing.length + ' 句缺少英文词条（漏译 ⇒ 英文界面会原样露中文）：'
+      + missing.slice(0, 4).map((k) => JSON.stringify(k.slice(0, 28))).join(' ')
+      + (missing.length > 4 ? ' …' : ''));
+  }
+  reasons.push(changed.length === NOTICE_FILES.length ? '两个文件的' : '单个文件的'
+    + '公告区块外逐字节一致 · 区块内代码骨架一致 · 区块内译文覆盖完整 ⇒ 只改了公告文案');
   return { ok: true, reasons };
+}
+
+/**
+ * 公告区块内的**译文覆盖**：抽 `weT("原文")` 的字面量，逐个查词表区块里有没有键。
+ *
+ * 只做"有没有这条键"，不判译文质量/占位符 —— 那些是 `test/verify-i18n.mjs` 的职责，
+ * 在这条**绕过全链**的捷径上重复实现一遍只会多一份会漂的判据。
+ * 不含 CJK 的键（如 `⭐ 去 GitHub 点亮 Star` 这类纯符号/英文混排）同样要求有词条：
+ * 词表双向对账在 full 链上不分语种，这里保持同一口径（少一条就判红）。
+ *
+ * @param {string} clientBlock `src/client.js` 的公告区块原文
+ * @param {string} dictBlock   `src/i18n-copy-ext.js` 的公告区块原文
+ * @returns {string[]} 缺词条的原文
+ */
+export function noticeKeysWithoutTranslation(clientBlock, dictBlock) {
+  const keys = [];
+  const re = /\bweT\("((?:[^"\\]|\\.)*)"/g;
+  let m;
+  while ((m = re.exec(String(clientBlock == null ? '' : clientBlock))) !== null) {
+    // 转义还原（`\"` / `\\`），与 JS 字面量语义一致。
+    let key = m[1];
+    try { key = JSON.parse('"' + key + '"'); } catch { /* 保持原样 */ }
+    if (key && !keys.includes(key)) keys.push(key);
+  }
+  const dict = String(dictBlock == null ? '' : dictBlock);
+  const has = (key) => {
+    const esc = key.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    return dict.includes('"' + esc + '":') || dict.includes('"' + esc + '" :');
+  };
+  return keys.filter((k) => !has(k));
 }

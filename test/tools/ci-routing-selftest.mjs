@@ -19,7 +19,7 @@
  * Usage:  node test/tools/ci-routing-selftest.mjs
  */
 import {
-  MODE_DOCS, MODE_DOCS_ASSETS, MODE_FULL, MODES,
+  MODE_DOCS, MODE_DOCS_ASSETS, MODE_NOTICE, MODE_FULL, MODES,
   DIFF_FLOOR, DOC_ROOT_FILES, GENERATED_CONTRACTS,
   classify, parseNameStatus, parseRawDiff, judgeResult,
   docReferences, conflictMarkers, trailingWhitespace, auditDocs,
@@ -74,7 +74,8 @@ for (const c of CLASSIFY_CASES) {
       '理由里必须有「' + c.reason + '」：' + got.reasons.join(' | '));
   }
 }
-check('MODES 恰为三条路径', JSON.stringify(MODES) === JSON.stringify([MODE_DOCS, MODE_DOCS_ASSETS, MODE_FULL]), MODES.join('/'));
+check('MODES 恰为四条路径（docs / docs-assets / notice / full）',
+  JSON.stringify(MODES) === JSON.stringify([MODE_DOCS, MODE_DOCS_ASSETS, MODE_NOTICE, MODE_FULL]), MODES.join('/'));
 check('GENERATED_CONTRACTS 不含不存在的 docs/ARCHITECTURE.md',
   !GENERATED_CONTRACTS.includes('docs/ARCHITECTURE.md'), GENERATED_CONTRACTS.join(' '));
 check('DOC_ROOT_FILES 覆盖三个根 README',

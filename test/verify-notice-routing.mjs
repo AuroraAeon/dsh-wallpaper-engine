@@ -39,6 +39,7 @@ import {
   sliceNoticeBlock, noticeSkeleton, judgeNoticeEdit, classify,
 } from './tools/ci-routing.mjs';
 import { stripComments, blankStringLiterals } from './tools/js-text.mjs';
+import { parseInlineModules } from './tools/src-scope.mjs';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const read = (rel) => readFileSync(join(ROOT, rel), 'utf8');
@@ -140,9 +141,21 @@ console.log('③④ judgeNoticeEdit：只改文案放行，任何结构/区块�
     judge({ [NOTICE_FILES[0]]: mk(CLIENT_B.replace('const a =', 'const z =')) }).ok === false);
   check('negative control: 区块内**删掉一条键**（词表骨架变）⇒ 判红',
     judge({ [NOTICE_FILES[1]]: mk('  "新标题": "New title",\n') }).ok === false);
-  // 文件集合不完整 / 多余
-  check('negative control: 只改一个文件 ⇒ 判红（公告换血必须两文件同时）',
-    judgeNoticeEdit({ before, after: { [NOTICE_FILES[0]]: mk(CLIENT_B) } }).ok === false);
+  // 文件集合：**允许只改一个**（改中文时英文常可原样复用），但不许改第三个。
+  const onlyClient = judgeNoticeEdit({
+    before, after: { [NOTICE_FILES[0]]: mk(CLIENT_B), [NOTICE_FILES[1]]: mk(DICT_A) },
+    changed: [NOTICE_FILES[0]],
+    dictionary: '  "旧标题": "Old title",\n  "旧正文": "Old body",\n  "新标题": "New title",\n  "新正文": "New body",\n',
+  });
+  check('只改中文正文（译文沿用）⇒ 放行', onlyClient.ok === true, onlyClient.reasons.join(' | '));
+  const onlyClientMissingDict = judgeNoticeEdit({
+    before, after: { [NOTICE_FILES[0]]: mk(CLIENT_B), [NOTICE_FILES[1]]: mk(DICT_A) },
+    changed: [NOTICE_FILES[0]],
+    dictionary: '  "旧标题": "Old title",\n  "旧正文": "Old body",\n',
+  });
+  check('negative control: 只改中文且新键**没有**词条 ⇒ 译文覆盖判红',
+    onlyClientMissingDict.ok === false && /缺少英文词条/.test(onlyClientMissingDict.reasons.join(' ')),
+    onlyClientMissingDict.reasons[0] || '');
   check('negative control: 多改第三个文件 ⇒ 判红',
     judge({ 'lib/index.js': 'const x = 1;\n' }).ok === false);
   check('negative control: 新版文件读不到（删除）⇒ 判红',
@@ -163,7 +176,7 @@ console.log('⑤ classify：notice 候选的形状边界');
   const both = classify([E('M', NOTICE_FILES[0]), E('M', NOTICE_FILES[1])]);
   check('恰好两个公告文件 ⇒ mode=notice', both.mode === MODE_NOTICE, both.mode);
   const one = classify([E('M', NOTICE_FILES[0])]);
-  check('negative control: 只改一个公告文件 ⇒ full（不是 notice）', one.mode === 'full', one.mode);
+  check('只改一个公告文件 ⇒ mode=notice（允许；漏译由内容级判据抓）', one.mode === MODE_NOTICE, one.mode);
   const extra = classify([E('M', NOTICE_FILES[0]), E('M', NOTICE_FILES[1]), E('M', 'lib/index.js')]);
   check('negative control: 两个公告文件 + 一个代码文件 ⇒ full', extra.mode === 'full', extra.mode);
   const deleted = classify([E('D', NOTICE_FILES[0]), E('M', NOTICE_FILES[1])]);
@@ -187,8 +200,20 @@ console.log('⑥ 真仓库：两个文件各有一个唯一标记区块，且"�
         sliced.block.length > 200, sliced.block.length + ' 字节');
     }
   }
-  const self = judgeNoticeEdit({ before: snap, after: snap });
+  // 词表族按构建清单现解析（单一真源）：公告里的「知道了」住在 i18n-copy-core.js。
+  const dictFamily = parseInlineModules().map(({ file }) => file)
+    .filter((file) => /(?:^|\/)i18n-copy(?:-[^/]+)?\.js$/.test(file));
+  const dictionary = dictFamily.map((rel) => { try { return read(rel); } catch { return ''; } }).join('\n');
+  check('词表族可解析出 ≥2 个域文件（译文覆盖检查的输入不是单文件）',
+    dictFamily.length >= 2, dictFamily.join(' '));
+  const self = judgeNoticeEdit({ before: snap, after: snap, dictionary });
   check('当前内容 vs 当前内容 ⇒ 放行（否则这条通道在真实树上不可用）', self.ok, self.reasons.join(' | '));
+  // negative control：把词表里「知道了」那条删掉 ⇒ 译文覆盖必须判红。
+  const narrowed = dictionary.replace(/"知道了":\s*"[^"]*",?/, '');
+  const missDict = judgeNoticeEdit({ before: snap, after: snap, dictionary: narrowed });
+  check('negative control: 词表里少一条公告用到的键 ⇒ 译文覆盖判红',
+    missDict.ok === false && /缺少英文词条/.test(missDict.reasons.join(' ')),
+    missDict.reasons[0] || '');
   // 真数据的负对照：在真 client.js 的区块外插一行代码 ⇒ 必须判红。
   const c = snap[NOTICE_FILES[0]];
   if (c) {
