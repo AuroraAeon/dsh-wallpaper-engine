@@ -9,11 +9,11 @@
 > **Version numbers, issue numbers and performance figures live here**, not on the front page
 > (`README.md` / `README.en.md` keep only version-independent highlights).
 >
-> **Current released version: `v1.3.2`**; the next version `v1.3.3` is in development (`package.json`'s `version`).
+> **Current released version: `v1.3.3`** (npm and GitHub Release published, 2026-10-15); the next version is in development (`package.json`'s `version`).
 >
 > Counts such as `test/verify-scene-live.mjs` `(466)` record the **total at the moment that entry was written**, not the current total (later entries push it up — it is 502 now); they are kept verbatim so each entry still matches its own commit.
 
-### v1.3.3 (unreleased)
+### v1.3.3 (2026-10-15 · published to npm)
 
 #### External official pet bridge (2026-10-20, unreleased)
 
