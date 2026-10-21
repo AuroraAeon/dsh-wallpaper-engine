@@ -175,7 +175,7 @@ console.log('⑥ 真仓库：两个文件各有一个唯一标记区块，且"�
 {
   const snap = {};
   for (const rel of NOTICE_FILES) {
-    let text = null;
+    let text;
     try { text = read(rel); } catch { text = null; }
     snap[rel] = text;
     const sliced = text == null ? null : sliceNoticeBlock(text);
