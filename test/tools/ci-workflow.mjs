@@ -56,10 +56,10 @@ export const SOFT_STEP = 'verify:docs';
 export const ARTIFACT_STEP_NEEDLE = 'git ls-files';
 
 /**
- * 分流后必须齐全的四个作业（判据按 id 对账）：
- * `changes` 分类 → `full` / `docs` 按路径二选一 → `ci/result` 汇总（唯一分支保护勾）。
+ * 分流后必须齐全的五个作业（判据按 id 对账）：
+ * `changes` 分类 → `full` / `docs` / `notice` 按路径三选一 → `ci/result` 汇总（唯一分支保护勾）。
  */
-export const REQUIRED_JOBS = ['changes', 'full', 'docs', 'result'];
+export const REQUIRED_JOBS = ['changes', 'full', 'docs', 'notice', 'result'];
 
 /** 汇总作业的**固定**显示名（分支保护与人工读日志都按它认；改名即判红）。 */
 export const RESULT_JOB_NAME = 'ci/result';
@@ -384,6 +384,31 @@ export function auditCiWorkflow(input) {
       + ' npm=' + JSON.stringify(docsNpmSteps.map(npmScriptOf)) + ' install=' + docsInstalls.length
       + ' if=' + briefOf(docs.if) : '缺 docs 作业');
 
+  // ④-b 公告快通道边界：核心步必须是**真 notice CLI**（`node scripts/ci-routing.mjs notice`），
+  //     且与 changes 取**同一份差异**（三种事件分支齐）。同样：零 npm run 步、不装依赖、
+  //     有路径 if 守卫、checkout 指到 head 树。
+  //     额外一条（这条通道独有的实害）：notice 作业的**内容级判据**依赖 `git show <base>:<path>`
+  //     取旧版内容 ⇒ fetch-depth 必须是 0；浅克隆会让判据 fail-closed 阻断 —— 那是安全方向，
+  //     但会把"纯公告改动"永久判红，等于通道不可用 ⇒ 用判据钉住它真的在。
+  const noticeJob = jobOf('notice');
+  const noticeCliHits = noticeJob
+    ? noticeJob.steps.filter((s) => /node\s+\S*ci-routing\.mjs\s+notice(?:\s|$)/.test(String(s.run || '')))
+    : [];
+  const noticeSameDiff = noticeCliHits.length === 1 && diffAlignedFull(noticeCliHits[0].run);
+  const noticeHeadCheckout = noticeJob
+    ? noticeJob.steps.some((s) => String(s.ref || '').includes(DIFF_HEAD_EXPR)) : false;
+  const noticeNpmSteps = noticeJob ? noticeJob.steps.filter((s) => npmScriptOf(s)) : [];
+  const noticeInstalls = noticeJob ? noticeJob.steps.filter((s) => installsDeps(s)) : [];
+  add('notice-fast-path',
+    'notice 快通道边界：核心步是真 notice CLI（ci-routing.mjs notice · --base/--head 与 changes 按事件分支同一）'
+    + ' · checkout ref 指向 head 树 · 零 npm run 步 · 不装依赖 · 有路径 if 守卫',
+    !!noticeJob && noticeCliHits.length === 1 && noticeSameDiff && noticeHeadCheckout
+      && noticeNpmSteps.length === 0 && noticeInstalls.length === 0
+      && String(noticeJob.if || '').trim().length > 0,
+    noticeJob ? 'cli=' + noticeCliHits.length + ' sameDiff=' + noticeSameDiff + ' headRef=' + noticeHeadCheckout
+      + ' npm=' + JSON.stringify(noticeNpmSteps.map(npmScriptOf)) + ' install=' + noticeInstalls.length
+      + ' if=' + briefOf(noticeJob.if) : '缺 notice 作业');
+
   // ⑤ 软档的定义：`continue-on-error` 只允许长在 full 的 verify:docs 上，别处一律 fail-closed；
   //    且软档必须**真的**带着这个旗标（摘掉 ⇒ 内务判据反过来拦下所有人的改动）。
   const coerce = steps.filter((s) => s.continueOnError);
@@ -416,12 +441,12 @@ export function auditCiWorkflow(input) {
   // ⑦ 汇总 fail-closed：ci/result 用 judgeResult 核验"该跑的作业真的 success"，
   //    且 `if: always()`（**作业级**才是本意：docs/full 按设计跳过时汇总作业仍要被调度执行；
   //    步骤级写法在作业整体被 skip 时根本不会执行，等于没写）、且 needs 三条腿齐全。
-  const resultNeedsOk = !!result && ['changes', 'docs', 'full'].every((n) => result.needs.includes(n));
+  const resultNeedsOk = !!result && ['changes', 'docs', 'notice', 'full'].every((n) => result.needs.includes(n));
   const resultAlways = !!result && (/always\(\)/.test(String(result.if || ''))
     || result.steps.some((s) => /always\(\)/.test(String(s.if || ''))));
   const resultJudge = !!result && result.steps.some((s) => String(s.run || '').includes('judgeResult'));
   add('result-gate',
-    '汇总作业 needs [changes, docs, full] · if: always() · 用 judgeResult 核验（失败/取消/缺失/意外跳过/未知 mode 都不放行）',
+    '汇总作业 needs [changes, docs, notice, full] · if: always() · 用 judgeResult 核验（失败/取消/缺失/意外跳过/未知 mode 都不放行）',
     !!result && resultNeedsOk && resultAlways && resultJudge,
     result ? 'needs=' + JSON.stringify(result.needs) + ' always=' + resultAlways + ' judge=' + resultJudge
       : '缺 result 作业');

@@ -122,7 +122,7 @@ control('给 verify 加 continue-on-error', setContinueOnError(workflowText, 've
 control('去掉 verify:docs 的 continue-on-error', setContinueOnError(workflowText, SOFT_STEP, false), 'soft-tier');
 control('ci/result 不再 always()', removeLineMatching(workflowText, /if: always\(\)/), 'result-gate');
 control('ci/result 不用 judgeResult', removeLineMatching(workflowText, /judgeResult/), 'result-gate');
-control('ci/result 少 needs 一条腿', removeLineMatching(workflowText, /needs: \[changes, docs, full\]/), 'result-gate');
+control('ci/result 少 needs 一条腿', removeLineMatching(workflowText, /needs: \[changes, docs, notice, full\]/), 'result-gate');
 control('改用 pull_request_target', insertTopLevel(workflowText, 'pull_request_target:\n  branches: [main]'), 'fork-safety');
 control('顶层加 paths-ignore', insertTopLevel(workflowText, 'paths-ignore:\n  - "docs/**"'), 'fork-safety');
 control('checkout 不取全历史', removeLineMatching(workflowText, /fetch-depth: 0/), 'checkout-depth');

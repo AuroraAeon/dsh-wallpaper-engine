@@ -248,6 +248,14 @@ const VERIFY_STEPS = [
   //    差异 exit 3 拒绝、git 取不到差异 exit 2 阻断、judgeResult 放行/拒绝、参数严格解析）。
   //    归硬档：分类器误判 docs / fail-closed 失效 = 代码改动走快通道绕过全量门禁（安全面）。
   step('test/verify-ci-routing.mjs'),
+  // ⑫ 公告快通道（CI 的 `notice` 模式）：只改更新公告文案的提交绕过全量链 —— 这是**唯一**
+  //    一条能放行 `src/client.js`（整份浏览器半边）改动的捷径，因此它的判据必须是**内容级**
+  //    而不是按文件名：两个公告文件的 `UPDATE NOTICE COPY` 区块**外**逐字节一致、区块**内**
+  //    代码骨架一致（只许改引号里的字）。本守卫 33 条，其中 20 条是负对照（区块外加代码 /
+  //    区块内增删条目 / 改 props / 少改一个文件 / 标记被删 …），另有一条拿**真 src/client.js**
+  //    在区块外插一行代码断言判红 —— 判据恒真时这条会静默变绿，所以必须有真数据对照。
+  //    归硬档：这条通道写宽 = 整份客户端免检（安全面，比 docs 通道更贵）。
+  step('test/verify-notice-routing.mjs'),
 ];
 
 /** `npm run verify:docs` —— 软档（只出声）。全部经 warn-only 降级。 */

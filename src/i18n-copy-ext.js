@@ -180,20 +180,29 @@ const WE_I18N_EN_EXT = {
   "正在应用…": "Applying…",
   "采用「作者自用」": "Apply “Author's preset”",
   "保持我的设置": "Keep my settings",
-  // ── 更新公告（当前一版公告的标题 / 配图 caption / 四条正文 / 按钮）──
-  "🎉 更新：头像导入大升级 · 一组修复 · 省电与外观提示": "🎉 Update: avatar import overhaul · a batch of fixes · power saving & look tip",
+  // ══ UPDATE NOTICE COPY（begin）══════════════════════════════════════════════
+  // 本区段是**纯公告文案词条**：CI 的 `notice` 快通道只在这一段内放行"只改字符串内容"
+  // 的提交（判据见 test/tools/ci-routing.mjs 的 judgeNoticeEdit：区块外逐字节一致 +
+  // 区块内代码骨架一致）。增删键 = 改结构 ⇒ 骨架变 ⇒ 回落全量验证链。
+  "🎉 更新：拆成八包可自选 · 头像与轮播修复 · 玻璃优化": "🎉 Update: eight togglable packages · avatar & rotation fixes · glass polish",
+  "插件拆成八个包了": "Now eight packages",
+  "：主包 + 七个功能包，插件管理器里各占一行，可只留你要的；关掉的行连界面一起退出，重启生效。": ": one main package plus seven feature packages, each its own row in the plugin manager — keep only what you want; a disabled row takes its UI with it. Restart to apply.",
+  "头像修复": "Avatar fixes",
+  "：助手头像不再成片消失，新增「助手头像间隔」滑块（1–30，默认 6）；裁切框不再空白、不用点第二次。": ": assistant avatars no longer vanish in bulk — a new “Assistant avatar spacing” slider (1–30, default 6); the crop box is no longer blank and no longer needs a second click.",
+  "轮播终于能调了": "Rotation is adjustable again",
+  "：此前无论怎么设都锁死 30 分钟，现已恢复 1–1440 分钟；新增「视频播完就换」档。": ": it used to be locked at 30 minutes no matter what you set; 1–1440 minutes now works, plus a new “switch when the video ends” mode.",
+  "玻璃优化": "Glass polish",
+  "：分数缩放下右栏不再丢失；开合动画中两侧不再同时消失；第二个会话不再抢走右栏。": ": the right sidebar no longer loses its glass under fractional scaling; both sides no longer vanish together mid-animation; a second session no longer steals it.",
+  "另修一批": "Also fixed",
+  "：大图上传不再卡死壁纸库；阅读页底色找得回；设置快速改回原值不再漏存。": ": large uploads no longer freeze the wallpaper library; the document-reading background setting is findable again; quickly reverting a setting no longer drops the save.",
+  "本版为源码灰测，尚未发布到 npm。": "This is a source-code grey-test build, not yet published to npm.",
+  // ══ UPDATE NOTICE COPY（end）════════════════════════════════════════════════
+  // 配图 caption 与提示行不随公告换血（配图与"知道了"是稳定面），住在区块外。
   "新朋友「星来」登场": "The blue-haired maid mascot says hi",
   // 公告配图下那行（求星入口）的文案与关于页那枚 Star 按钮**同一句** ⇒ 复用其既有词条
   //（上面 "⭐ 去 GitHub 点亮 Star"，151 行那份），此处**不得**再登记一份：
   // 同键重复会被 test/verify-i18n.mjs 的「词表内无重复键」判红（同名键在对象字面量里静默去重，
   // 后写的那份会被吃掉）。
-  "头像导入大升级！": "Avatar imports leveled up!",
-  "现支持 SVG / GIF 等更多格式，超大图可自动压缩，上传前还能先裁切 —— 都在「扩展」分页。": "SVG / GIF and more formats are supported, oversized images can be auto-compressed, and you can crop before uploading — all under the Extensions tab.",
-  "修复一批": "A batch of fixes",
-  "：多窗口实时渲染不再互相踢掉；网页壁纸音频可视化恢复跳动；设置图标对齐、思考块行内代码与下拉弹层显示恢复正常。": ": live scene wallpapers in multiple windows no longer kick each other off; web-wallpaper audio visuals react to music again; settings icons, inline code in thinking blocks and dropdown popups render correctly again.",
-  "Linux 用户更省电": "Linux users save more battery",
-  "：窗口被遮挡时自动降帧，完全遮挡时暂停渲染。": ": a covered window drops frames, a fully covered one pauses rendering.",
-  "在设置中启用深色模式 + 「作者自用」预设，为本插件最佳效果之一！": "Enable dark mode + the “Author's preset” in Settings — one of this plugin's best looks!",
   "升级后建议重启一次 DSH，改动才完整生效；本提示每个新版本只出现一次，点下方按钮关闭后不再弹出。": "Restart DSH once after upgrading so changes fully apply; this notice shows once per version — dismiss it and it won't come back.",
 };
 

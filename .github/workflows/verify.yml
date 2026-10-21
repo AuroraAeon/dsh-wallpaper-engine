@@ -241,14 +241,50 @@ jobs:
           fi
           node scripts/ci-routing.mjs docs "${BASE_ARGS[@]}"
 
-  # 固定汇总作业：**唯一**该被分支保护要求的勾。if: always()（**作业级**）—— docs/full 按设计
-  # 会有一条跳过，汇总必须在跳过的情况下也跑起来，用 judgeResult 核验"这次该跑的作业真的
-  # success"：失败、取消、缺失、**意外跳过**、mode 未登记（outputs 没接上）都不放行
+  # 公告快通道：`changes` 判定"恰好改了两个公告文件"时**只**跑内容级判定。
+  # 边界（判据：test/verify-notice-routing.mjs 33 条 + test/tools/ci-routing.mjs 的 judgeNoticeEdit）：
+  #   · 核心步是**真 notice CLI**（`node scripts/ci-routing.mjs notice`），它自己会再分类一遍
+  #     ——差异不是纯公告 ⇒ exit 3 明确拒绝，不是假成功；
+  #   · 判定是**内容级**的：两个文件里 `UPDATE NOTICE COPY` 区块**之外**逐字节一致、
+  #     区块**之内**代码骨架一致（只许改引号里的字）。增删条目 / 改 props / 加分支都会
+  #     让骨架变 ⇒ exit 1 ⇒ `ci/result` 不放行 ⇒ 作者必须回去跑 `npm run verify:all`；
+  #   · 不装依赖、不跑任何 `npm run` 步 —— 这条通道的全部价值就是"不跑重活"，
+  #     而内容判据本身零依赖（纯字符串比对）；
+  #   · 必须 `fetch-depth: 0` + checkout 到 head 树：判据要 `git show <base>:<path>` 取**旧版内容**，
+  #     浅克隆取不到 ⇒ 判据 fail-closed 阻断（不是静默放行）。
+  notice:
+    name: 公告快通道（notice）
+    if: needs.changes.outputs.mode == 'notice'
+    needs: [changes]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.event.after || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: notice —— 内容级判定（区块外逐字节一致 · 区块内代码骨架一致）
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.pull_request.base.sha }}" ]; then
+            BASE_ARGS=(--base "${{ github.event.pull_request.base.sha }}" --head "${{ github.event.pull_request.head.sha }}" --base-mode merge-base)
+          elif [ -n "${{ github.event.before }}" ]; then
+            BASE_ARGS=(--base "${{ github.event.before }}" --head "${{ github.event.after }}" --base-mode exact)
+          else
+            BASE_ARGS=(--base "${{ github.sha }}" --head "${{ github.sha }}" --base-mode exact)
+          fi
+          node scripts/ci-routing.mjs notice "${BASE_ARGS[@]}"
+
+  # 固定汇总作业：**唯一**该被分支保护要求的勾。if: always()（**作业级**）—— docs/notice/full
+  # 按设计会各跳过几条，汇总必须在跳过的情况下也跑起来，用 judgeResult 核验"这次该跑的作业
+  # 真的 success"：失败、取消、缺失、**意外跳过**、mode 未登记（outputs 没接上）都不放行
   # （判据：test/tools/ci-routing.mjs 的 judgeResult；CLI：scripts/ci-routing.mjs judgeResult）。
   result:
     name: ci/result
     if: always()
-    needs: [changes, docs, full]
+    needs: [changes, docs, notice, full]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -261,5 +297,6 @@ jobs:
             --mode "${{ needs.changes.outputs.mode }}" \
             --changes "${{ needs.changes.result }}" \
             --docs "${{ needs.docs.result }}" \
+            --notice "${{ needs.notice.result }}" \
             --full "${{ needs.full.result }}" \
             --github-output

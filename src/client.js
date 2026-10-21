@@ -5413,7 +5413,7 @@ function RopeDock() {
 // ⚠️ 公告正文与配图是**随版本换血**的：改内容就要升哨兵（否则看过旧版的用户永远看不到
 // 新说明，改了等于没改 ⇒ 重弹一次是设计意图）。配图下方那行是**求星跳转** —— 与正文四条
 // 各管一件事，同守 `art === "ready"` 的门控。
-const NOTICE_VERSION = "1.3.3";
+const NOTICE_VERSION = "1.3.3-grey.1";
 // 配图就绪探针的节奏：HEAD 轮询到新白名单在场（= 后端已重启）才弹；旧后端一直
 // 不在场超过 WAIT 则降级为**无图**弹出（文案信息完整；求星入口另有「关于」页那枚常驻按钮
 // 与它的重看按钮，不靠弹窗这一条命）。探针打在 /about-qr 上是自清洁的：404 响应 no-store、200
@@ -5542,8 +5542,15 @@ function UpdateNotice() {
     emit();
   };
   if (!show) return null;
+  // ══ UPDATE NOTICE COPY（begin）══════════════════════════════════════════════
+  // 下面到 end 之间的区段是**纯公告文案**：CI 的 `notice` 快通道只在这一段内放行
+  // "只改字符串内容"的提交。判据是**内容级**的（见 test/tools/ci-routing.mjs 的
+  // judgeNoticeEdit）：① 区块外逐字节完全一致；② 区块内剥掉字符串内容后的**代码骨架**
+  // 逐字一致。改结构（增删条目、改 props、加分支）⇒ 骨架变 ⇒ 回落 `npm run verify:all`。
+  // ⚠️ 不要在这里写注释以外的逻辑：注释会被骨架判据剥掉（所以写注释是安全的），
+  //    任何可执行 token 的增删都会让骨架判据判红。
   return React.createElement("div", { className: "we-update-notice", role: "alert" },
-    React.createElement("div", { className: "we-update-notice__title" }, weT("🎉 更新：头像导入大升级 · 一组修复 · 省电与外观提示")),
+    React.createElement("div", { className: "we-update-notice__title" }, weT("🎉 更新：拆成八包可自选 · 头像与轮播修复 · 玻璃优化")),
     // 只有 ready 才渲染配图与说明行（timeout 降级态无图弹出，正文信息自足）。
     // 图下那行是**求星入口**（见下面的说明），所以它随配图同一条门控：无图降级态没有它，
     // 但求星入口另有「关于」页那枚常驻按钮兜住，不是唯一命脉。
@@ -5574,24 +5581,30 @@ function UpdateNotice() {
         title: weT("在浏览器里打开项目仓库"),
       }, weT("⭐ 去 GitHub 点亮 Star"))) : null,
     React.createElement("div", { className: "we-update-notice__body" },
-      // 行文体例（用户口径：简单公告）：简洁 + 大字 —— 只讲四件事，
+      // 行文体例（用户口径：简单公告）：简洁 + 大字 —— 只讲五件事，
       // 全部走 16pt callout（.we-update-notice__callout），每条一句不加尾巴长文。
       React.createElement("p", { className: "we-update-notice__callout" },
-        "① ", noticeEx(2), React.createElement("strong", null, weT("头像导入大升级！")),
-        weT("现支持 SVG / GIF 等更多格式，超大图可自动压缩，上传前还能先裁切 —— 都在「扩展」分页。")),
+        "① ", noticeEx(2), React.createElement("strong", null, weT("插件拆成八个包了")),
+        weT("：主包 + 七个功能包，插件管理器里各占一行，可只留你要的；关掉的行连界面一起退出，重启生效。")),
       React.createElement("p", { className: "we-update-notice__callout" },
-        "② ", noticeEx(2), React.createElement("strong", null, weT("修复一批")),
-        weT("：多窗口实时渲染不再互相踢掉；网页壁纸音频可视化恢复跳动；设置图标对齐、思考块行内代码与下拉弹层显示恢复正常。")),
+        "② ", noticeEx(2), React.createElement("strong", null, weT("头像修复")),
+        weT("：助手头像不再成片消失，新增「助手头像间隔」滑块（1–30，默认 6）；裁切框不再空白、不用点第二次。")),
       React.createElement("p", { className: "we-update-notice__callout" },
-        "③ ", noticeEx(2), React.createElement("strong", null, weT("Linux 用户更省电")),
-        weT("：窗口被遮挡时自动降帧，完全遮挡时暂停渲染。")),
+        "③ ", noticeEx(2), React.createElement("strong", null, weT("轮播终于能调了")),
+        weT("：此前无论怎么设都锁死 30 分钟，现已恢复 1–1440 分钟；新增「视频播完就换」档。")),
       React.createElement("p", { className: "we-update-notice__callout" },
-        "④ ", noticeEx(2), React.createElement("strong", null, weT("在设置中启用深色模式 + 「作者自用」预设，为本插件最佳效果之一！"))),
+        "④ ", noticeEx(2), React.createElement("strong", null, weT("玻璃优化")),
+        weT("：分数缩放下右栏不再丢失；开合动画中两侧不再同时消失；第二个会话不再抢走右栏。")),
+      React.createElement("p", { className: "we-update-notice__callout" },
+        "⑤ ", noticeEx(2), React.createElement("strong", null, weT("另修一批")),
+        weT("：大图上传不再卡死壁纸库；阅读页底色找得回；设置快速改回原值不再漏存。")),
       React.createElement("p", { className: "we-update-notice__hint" },
-        weT("升级后建议重启一次 DSH，改动才完整生效；本提示每个新版本只出现一次，点下方按钮关闭后不再弹出。")),
+        weT("升级后建议重启一次 DSH，改动才完整生效；本提示每个新版本只出现一次，点下方按钮关闭后不再弹出。"),
+        weT("本版为源码灰测，尚未发布到 npm。")),
     ),
     React.createElement("button", { className: "we-update-notice__btn we-picker__btn", type: "button", onClick: dismiss }, weT("知道了")),
   );
+  // ══ UPDATE NOTICE COPY（end）════════════════════════════════════════════════
 }
 
 // ── One-time preset intro dialog（「作者自用」推广弹窗，用户口径）──────────
