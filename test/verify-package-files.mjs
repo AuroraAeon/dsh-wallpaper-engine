@@ -375,8 +375,8 @@ async function main() {
     // 完整源码部署与发布清单回归新增一条硬门禁。
     // 官方桥接取代内置与私有运动面：退役八步、新增正式排播一步，净减七步。
     // 公告快通道守卫（verify-notice-routing）+ 预设弹窗浏览器实测各加一步：verify 90 → 91，all 103 → 104。
-    // 事前认领审批门禁增加一条硬档，防止外部 PR 绕过贡献受理流程。
-    const CHAIN_FLOOR = { verify: 92, docs: 6, smoke: 6, all: 105 };
+    // 事前认领审批门禁增加一条硬档；推广弹窗下线时其浏览器实测同步删除（净回到 91 / 104）。
+    const CHAIN_FLOOR = { verify: 91, docs: 6, smoke: 6, all: 104 };
     /** 地板表与 GROUPS 的对齐体检：键名必须与**组名**逐一对齐（纯函数 ⇒ 负对照可直接喂）。 */
     const floorGaps = (groups, floors) => groups.map(([, g]) => g).filter((g) => !Number.isInteger(floors[g]));
     const problems = floorGaps(GROUPS, CHAIN_FLOOR).map((g) => '地板表缺组 ' + g

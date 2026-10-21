@@ -261,6 +261,17 @@ async function loadPersisted() {
     const parsedLocal = readPersistedRaw();
     if (!stale) Object.assign(selection, parsedLocal ? sanitizeSettings(parsedLocal) : { id: "", ...DEFAULTS });
     if (parsedLocal) pushPersisted();
+    else if (!stale) {
+      // ── 首次安装：宿主没存档，本机也没有 ⇒ 套用「深色 + 作者自用」──
+      // 判据就是**两边都空**（用户口径：新装默认好看，升级用户一概不受影响）。
+      // `!parsedLocal` 这一条是关键：宿主文件被删但浏览器 localStorage 还在（老用户重装宿主）时，
+      // 本地存档说了算，绝不能拿默认外观盖掉他。
+      // 不设任何哨兵键：本分支只在"真正第一次"成立，套用后 pushPersisted() 写出存档 ⇒
+      // 下次启动走宿主分支，天然只触发一次。
+      // ⚠️ 本文件在 INLINE_MODULES 里排在 `preset-store.js` **之前**，直接调 applyPreset 会撞 TDZ ⇒
+      // 经注入钩子 `firstRunAdopt`（在 client.js 里定义、读到的是已初始化的函数）。
+      if (typeof firstRunAdopt === "function") firstRunAdopt();
+    }
   } else {
     // Host unreachable (route missing / static load): localStorage fallback.
     if (!stale) Object.assign(selection, readPersisted());

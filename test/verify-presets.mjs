@@ -1517,51 +1517,58 @@ section('④ 客户端形态棘轮：新编排链（合并→落盘→reapplyAll
       handlers.concat('onNoSuchHandler').some((h) => !new RegExp('\\b' + h + '\\b').test(qpAll)));
   }
 
-  // ── 「作者自用」推广弹窗（PresetIntroDialog，用户口径：更新后一次性二选一）──
-  // 组件挂在 RopeDock 根上（渲染台够不到）⇒ 源码级判据，与 verify-about ⑤ 公告守卫同思路。
+  // ── 首次安装自动套用「深色 + 作者自用」（取代原来的推广弹窗，用户口径）──────
+  // 口径：新装默认就是作者在用的那套观感，不再弹窗问"要不要试试"。
+  // 判据钉四件事：① 弹窗确实**下线**了（组件/挂载/哨兵都不留）；② 触发点是
+  // 「宿主无存档 **且** 本机无本地存档」；③ 预设携带深色的**唯一出口**是宿主 theme 服务；
+  // ④ factory-author 真的声明了 dark。
   {
-    const introSrc = stripComments(readFileSync(join(root, 'src', 'client.js'), 'utf8'));
-    check('弹窗组件存在，且在 RopeDock 两处挂载（隐藏分支 + 主返回树，与公告同位）',
-      /function PresetIntroDialog\(\)/.test(introSrc)
-      && (introSrc.match(/React\.createElement\(PresetIntroDialog, null\)/g) || []).length === 2,
-      (introSrc.match(/React\.createElement\(PresetIntroDialog, null\)/g) || []).length + ' 处挂载');
-    check('门控三件齐：hostLoaded + 未答过（localStorage 哨兵）+ 公告已处理（先公告后弹窗，不同屏）',
-      /sel\.hostLoaded && !seen && sel\.noticeSeen === NOTICE_VERSION/.test(introSrc)
-      && /PRESET_INTRO_SEEN_KEY = "dsh-wallpaper-engine:preset-intro-seen"/.test(introSrc));
-    // A 键：走预设卡片同一条 applyPreset 整快照链（settings 合并 + 资产落位 + 失败滚回），
-    // 且**成功才记已读** —— 失败留弹窗可重试，"答过了"不能伪装成"应用过了"。
-    const aGuard = (s) => /applyPreset\("factory-author"\)/.test(s)
-      && /if \(ok\) markSeen\(\); else setFailed\(true\);/.test(s);
-    check('A 键 = applyPreset("factory-author") 整快照链，成功才记已读（失败留弹窗）', aGuard(introSrc));
-    check('negative control: 把"成功才记已读"改成"总是记已读"会被判出（判据有牙）',
-      !aGuard(introSrc.replace('else setFailed(true);', 'else markSeen();')));
-    check('B 键只记已读不碰设置（onClick: markSeen 恰一处；A 键走 accept）',
-      (introSrc.match(/onClick: markSeen/g) || []).length === 1,
-      (introSrc.match(/onClick: markSeen/g) || []).length + ' 处');
-    // 哨兵住 localStorage ⇒ **不许**进 settings-schema（进了 schema 就会出现在 sanitize
-    // 输出与 golden 夹具里，两套"每机状态"口径打架；对照：noticeSeen 走 settings 是历史先例）。
-    const introSchemaSrc = readFileSync(join(root, 'lib', 'settings-schema.js'), 'utf8');
-    check('哨兵是 localStorage 口径（键定义在 client.js；settings-schema 无 preset-intro 痕迹）',
-      /dsh-wallpaper-engine:preset-intro-seen/.test(introSrc) && !/preset-intro/.test(introSchemaSrc));
-    // ── #199 窗口期门控：开之前先探一次宿主**正文**路由（与公告美术闸同思路）──
-    //    探针打的是**这一份**预设的正文（清单 200 只说明路由挂着，说明不了它读得懂 ——
-    //    旧后端读新 tag 文件正是读不懂）；判定按**模块级**缓存（页面级事实，多面板只探一轮）；
-    //    非 ok（404/405/422/断网）一律不渲染：A 键在那个后端上必然失败，不值得打扰用户。
-    const probeGate = (s) => /let presetIntroProbeVerdict = "";/.test(s)
-      && /if \(presetIntroProbeVerdict\) \{ setProbe\(presetIntroProbeVerdict\); return undefined; \}/.test(s)
-      && /if \(!eligible\) return undefined;/.test(s)
-      && /gpJson\(glassPresetUrl\("factory-author"\)\)\.then\(\(r\) => \{/.test(s)
-      && /presetIntroProbeVerdict = r\.ok && !r\.error \? "ok" : "no";/.test(s)
-      && /if \(!eligible \|\| probe !== "ok"\) return null;/.test(s);
-    check('★ #199 窗口期：弹窗开之前先探 GET /glass-presets/factory-author，非 ok 一律不渲染',
-      probeGate(introSrc));
-    check('negative control: 把门放宽成"eligible 就渲染"（不看探针结论）会被判出（判据有牙）',
-      !probeGate(introSrc.replace('if (!eligible || probe !== "ok") return null;', 'if (!eligible) return null;')));
-    check('★ #199：探针结论缓存在**模块级**（页面级事实，多面板只探一轮；刷新即重探）',
-      /let presetIntroProbeVerdict = "";/.test(introSrc)
-      && /const \[probe, setProbe\] = React\.useState\(presetIntroProbeVerdict \|\| "pending"\);/.test(introSrc));
-    check('★ #199：探针归 "no" 的路径上**不写**已看哨兵（窗口期保持安静，重启后照常弹一次）',
-      !/presetIntroProbeVerdict = r\.ok && !r\.error \? "ok" : "no";[\s\S]{0,200}markSeen/.test(introSrc));
+    const clientSrc = stripComments(readFileSync(join(root, 'src', 'client.js'), 'utf8'));
+    const persistenceSrc = stripComments(readFileSync(join(root, 'src', 'persistence.js'), 'utf8'));
+    const presetStoreSrc = stripComments(readFileSync(join(root, 'src', 'preset-store.js'), 'utf8'));
+    const schemaSrc = readFileSync(join(root, 'lib', 'settings-schema.js'), 'utf8');
+
+    // ① 弹窗彻底下线：组件、挂载点、localStorage 哨兵都不许留。
+    const dialogGone = (s) => !/PresetIntroDialog/.test(s)
+      && !/PRESET_INTRO_SEEN_KEY/.test(s) && !/preset-intro-seen/.test(s);
+    check('推广弹窗已整体下线（组件 / 挂载点 / localStorage 哨兵都不留）', dialogGone(clientSrc));
+    check('negative control: 把组件名塞回去会被判出（判据有牙）',
+      !dialogGone(clientSrc + ' function PresetIntroDialog() {}'));
+
+    // ② 触发点：`loadPersisted()` 的「宿主无存档」分支，且要求**本机也无本地存档**。
+    //    只判 `hostOk` 会把"宿主文件被删但本地还在"的老用户一起套用 —— 那是覆盖用户设置。
+    const firstRunGate = (s) => /else if \(!stale\) \{[\s\S]{0,700}firstRunAdopt\(/.test(s)
+      && /if \(parsedLocal\) pushPersisted\(\);\s*\n\s*else if \(!stale\)/.test(s);
+    check('首次安装判据 = 宿主无存档 **且** 本机无本地存档（升级用户不受影响）',
+      firstRunGate(persistenceSrc));
+    check('negative control: 去掉"本机也无存档"这半条会被判出（会把老用户盖掉）',
+      !firstRunGate(persistenceSrc.replace('if (parsedLocal) pushPersisted();', '')));
+
+    // ③ 预设携带深色的唯一出口：宿主 theme 服务，且**只在声明了才写、失败不回滚**。
+    const themeLeg = (s) => /assets\.theme/.test(s) && /themeFollowApplyPreference\(themeSeg\.preference\)/.test(s)
+      && /try \{ themeFollowApplyPreference/.test(s);
+    check('预设的 theme 段经 themeFollowApplyPreference 写宿主服务（失败不回滚已落好的段）',
+      themeLeg(presetStoreSrc));
+    check('negative control: 把主题腿写成"失败就 return false"（会连设置段一起回滚）会被判出',
+      !themeLeg(presetStoreSrc.replace('try { themeFollowApplyPreference', 'if (!themeFollowApplyPreference')));
+
+    // ④ 消毒面：只认 dark / light，别的写法整段丢掉（不猜 auto/system）。
+    const themeSanitize = (s) => /const PREFERENCE_VALUES = \['dark', 'light'\]/.test(s)
+      && /PREFERENCE_VALUES\.includes\(pref\)/.test(s);
+    check('theme 段白名单只有 dark / light（auto / system 不猜，猜了就是空操作）',
+      themeSanitize(schemaSrc));
+
+    // ⑤ 预设有声明：factory-author 携带 `preference: "dark"`，其余出厂预设**不携带**
+    //   （缺席 = 不动对方主题；七套全声明会让"套紫色心情"也强行改深浅）。
+    const author = JSON.parse(readFileSync(join(root, 'lib', 'glass-presets', 'factory-author.json'), 'utf8'));
+    check('factory-author 声明 assets.theme.preference = "dark"',
+      author && author.assets && author.assets.theme && author.assets.theme.preference === 'dark',
+      JSON.stringify(author && author.assets && author.assets.theme));
+    const others = ['factory-default', 'factory-frosted', 'factory-night', 'factory-readable', 'factory-vivid', 'purple-mood']
+      .map((id) => ({ id, json: JSON.parse(readFileSync(join(root, 'lib', 'glass-presets', id + '.json'), 'utf8')) }))
+      .filter((x) => x.json && x.json.assets && x.json.assets.theme);
+    check('其余六套出厂预设不携带 theme 段（缺席 = 不动对方主题）',
+      others.length === 0, others.map((x) => x.id).join(' ') || '六套均未携带');
   }
 }
 

@@ -528,8 +528,10 @@ check('公告等配图就绪才弹（pending 不弹；无图只在等满超时�
   /art === "ready" \|\| art === "timeout"/.test(noticeSrc));
 check('配图 <img> 只在 ready 态渲染（降级态不得出现裂图）',
   /art === "ready" \? React\.createElement\("img"/.test(noticeSrc));
+// 探针只在"会弹"时启动：已关公告（且不是手动重看）的用户一个请求都不发。
+// 源码形态是 `!eligible && !reopenRequested`（手动重看是第二条放行腿）—— 正则跟上它。
 check('探针只在"会弹"时启动（已关公告的用户不发请求）',
-  /if \(!eligible\) return undefined;/.test(noticeSrc));
+  /if \(!eligible && !reopenRequested\) return undefined;/.test(noticeSrc));
 check('negative control: 门控判据对无门控的合成组件有牙',
   !/art === "ready" \? React\.createElement\("img"/.test('function UpdateNotice() { return React.createElement("img", { src: x }); }')
     && !/art === "ready" \|\| art === "timeout"/.test('function UpdateNotice() { const show = loaded; }'));

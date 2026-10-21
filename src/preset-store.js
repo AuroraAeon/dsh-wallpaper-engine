@@ -288,6 +288,14 @@ async function applyPreset(id) {
       }
     }
     setPresetError("");
+    // ── 主题段：写宿主 `theme` 服务（**唯一**走出插件边界的资产段）──
+    // 放在设置段与资产段都落定之后：主题这一腿失败**不回滚**前面已经成功的部分
+    //（滚回去等于"套用预设，但外观被恢复到一半"）。服务缺席 ⇒ 静默跳过，不发任何提示：
+    // 低版本宿主没有 theme 服务是常态，不是用户需要处理的错误。
+    const themeSeg = res.data && res.data.assets && res.data.assets.theme;
+    if (themeSeg && typeof themeSeg === "object" && typeof themeSeg.preference === "string") {
+      try { themeFollowApplyPreference(themeSeg.preference); } catch { /* 增强腿：不影响套用结果 */ }
+    }
     persistSelection(); // debounce 200ms 的 PUT + 本地缓存 —— 与滑块拖动同一条路
     reapplyAll();       // emit() 订阅链之外的那几件：层重建 / 轮播定时器 / 场景音频
     emit();

@@ -26,7 +26,7 @@ const CSS_QUICK = `  /* ── Rope dock: chibi pull-cord + glass repo drawer �
      out the repo panel, which descends from the top like a drawer. Z-order:
      repo panel 995 < rope 996 (the rope stays grabbable/clickable as the
      panel's handle while it is out). ── */
-  body[data-we-modal-blocked] :is(.we-rope,.we-repo-panel,.we-update-notice,.we-preset-intro) {
+  body[data-we-modal-blocked] :is(.we-rope,.we-repo-panel,.we-update-notice) {
     visibility: hidden !important; pointer-events: none !important;
   }
   .we-rope {
@@ -116,41 +116,6 @@ body[data-we-glass-floaters] .we-update-notice {
   .we-update-notice__callout { font-size: 16pt; line-height: 1.45; }
   @media (prefers-reduced-motion: reduce) { .we-update-notice { animation: none !important; } }
 
-  /* 「主题预设」一次性弹窗（PresetIntroDialog）：**屏幕正中**的模态小卡（用户口径：
-     居中 + 白色字体）。底色**恒定深色玻璃**、不跟主题 —— 白字要在浅色主题下也 ≥ 可读，
-     就不能让底色随主题翻成浅色；z 高公告一档（1120 > 1100）。入场动画自带（公告那条
-     keyframes 的位移是按底部锚定的 translate(-50%, 12px) 写的，居中锚不能用）。 */
-  .we-preset-intro {
-    position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
-    z-index: 1120; width: min(480px, 92vw); box-sizing: border-box;
-    display: flex; flex-direction: column; gap: 10px;
-    padding: 18px 20px; border-radius: 14px;
-    background-color: rgba(18, 20, 26, 0.82);
-    -webkit-backdrop-filter: blur(18px) saturate(1.2);
-    backdrop-filter: blur(18px) saturate(1.2);
-    border: 1px solid rgba(255, 255, 255, 0.16);
-    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.5);
-    color: #fff;
-    animation: we-preset-intro-in 220ms var(--we-ease, cubic-bezier(0.16, 1, 0.3, 1));
-  }
-  @keyframes we-preset-intro-in { from { opacity: 0; transform: translate(-50%, -46%); } to { opacity: 1; transform: translate(-50%, -50%); } }
-  .we-preset-intro__title { font-weight: 600; font-size: 0.95em; }
-  .we-preset-intro__body { font-size: 0.82em; line-height: 1.5; opacity: 0.94; }
-  .we-preset-intro__body p { margin: 0 0 6px; }
-  .we-preset-intro__err { color: #ff9b9b; font-size: 0.9em; }
-  .we-preset-intro__actions { display: flex; gap: 10px; justify-content: flex-end; align-items: center; }
-  .we-preset-intro__btn {
-    padding: 7px 14px; border-radius: 9px; cursor: pointer;
-    border: 1px solid rgba(255, 255, 255, 0.28);
-    background: rgba(255, 255, 255, 0.10);
-    color: #fff; font-size: 0.85em; font-family: inherit;
-  }
-  .we-preset-intro__btn--primary {
-    background: rgba(255, 255, 255, 0.92); color: #101318;
-    border-color: transparent; font-weight: 600;
-  }
-  .we-preset-intro__btn[disabled] { opacity: 0.55; cursor: default; }
-  @media (prefers-reduced-motion: reduce) { .we-preset-intro { animation: none !important; } }
 
   /* Glass library side drawer — docked right, 360px (capped at 92vw), full
      height, slides in from the right edge, inner body scrolls. Same liquid-glass

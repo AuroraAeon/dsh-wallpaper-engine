@@ -5314,12 +5314,10 @@ function RopeDock() {
   }, [hidden, petOfficialMode]);
 
   // Hidden: render nothing (rope + drawer), but keep the one-time update
-  // notice — it is independent of the mascot and must still surface. The
-  // preset intro dialog rides the same rule (independent of mascot too).
+  // notice — it is independent of the mascot and must still surface.
   if (hidden) {
     return React.createElement(React.Fragment, null,
       React.createElement(UpdateNotice, null),
-      React.createElement(PresetIntroDialog, null),
     );
   }
 
@@ -5379,7 +5377,6 @@ function RopeDock() {
       ),
     ),
     React.createElement(UpdateNotice, null),
-    React.createElement(PresetIntroDialog, null),
   );
 }
 
@@ -5610,88 +5607,42 @@ function UpdateNotice() {
   // ══ UPDATE NOTICE COPY（end）════════════════════════════════════════════════
 }
 
-// ── One-time preset intro dialog（「作者自用」推广弹窗，用户口径）──────────
-// 方案：更新后弹**一次性**对话框，由用户自选 —— A：采用「作者自用」（作者日常在用、
-// 兼顾美观与可读性，降低新用户上手难度）；B：保持当前设置不变。不强制：老调参用户选
-// B 即可，答过就不再问。哨兵住 **localStorage**（与折叠态同一条"每机 UI 状态"口径；
-// 不进 settings ⇒ 不进任何预设快照，也不动 schema / sanitize golden）。
-// ⚠️ 排在公告**之后**：门控借用 NOTICE_VERSION 本尊（noticeSeen 已写 = 公告已处理）
-// —— 同一次更新先读"有什么新"，再答"要不要换外观"，两个弹窗不同屏。
-const PRESET_INTRO_VERSION = "1";
-const PRESET_INTRO_SEEN_KEY = "dsh-wallpaper-engine:preset-intro-seen";
-// 后端代际探针（#188）：弹窗 A 键走 applyPreset("factory-author")，而宿主半边只在 DSH
-// 重启时换血 —— 升级窗口期（磁盘已是新版、宿主内存还是旧路由）里这个 GET 必然失败，
-// 弹窗必然报错。与更新公告的 art-gate 同一条防线：**探到 200 才允许弹**。
-// 非 200 就不弹、也**不写**已读哨兵 —— 重启后端后（同一次升级里）弹窗照常出现，
-// 用户不会永久错过；区别只是"在必然失败的窗口期里保持安静"。
-// 探针打正文路由而不是清单：弹窗要应用的就是这一份，它 200 才有弹的意义（清单 200
-// 只说明路由挂了，说明不了这条随包预设读得懂 —— 旧后端读新 tag 文件正是读不懂）。
-// 结论缓存到模块级（与 noticeArtVerdict 同口径）：面板可反复开关，"这台机器上这个
-// 后端认不认这份预设"是页面级事实，多开面板只探一轮；页面刷新重新探，恰好等价于
-// "重启后刷新就能弹"。
-let presetIntroProbeVerdict = "";
-function PresetIntroDialog() {
-  useWeLocale(); // 与公告同一条口径：文案跟随语言切换
-  const sel = useStore();
-  // 已读标记同步读（localStorage 可同步拿）：不需要等 hostLoaded 才知道"答没答过"。
-  const [seen, setSeen] = React.useState(() => {
-    try { return localStorage.getItem(PRESET_INTRO_SEEN_KEY) === PRESET_INTRO_VERSION; } catch { return false; }
-  });
-  // 探针态："pending"（在探，不弹）/"ok"（后端认，可弹）/"no"（后端不认，不弹）。
-  // 组件本地 state 而不是 store 字段：纯视图态，进 store 会平白多一对瞬态字段要过
-  // 直写棘轮（与公告 art 态同一条理由）。
-  const [probe, setProbe] = React.useState(presetIntroProbeVerdict || "pending");
-  const [applying, setApplying] = React.useState(false);
-  const [failed, setFailed] = React.useState(false);
-  const markSeen = () => {
-    try { localStorage.setItem(PRESET_INTRO_SEEN_KEY, PRESET_INTRO_VERSION); } catch { /* ignore */ }
-    setSeen(true);
-  };
-  // A 键 = 与预设卡片同一条 applyPreset 整快照链（settings 合并 + 资产落位 + 失败滚回）。
-  // 失败**不**记已读：弹窗留在原地，错误文案读 glassPresetError 现值（与卡片同一通道，
-  // emit 后重渲染拿到的就是本次失败的 freshly 值 —— 本地 state 只记"要不要显示错误行"）。
-  const accept = () => {
-    if (applying) return;
-    setApplying(true);
-    setFailed(false);
-    setTransient("glassPresetError", ""); // 清掉面板里可能挂着的旧错，别让它串场
-    emit();
+// ── 首次安装：自动套用「深色 + 作者自用」（用户口径，取代原来的推广弹窗）──────
+// 口径：新装默认就是作者在用的那套观感，不再弹窗问"要不要试试"。
+// 触发点只有一个 —— `src/persistence.js` 的 `loadPersisted()` 发现**宿主没有存档
+// 且本机也没有本地存档**（真正第一次）。升级用户、重装宿主但本地存档还在的用户，
+// 一概不受影响；套用后存档被写出，下次启动走宿主分支，天然只触发一次。
+//
+// 三条不变量：
+//   · **失败不回滚**：预设应用是一整批操作，主题这一腿或某段资产失败时只记错误文案，
+//     不把已经落好的部分撤掉（撤一半比不套用更难解释）。
+//   · **不阻塞启动**：异步跑，不 await —— 启动链（settings → fontset → inventory）不该
+//     等一次预设应用。
+//   · **主题腿要等服务**：宿主 `theme` 服务在启动早期拿不到（实测 7ms 时还没有、325ms 才有），
+//     而 `applyPreset` 里的 `themeFollowApplyPreference` 拿到空句柄会静默跳过。
+//     所以这里先套预设（设置 + 资产），主题留给服务就绪后补一次 —— 见下面的 `pending`。
+//     补写只有一次，且**只补主题**，不重跑整份预设（重跑会把用户这几百毫秒里的改动盖掉）。
+let firstRunAuthorPending = false;
+function firstRunAdopt() {
+  try {
     applyPreset("factory-author").then((ok) => {
-      setApplying(false);
-      if (ok) markSeen(); else setFailed(true);
+      if (ok) return;
+      // 失败静默：新装用户不该一上手就看见一条红字。诊断行留给排障。
+      try { liveLog && liveLog("首次安装套用作者自用失败：" + String(selection.glassPresetError || "")); } catch { /* ignore */ }
     });
-  };
-  const eligible = sel.hostLoaded && !seen && sel.noticeSeen === NOTICE_VERSION;
-  // 探针只在 eligible 时起跑：已答过/公告未处理完的机器一个请求都不发。
-  React.useEffect(() => {
-    if (!eligible) return undefined;
-    if (presetIntroProbeVerdict) { setProbe(presetIntroProbeVerdict); return undefined; }
-    let alive = true;
-    gpJson(glassPresetUrl("factory-author")).then((r) => {
-      if (!alive) return;
-      // 200 = 后端这份预设读得懂（路由与 tag 同代）⇒ 弹。其余（404/405/422/断网）
-      // 都归 "no"：不管哪种，A 键在这个后端上都必然失败，不值得打扰用户。
-      presetIntroProbeVerdict = r.ok && !r.error ? "ok" : "no";
-      setProbe(presetIntroProbeVerdict);
-    });
-    return () => { alive = false; };
-  }, [eligible]);
-  if (!eligible || probe !== "ok") return null;
-  return React.createElement("div", { className: "we-preset-intro", role: "alertdialog", "aria-label": weT("试试「作者自用」外观预设？") },
-    React.createElement("div", { className: "we-preset-intro__title" }, weT("试试「作者自用」外观预设？")),
-    React.createElement("div", { className: "we-preset-intro__body" },
-      React.createElement("p", null, weT("「作者自用」是作者日常在用的整机外观方案：兼顾美观与可读性，一键套用、不用逐项调。")),
-      React.createElement("p", null, weT("采用后当前外观设置会被整份替换（不能一键撤销）；选择保持的话，随时可在「设置 → 壁纸引擎 → 主题预设」里再套用。")),
-      failed && sel.glassPresetError ? React.createElement("p", { className: "we-preset-intro__err" }, sel.glassPresetError) : null,
-    ),
-    React.createElement("div", { className: "we-preset-intro__actions" },
-      React.createElement("button", { className: "we-preset-intro__btn we-preset-intro__btn--primary", type: "button", disabled: applying,
-        onClick: accept }, applying ? weT("正在应用…") : weT("采用「作者自用」")),
-      React.createElement("button", { className: "we-preset-intro__btn", type: "button", onClick: markSeen }, weT("保持我的设置")),
-    ),
-  );
+    // 主题补写：服务可能还没就绪 ⇒ 交给主题层 onReady 那次回调（见 armFirstRunThemeFlush）。
+    firstRunAuthorPending = true;
+    flushFirstRunAuthorTheme();
+  } catch { /* 首装美化是增强：任何异常都不该阻断启动 */ }
 }
 
+/** 主题服务就绪后把首装的主题腿补上（可被 onReady 与定时重试两处调，幂等）。 */
+function flushFirstRunAuthorTheme() {
+  if (!firstRunAuthorPending) return;
+  try {
+    if (themeFollowApplyPreference("dark")) firstRunAuthorPending = false;
+  } catch { /* 服务异常：留给下一次 */ }
+}
 
 // Bumped v3: tabbed picker IA + unified control chrome (sliding segmented tab
 // bar, pill switches everywhere, ink-token labels, 30px control heights).
@@ -6136,6 +6087,9 @@ function apply(ctx) {
         intervalMs: 250,
         timeoutMs: 6000,
         onReady: (theme) => { themeFollowAttach(theme, ctx);   // 主题随壁纸：同一个服务句柄，接上即补评一次（开关默认关，关着时这次补评整体空转）
+          // 首装的主题腿：applyPreset 若跑得比服务就绪早，那一次写会因句柄为空而静默跳过
+          // ⇒ 这里补一次（幂等；非首装时 firstRunAuthorPending 为假，零开销）。
+          try { flushFirstRunAuthorTheme(); } catch { /* 增强腿，不阻断主题层 */ }
           try {
             const available = scanThemeTokens(document);
             // 样式表扫描是清单的权威来源（active.tokens 为空、exportInspectTokens 只有 14 条）；

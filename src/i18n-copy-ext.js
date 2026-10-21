@@ -172,14 +172,6 @@ const WE_I18N_EN_EXT = {
   "手机 QQ 扫码加入 · 群里见 👋": "Scan with QQ on your phone to join · see you there 👋",
   "抖音扫码加入 · 群号 252729465001": "Scan in Douyin to join · group ID 252729465001",
   "💌 感谢每一位使用者 —— 换上你喜欢的那张壁纸，这个插件就没白写。": "💌 Thanks to every user — put up a wallpaper you love and this plugin has done its job.",
-  // 「作者自用」推广弹窗（PresetIntroDialog）：EN 侧用词表里的预设译名（"Author's preset"，
-  // 与预设卡片显示的那份一致）；键里的「作者自用」是中文原文照抄。
-  "试试「作者自用」外观预设？": "Try the “Author's preset” look?",
-  "「作者自用」是作者日常在用的整机外观方案：兼顾美观与可读性，一键套用、不用逐项调。": "“Author's preset” is the look the author uses daily: balanced for beauty and readability — one click instead of tuning every knob.",
-  "采用后当前外观设置会被整份替换（不能一键撤销）；选择保持的话，随时可在「设置 → 壁纸引擎 → 主题预设」里再套用。": "Applying replaces your current look settings entirely (no one-click undo). If you keep yours, you can apply it anytime under Settings → Wallpaper Engine → Theme presets.",
-  "正在应用…": "Applying…",
-  "采用「作者自用」": "Apply “Author's preset”",
-  "保持我的设置": "Keep my settings",
   // ══ UPDATE NOTICE COPY（begin）══════════════════════════════════════════════
   // 本区段是**纯公告文案词条**：CI 的 `notice` 快通道只在这一段内放行"只改字符串内容"
   // 的提交（判据见 test/tools/ci-routing.mjs 的 judgeNoticeEdit：区块外逐字节一致 +
