@@ -46,30 +46,11 @@
 | 正式版本与贡献记录 | 以 [正式主仓 Release](https://github.com/elysia395/dsh-wallpaper-engine/releases)、[Contributors](https://github.com/elysia395/dsh-wallpaper-engine/graphs/contributors) 和 npm 页面为准；相同源码版本号不表示代码完全相同 |
 | 部署闭包 | 主包加七个子包，共八包；完整源码安装器登记依赖，更新后不会因临时链接被包管理器清除而丢失子包 |
 | 官方 pet 联动 | 通过 dsh-pet 公开接口接入，不再捆绑 pet、Electron 或第三方文件补丁；官方 pet 自行安装 |
+| 外观预设与深浅 | 「作者自用」预设携带深色偏好，套用即把界面一并切到深色；全新安装默认套用它。发布版仍是「一次性二选一」弹窗询问，且套用预设不改深浅 |
 | 体积变化 | 本次本地发布集压缩体积实测约 84.88 MiB → 25.12 MiB，减少约 70.4%；不含另装的官方 pet，不是内存或 Git 仓库体积 |
-| 验收边界 | 已验证隔离部署、协议、排播与自有气泡 / 面板；官方完整宠物及桌面端四套演出的真机视觉验收仍需补齐 |
+| 验收边界 | 已验证隔离部署、协议、排播与自有气泡 / 面板，预设与深浅联动已在本机真机实测；官方完整宠物及桌面端四套演出的真机视觉验收仍需补齐 |
 
 源码包、正式发行和旧演示图应分别看待。不要用 npm 线上版本号或主仓热度推断本分支已经发布、已合并或完成所有平台验收。
-
-<h2 id="界面预览"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/section-preview-dark.png"><img src="assets/readme/section-preview-light.png" alt="界面预览" width="1440"></picture></h2>
-
-<img src="https://github.com/elysia395/dsh-wallpaper-engine/releases/download/media-v1/main-interface.gif" alt="DSH 对话界面中的壁纸、液态玻璃与吉祥物演示" width="960">
-
-<p align="center"><sub>真实界面演示；历史素材与当前安装版本可能略有不同。</sub></p>
-
-<h2 id="快速开始"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/section-start-dark.png"><img src="assets/readme/section-start-light.png" alt="快速开始" width="1440"></picture></h2>
-
-先下载本仓 ZIP 并解压，进入插件目录，完全退出目标 DSH 应用，然后执行：
-
-```sh
-node scripts/install-source.mjs --profile desktop --dsh-home "<目标 DSH 数据目录>" --app-closed
-```
-
-网页宿主将 `desktop` 改为 `web`。完成后重启对应宿主，打开 **设置 → Wallpaper Engine → 壁纸库**。目标目录和 CLI 说明见 [安装](#安装)。
-
-**前置条件**：DSH 0.2 内核（包括 `0.2.0-rc.1/rc.2`）、Node.js `>=22.12.0` 和 pnpm。当前灰测改动未发布到 npm；`dsh-better-sidebar` 是可选配套插件，不是必装依赖。
-
-没用过命令行？从 [新手指南](README.beginner.md) 开始。
 
 <h2 id="目录"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/section-index-dark.png"><img src="assets/readme/section-index-light.png" alt="目录" width="1440"></picture></h2>
 
@@ -93,13 +74,33 @@ node scripts/install-source.mjs --profile desktop --dsh-home "<目标 DSH 数据
   </tr>
 </table>
 
+<h2 id="界面预览"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/section-preview-dark.png"><img src="assets/readme/section-preview-light.png" alt="界面预览" width="1440"></picture></h2>
+
+<img src="https://github.com/elysia395/dsh-wallpaper-engine/releases/download/media-v1/main-interface.gif" alt="DSH 对话界面中的壁纸、液态玻璃与吉祥物演示" width="960">
+
+<p align="center"><sub>真实界面演示；历史素材与当前安装版本可能略有不同。</sub></p>
+
+<h2 id="快速开始"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/section-start-dark.png"><img src="assets/readme/section-start-light.png" alt="快速开始" width="1440"></picture></h2>
+
+先下载本仓 ZIP 并解压，进入插件目录，完全退出目标 DSH 应用，然后执行：
+
+```sh
+node scripts/install-source.mjs --profile desktop --dsh-home "<目标 DSH 数据目录>" --app-closed
+```
+
+网页宿主将 `desktop` 改为 `web`。完成后重启对应宿主，打开 **设置 → Wallpaper Engine → 壁纸库**。目标目录和 CLI 说明见 [安装](#安装)。
+
+**前置条件**：DSH 0.2 内核（包括 `0.2.0-rc.1/rc.2`）、Node.js `>=22.12.0` 和 pnpm。当前灰测改动未发布到 npm；`dsh-better-sidebar` 是可选配套插件，不是必装依赖。
+
+没用过命令行？从 [新手指南](README.beginner.md) 开始。
+
 <h2 id="能做什么"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/section-features-dark.png"><img src="assets/readme/section-features-light.png" alt="能做什么" width="1440"></picture></h2>
 
 | 方向 | 能力 |
 |---|---|
 | 实时壁纸 | 内置 **WebWallGL** 渲染 Scene / Web 壁纸，支持粒子、puppet 骨骼、SceneScript、鼠标交互与音频反应；视频直接播放 |
 | 液态玻璃 | 设置窗口、对话区与侧边栏玻璃效果，支持配色、透明度、雾化、边框与独立侧栏参数 |
-| 外观预设 | 整套配置快照，字体、吉祥物与头像资产可按需携带；支持 JSON 导出、导入与分享 |
+| 外观预设 | 整套配置快照，字体、吉祥物与头像资产可按需携带；「作者自用」还携带深色偏好，套用即同步切换界面深浅；支持 JSON 导出、导入与分享 |
 | 字体与配色 | 按颜色角色、排版角色和组件细调字体；支持系统字体、终端字体、字体集与独立光标颜色 |
 | 吉祥物 | **10 只内置立绘 + 自定义导入**，通过 3D 圆环选择；拉绳展开壁纸仓库抽屉 |
 | 壁纸库 | 内容分级与类型筛选、批量隐藏与恢复、自定义图片 / 视频上传、WE 项目目录收录、自动轮播 |
@@ -211,6 +212,7 @@ macOS 没有 Wallpaper Engine 官方客户端。可以上传图片 / 视频，�
 - **主题随壁纸默认关闭**。开启后才按作者配色与画面取色切换深浅主题；本张壁纸下手动改过主题后，自动切换会让位。
 - 字体支持按角色 / 组件细调、系统字体枚举与字体集管理。终端里的 Nerd Font 图标需要对应字体。
 - 「主题预设」保存的是整套配置，不只是玻璃参数。导入只加入列表，不立即应用；分享时可选择携带字体、吉祥物和头像。
+- **预设可以携带深浅偏好**：「作者自用」声明深色，套用它会把界面一并切到深色（与「主题随壁纸」是两条独立通道）。全新安装默认套用「作者自用」+ 深色，不再弹窗询问；已有存档的用户一概不受影响。
 - **套用预设前注意覆盖范围**：预设可能更换或清除自定义资产。保存、导出与套用前，阅读对应确认提示。
 
 默认值、枚举与取值范围以 [设置 schema](https://github.com/Fish-under-sea/dsh-wallpaper-engine/blob/official-pet-bridge-20261020/lib/settings-schema.js) 和当前控件为准，避免在文档中维护一套容易过时的数值。
@@ -291,6 +293,7 @@ macOS 没有 Wallpaper Engine 官方客户端。可以上传图片 / 视频，�
 - `dsh-better-sidebar` 可选；插件为它的侧栏提供独立玻璃参数与字体适配。不支持 `backdrop-filter` 的浏览器回退实色。
 - 与其他皮肤同时启用时，查看 [共存说明](https://github.com/Fish-under-sea/dsh-wallpaper-engine/blob/official-pet-bridge-20261020/docs/COEXISTENCE.md)，避免让多个插件同时接管同一表面。
 - 官方 pet 的同一目标在多端同步动作；自绘联动气泡只属于发起网页，原生位移不承诺与视频缓冲逐帧同步。
+- 预设携带的深浅偏好只随预设正文走：**导出 / 导入的往返不含该段**，分享出去的预设不会改对方的深浅主题。
 
 ![侧栏玻璃与字体适配](https://github.com/elysia395/dsh-wallpaper-engine/releases/download/media-v1/better-sidebar-font.png)
 

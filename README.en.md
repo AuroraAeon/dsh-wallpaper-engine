@@ -23,7 +23,7 @@ Bring local **Wallpaper Engine Scene, Web and Video wallpapers** into the DSH ch
 |---|---|
 | Wallpapers | WebWallGL live Scene / Web rendering, video playback, local image / video uploads, wallpaper properties and playlist rotation |
 | Appearance | Liquid glass, accent and surface colors, transparency, blur, borders and independent sidebar controls |
-| Presets | Whole-configuration snapshots, optional font / mascot / avatar assets, JSON import and export |
+| Presets | Whole-configuration snapshots, optional font / mascot / avatar assets; the author preset also carries a dark preference and switches the UI theme when applied; JSON import and export |
 | Typography | System fonts, per-role and per-component controls, terminal fonts, font sets and caret color |
 | Mascots | Ten built-in artworks, a 3D ring selector, custom imports and a pull-cord library drawer |
 | Extensions | Optional conversation avatars, click / pointer-trail effects and parallax |
@@ -39,7 +39,7 @@ The current suite has **one main package and seven subpackages, eight packages i
 
 ### Current test branch: use the complete source installer
 
-Requirements: **Node.js >=22.12.0, a DSH 0.2 kernel (including 0.2.0-rc.1/rc.2), pnpm and the target host's DSH CLI**. The desktop application's external version number is not its kernel version. Optional pet integration needs a separate official pet installation.
+Requirements: **Node.js >=22.12.0, a DSH 0.2 kernel (including 0.2.0-rc.1/rc.2), pnpm and the target host's DSH CLI**. The desktop application's external version number is not its kernel version. Optional pet integration needs a separate official pet installation. Unlike the published build (which asks once with a two-choice dialog and never changes the theme), this branch applies the author preset plus a dark UI automatically on a fresh install and switches the theme whenever a preset that declares a preference is applied; existing save files are never overwritten.
 
 1. Download and extract the complete [review branch `official-pet-bridge-20261020`](https://github.com/Fish-under-sea/dsh-wallpaper-engine/tree/official-pet-bridge-20261020), or clone that branch, not the fork's default branch. Open a terminal in the folder containing `package.json`.
 2. Completely close the target DSH host. Confirm its actual data directory and profile.
@@ -81,7 +81,7 @@ Open **Settings → Wallpaper Engine**, or pull the mascot cord to open the libr
 Historical upstream demonstrations may differ from this branch. The six settings tabs are Library, Appearance, Playback, System, Extensions and About.
 
 - **Library**: selection, rating / type filters, soft hiding and restoration, uploads and rotation lists. Hiding never deletes source files. Rotation needs at least two playable candidates and prepares the next item before switching.
-- **Appearance**: presets, theme, glass, sidebar corners, global UI colors and typography. Theme-following is **off by default**; a manual theme choice takes precedence for the current wallpaper.
+- **Appearance**: presets, theme, glass, sidebar corners, global UI colors and typography. Theme-following is **off by default**; a manual theme choice takes precedence for the current wallpaper. Presets can carry a light/dark preference — the author preset declares dark and switches the UI theme when applied, a channel independent of theme-following.
 - **Playback**: filters, framing, speed, transitions and audio. Fps-cap transcoding starts with the original and swaps when the cache is ready; unavailable ffmpeg or failed encoding falls back gracefully.
 - **System**: mascot selection, adapter target, occlusion pause and cache locations. The default mascot is DeepSeek; Deepseek_Pro and 菲比啾比 are separate artworks, alongside Claude, DeepSeek, Gemini, GPT, GLM, Grok, Kimi and Qwen. The chibi maid is carried by the author preset rather than the built-in carousel.
 - **Extensions**: optional avatars, click / trail effects and parallax. Disabling an extension removes its own decorations without resetting the wallpaper.
@@ -136,6 +136,7 @@ Wallpaper files stay local. Runtime downloads, GitHub repository statistics and 
 - Video and scene occlusion pause differ from externally hosted iframe behavior. Focus-loss pause is exposed only for the appropriate browser adapter.
 - Optional `dsh-better-sidebar` integration has its own surface controls; browsers without backdrop filtering use solid fallback.
 - Pet action synchronization and bridge-only bubbles are intentional interface boundaries, not old private-controller parity.
+- A preset's light/dark preference travels in the preset body only: export / import round-trips do not carry that section, so a shared preset never changes the recipient's theme.
 
 ## Development
 
