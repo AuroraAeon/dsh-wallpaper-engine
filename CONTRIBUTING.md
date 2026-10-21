@@ -4,7 +4,29 @@ Thanks for helping improve `dsh-wallpaper-engine`. Please keep each pull request
 
 感谢你参与改进 `dsh-wallpaper-engine`。请让每个 Pull Request 聚焦一个明确问题，并在说明中写清适用平台和验证结果。
 
-> 问题如何分诊（标签）与认领（`/assign`）：见 [`docs/TRIAGE.md`](docs/TRIAGE.md)。
+> Issue triage and claim approval / 问题分诊、认领申请与审批：见 [`docs/TRIAGE.md`](docs/TRIAGE.md)。
+
+## Approval before opening a PR / 先批准认领，再开 PR
+
+**External contributors must request an issue and receive maintainer approval before creating a PR. Direct PRs, including drafts, are not allowed.** Only the repository owner and collaborators whose current GitHub API permission is `write`, `maintain` or `admin` are exempt from this issue-claim gate. Permissions are checked live on every evaluation; a `contributor` badge, `author_association`, past contributions, or `read` / `triage` access is not an exemption. There is no `claim:exempt` or other label-based exemption. This exemption does not bypass code CI.
+
+- Wait for a maintainer to accept an open issue with `status:accepted` and remove `status:needs-triage` / `status:declined`. Comment `/assign` on that issue yourself: this is a request, **not immediate assignment**. Wait for a maintainer to comment `/approve @login` on the same issue and for the bot to assign you. A maintainer may instead assign you through GitHub UI, but only with your prior valid `/assign` record in that issue. Acceptance alone is not claim approval.
+- Your own `/unassign` cancels a pending request or releases your claim. Maintainers may use `/unassign @login` to cancel/release for that person, or `/unassign` without arguments to release all current assignees.
+- Put at least one standalone `Fixes #123` or `Refs #123` line in the PR body, one issue per line; multiple lines are supported. Full same-repository issue URLs (for example `Fixes https://github.com/elysia395/dsh-wallpaper-engine/issues/123`) and qualified references (`Refs elysia395/dsh-wallpaper-engine#123`) are also accepted. Bare `#123`, inline text such as `Issue: Fixes #123`, other repositories, titles and PR comments do not satisfy this requirement.
+- Every referenced issue must currently be open, have `status:accepted`, have neither `status:needs-triage` nor `status:declined`, and list the PR author as an assignee. Trusted acceptance, your request, maintainer approval and actual assignment must all be strictly earlier than `PR.created_at`, with the request preceding approval/assignment. The gate verifies GitHub comment/timeline evidence, not just current labels or self-reported permission. Late acceptance, claiming or approval cannot qualify the original PR; editing it, marking it ready or reopening it does not reset creation time. Complete the process, then open a new PR.
+- The trusted `pull_request_target` gate must explain and close confirmed noncompliant PRs, including drafts and reopened PRs, and fail the fixed-name `issue-claim-policy` Check Run on the PR's head SHA. Compliant or permission-exempt PRs pass that check. API failures that prevent reliable permission or history retrieval fail the check without automatically closing the PR; a complete history confirming no prior approval is a policy violation, not an API error. The trusted workflow must not check out or execute PR head code with write privileges.
+- Issue state, acceptance-label or assignment changes revalidate all linked open PRs. Bot `/approve` and `/unassign` actions must explicitly refresh linked PRs in the same run instead of relying on bot-generated events to trigger another workflow.
+- This is the required automation contract, not a claim that documentation deploys it. The approval and PR-gate workflows must land on default branch `main`; maintainers must preserve the existing Required checks and append `issue-claim-policy`, without replacing or migrating code CI check names here. Merge requires **existing code CI + `issue-claim-policy`**. GitHub cannot prevent access to the PR creation page, so enforcement is post-creation closure plus a required check.
+
+**外部贡献者必须先在 issue 申请，获得维护者批准并成为 assignee，才能创建 PR；不能直接开 PR，draft 也不例外。** 只有仓库 owner，以及 GitHub API 实时确认具有 `write` / `maintain` / `admin` 权限的协作者，豁免这一 issue 认领门禁。每次校验都实时查权限；`contributor` 徽章、`author_association`、历史贡献或 `read` / `triage` 权限不算豁免。不设 `claim:exempt` 或其他标签例外，认领豁免也不豁免代码 CI。
+
+- 等维护者在 open issue 添加 `status:accepted`，并移除 `status:needs-triage` / `status:declined`。本人在该 issue 评论 `/assign`，这只是申请，**不会立刻分配**。等维护者在同一 issue 评论 `/approve @login` 并由机器人完成指派；也可由维护者通过 GitHub UI 手动指派，但同一 issue 必须已有本人事前的有效 `/assign` 记录。受理不等于批准认领。
+- 本人 `/unassign` 取消待批申请或释放自己的认领。维护者可 `/unassign @login` 取消指定申请或释放指定认领，无参 `/unassign` 则释放当前所有 assignee。
+- PR 正文至少填写一条独立行 `Fixes #123` 或 `Refs #123`，每个 issue 一行，支持多条；也支持同仓库完整 issues URL（如 `Fixes https://github.com/elysia395/dsh-wallpaper-engine/issues/123`）或限定仓库引用（如 `Refs elysia395/dsh-wallpaper-engine#123`）。裸 `#123`、`关联 issue：Fixes #123` 这样的行内文字、其他仓库引用、标题或 PR 评论都不算。
+- 每个关联 issue 当前都必须 open、带 `status:accepted`、无 `status:needs-triage` / `status:declined`，且 PR 作者是 assignee。可信受理、本人申请、维护者批准及实际分配必须全部严格早于 `PR.created_at`，申请须先于审批/分配。校验依 GitHub 评论与时间线证据，不只看当前标签或正文自报的授权。事后补受理、认领或审批不能让原 PR 合格；编辑、转为 ready 或重新打开都不重置创建时间。补齐流程后需重新创建 PR。
+- 可信 `pull_request_target` 门禁须对已确认不合规的 PR 自动解释并关闭，包括 draft 和 reopened，并在 PR 的 head SHA 写入固定名 `issue-claim-policy` Check Run `failure`；合规或实时权限豁免时该检查通过。API 故障导致无法可靠取得权限或历史数据时仅判失败，不自动误关；完整历史确认没有事前批准的，仍是违规，不是 API 故障。可信工作流不能带写权限检出或执行 PR head 代码。
+- issue 开闭、受理相关标签或分配变化时，重验所有关联开放 PR；机器人 `/approve` / `/unassign` 必须在当前运行中主动刷新，不能依赖机器人产生的事件再触发工作流。
+- 上述是必须落实的自动化契约，不代表修改文档就已部署。审批及 PR 门禁工作流必须先合入默认分支 `main`；维护者须保留现有 Required checks 并追加 `issue-claim-policy`，不在此流程中替换或迁移代码 CI 检查名。合并要求为**现有代码 CI + `issue-claim-policy`**。GitHub 无法预先禁用 PR 创建页，因此采用创建后自动关闭与必过检查阻断合并。
 
 ## Choose the target branch / 选择目标分支
 
@@ -144,7 +166,7 @@ npm run verify:all  # = build + verify（硬档）+ verify:docs（软档）+ smo
 > **两档各含哪些守卫、分档判据是什么，只在 [`docs/DEV-GUIDE.md`](docs/DEV-GUIDE.md) §4.2 定义一处**
 > —— 这里刻意不列清单（此前抄过一份，删掉两条守卫后就过时了，正说明为什么不该抄）。
 
-`.github/workflows/verify.yml` 三个阶段：`changes` 作业用 `node scripts/ci-routing.mjs check` 分类——PR 事件取 merge-base 完整 PR 差异（`--base-mode merge-base`），push 事件取 `before → after` 原样差异（`--base-mode exact`：force-push 后 before 不一定是 after 的祖先，merge-base 会漏算 before 独有的代码删除），workflow_dispatch 无事件边界 ⇒ `github.sha → github.sha` 空差异 ⇒ 分类器保守完整验证；差异取不全 ⇒ fail-closed 全量，绝不误判文档。纯文档路径由 `docs` 作业对**同一差异、同一模式档**再跑一次 `node scripts/ci-routing.mjs docs`（文档引用 / 冲突标记 / 素材类型检查；差异里混入代码或未知路径 ⇒ 退出码 3 明确拒绝，不以假成功放行；其 checkout 显式指向 head 提交，保证被审计的树就是被分类的树）。完整路径保留 Windows / Ubuntu 两个平台、静态门禁、构建、运行守卫、媒体桥与冒烟。固定 `ci/result` 汇总在 `if: always()` 下核验所选作业确实成功：取消、失败、缺结果或意外跳过不能放行。分支保护需由维护者在验证新检查后迁移到该固定名称。
+`.github/workflows/verify.yml` 三个阶段：`changes` 作业用 `node scripts/ci-routing.mjs check` 分类——PR 事件取 merge-base 完整 PR 差异（`--base-mode merge-base`），push 事件取 `before → after` 原样差异（`--base-mode exact`：force-push 后 before 不一定是 after 的祖先，merge-base 会漏算 before 独有的代码删除），workflow_dispatch 无事件边界 ⇒ `github.sha → github.sha` 空差异 ⇒ 分类器保守完整验证；差异取不全 ⇒ fail-closed 全量，绝不误判文档。纯文档路径由 `docs` 作业对**同一差异、同一模式档**再跑一次 `node scripts/ci-routing.mjs docs`（文档引用 / 冲突标记 / 素材类型检查；差异里混入代码或未知路径 ⇒ 退出码 3 明确拒绝，不以假成功放行；其 checkout 显式指向 head 提交，保证被审计的树就是被分类的树）。完整路径保留 Windows / Ubuntu 两个平台、静态门禁、构建、运行守卫、媒体桥与冒烟。固定 `ci/result` 汇总在 `if: always()` 下核验所选作业确实成功：取消、失败、缺结果或意外跳过不能放行。此名称仅描述当前分支的代码 CI 汇总，不表示远程 Required checks 已迁移；维护者须保留当前代码 CI 的必过检查并追加 `issue-claim-policy`，任何 CI 检查名称迁移另行确认。
 
 完整路径还检查产物不入库（`git ls-files -- lib/client.js docs/images` 必须为空），并扫描被跟踪文件的尾随空白与冲突标记。产物同步仍由 `test/verify-client-sync.mjs` 真跑构建逐字节检查。
 
@@ -220,6 +242,8 @@ UI 改动还应说明实际测试过的 DSH 界面、浏览器或 DSH Desktop �
 ## Pull request checklist / PR 检查清单
 
 - The PR targets `main`.
+- External contributors completed issue acceptance, their own `/assign`, maintainer approval and assignment before PR creation; every linked issue remains eligible, and the body uses standalone `Fixes` / `Refs` lines. Only live owner / `write` / `maintain` / `admin` permission exempts this gate.
+- Existing code CI and `issue-claim-policy` are green; late claiming requires a new PR, not reopening the original.
 - `src/client.js` changes were rebuilt (`npm run build`) before running verification (the artifact is not tracked).
 - Existing platform behavior is preserved or the intentional change is explained.
 - Build and verification commands pass.
@@ -233,6 +257,8 @@ UI 改动还应说明实际测试过的 DSH 界面、浏览器或 DSH Desktop �
   informational text to stdout (see **Release** for why each one matters).
 
 - PR 目标分支为 `main`。
+- 外部贡献者已在 PR 创建前完成 issue 受理、本人 `/assign`、维护者批准及指派；每个关联 issue 仍合规，正文使用独立行 `Fixes` / `Refs`。仅实时 owner / `write` / `maintain` / `admin` 权限豁免此门禁。
+- 现有代码 CI 与 `issue-claim-policy` 均通过；事后补认领需新开 PR，不能重新打开原 PR。
 - 修改 `src/client.js` 时已先 `npm run build` 重建（产物不入库，无需提交）。
 - 现有平台行为已保留，或正文已解释有意变更。
 - 构建与验证命令全部通过。
