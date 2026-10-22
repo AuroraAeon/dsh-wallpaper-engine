@@ -142,6 +142,11 @@ const VERIFY_STEPS = [
   step('test/verify-package-files.mjs'),
   step('test/verify-package-publish.mjs'),
   step('test/verify-deployment.mjs'),
+  // 发布集**字节**（P2-7）：真打一次发布集，解出八个 tarball，判"主包声明的七个子包 = 精确版本且在
+  // 集内""主包不带开发面目录""每个子包 tarball 真有自己 exports["./client"] 的浏览器半边"。
+  // 归硬档：主包少声一条依赖 / 子包漏打客户端半边 ⇒ 用户 `pnpm add` 在**他的机器上**以
+  // ERR_PNPM_FETCH_404 或静默缺半边失败（"只拿到母包"的唯一形态），仓库内此前只有散文可依。
+  step('test/verify-release-set.mjs'),
   step('test/verify-contracts.mjs'),
   step('test/verify-body-caps.mjs'),
   step('test/verify-json-response.mjs'),

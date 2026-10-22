@@ -90,7 +90,7 @@ node scripts/install-source.mjs --profile desktop --dsh-home "<目标 DSH 数据
 
 网页宿主将 `desktop` 改为 `web`。完成后重启对应宿主，打开 **设置 → Wallpaper Engine → 壁纸库**。目标目录和 CLI 说明见 [安装](#安装)。
 
-**前置条件**：DSH 0.2 内核（包括 `0.2.0-rc.1/rc.2`）、Node.js `>=22.12.0` 和 pnpm。当前灰测改动未发布到 npm；`dsh-better-sidebar` 是可选配套插件，不是必装依赖。
+**前置条件**：DSH 0.2 内核（包括 `0.2.0-rc.1/rc.2`）、Node.js `>=22.12.0` 和 pnpm。**自 `1.4.0` 起八包已发布到 npm**，可直接按包名安装（见 [npm 通道](#npm-通道仅适用于整套包已发布的版本)）；`dsh-better-sidebar` 是可选配套插件，不是必装依赖。
 
 没用过命令行？从 [新手指南](README.beginner.md) 开始。
 
@@ -124,9 +124,9 @@ node scripts/install-source.mjs --profile desktop --dsh-home "<目标 DSH 数据
 
 <h2 id="安装"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/section-install-dark.png"><img src="assets/readme/section-install-light.png" alt="安装" width="1440"></picture></h2>
 
-### 灰测用户：从仓库安装或更新
+### 源码用户：从仓库安装或更新
 
-本分支的未发布改动只能从 GitHub 源码部署。**不要执行下面「npm 通道」的包名安装命令来获取灰测版本**，它只会取得注册表中已经发布的版本。
+`1.4.0` 已发布到 npm（推荐直接用下面的 [npm 通道](#npm-通道仅适用于整套包已发布的版本)）。想拿**本分支最新、尚未发版的改动**，才需要走源码部署 —— 那条路只能从 GitHub 取源码。
 
 要求 **Node.js >=22.12.0、DSH 0.2 内核（包含 0.2.0-rc.1/rc.2）**，并已安装可用的 DSH CLI 和 pnpm。桌面应用外部版本号不等于内核版本。下载 [本轮评审分支 `official-pet-bridge-20261020`](https://github.com/Fish-under-sea/dsh-wallpaper-engine/tree/official-pet-bridge-20261020) 的完整 ZIP，或克隆该分支，不要用 Fork 默认分支代替；进入包含 `package.json` 的目录。先完全退出目标 DSH 应用，然后执行：
 
@@ -140,11 +140,13 @@ node scripts/install-source.mjs --profile desktop --dsh-home "<目标 DSH 数据
 
 更新时先退出宿主，再更新整个源码目录并重跑同一命令。安装完成后不要删除或移动源码目录。不要只安装主包，不要用裸 `github:` 直装，也不要只运行临时子包链接工具。
 
-### npm 通道：仅适用于整套包已发布的版本
+### npm 通道（`1.4.0` 起可用）
 
 正式发布者必须先运行 `npm run pack:release`，生成含构建产物的八个 tarball，并按生成清单先发布子包、最后发布主包。主包发布清单以七个子包的**真实精确版本**声明运行依赖，不包含 pet 或 Electron。单独在源码根目录执行 `npm pack` 得到的开发形态主包不能代表完整发布集。
 
-整套包发布后，用户才可执行：
+子包没发全时，主包在用户机器上会以 `ERR_PNPM_FETCH_404` 失败并回滚——"只拿到母包"就是这个形态。发布顺序、GitHub Release 的八件套资产、发布后自证与回滚办法见 **[`docs/RELEASING.md`](docs/RELEASING.md)**；离线安装发布集用 `npm run install:release -- --set <目录> --profile <name> --dsh-home <目录> --app-closed`。
+
+**自 `1.4.0` 起**，直接执行（一条命令即装齐八个包，主包会把七个子包按精确版本解析下来）：
 
 ```sh
 dsh plugin --profile web add dsh-plugin-wallpaper-engine

@@ -126,6 +126,10 @@ This builds clients and creates eight tarballs plus `release-set.json` under a u
 
 该命令构建客户端，在独立的 `.test-cache/release/set-*` 目录生成八个 tarball 和 `release-set.json`。发布形态主包将七个子包的真实精确版本列为运行依赖，不包含 pet 或 Electron。正式发布按 `publishOrder` 先子包、后主包。此命令不执行发布；源码根目录直接 `npm pack` 仍是开发清单，不能当成完整发布集。灰测阶段未经明确批准，不要发布 npm。
 
+The full procedure — npm channel, GitHub Release assets, post-publish self-checks, mirror sync and rollback — is in [`docs/RELEASING.md`](docs/RELEASING.md). Two rules are not negotiable: every child package must be on the registry at the same version before the main package is usable (`pnpm add` resolves the seven exact versions from the registry, so a main-only release fails with `ERR_PNPM_FETCH_404`), and a GitHub Release must carry all eight tarballs plus `release-set.json` — a main-only Release is an uninstallable package. For the offline release set use `npm run install:release -- --set <dir> --profile <name> --dsh-home <dir> --app-closed`, which pins the seven children to the sibling tarballs through profile `overrides`; never hand the desktop installer a single main tarball.
+
+完整发布流程（npm 通道、GitHub Release 资产、发布后自证、镜像同步与回滚）见 [`docs/RELEASING.md`](docs/RELEASING.md)。两条规则不可让：主包可用的前提是七个子包已在同一版本上公开（主包把七个**精确版本**声明为运行依赖，只发主包会让用户的 `pnpm add` 以 `ERR_PNPM_FETCH_404` 失败）；GitHub Release 必须挂**八个 tarball + `release-set.json`**，只挂主包的 Release 是一个装不上的包。离线安装发布集用 `npm run install:release -- --set <目录> --profile <name> --dsh-home <目录> --app-closed`（它把七个子包钉到同目录 tarball 的 `overrides` 写进 profile），不要把单个主包 tarball 交给桌面安装器。
+
 On Windows, use a current patched Node.js release for packaging. A minimal directory-copy test with a Chinese path exits unexpectedly on Node.js 24.14.0; the same test and the release-set build succeed on 24.21.0. Ensure npm uses the same Node.js runtime.
 
 Windows 打包建议使用已更新补丁版本的 Node.js。本机对照中，24.14.0 复制中文路径目录时直接退出；同一样本及发布集构建在 24.21.0 通过。请同时确认 npm 使用同一套 Node.js 运行时。

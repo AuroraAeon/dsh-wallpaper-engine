@@ -5410,7 +5410,7 @@ function RopeDock() {
 // ⚠️ 公告正文与配图是**随版本换血**的：改内容就要升哨兵（否则看过旧版的用户永远看不到
 // 新说明，改了等于没改 ⇒ 重弹一次是设计意图）。配图下方那行是**求星跳转** —— 与正文四条
 // 各管一件事，同守 `art === "ready"` 的门控。
-const NOTICE_VERSION = "1.3.3-grey.1";
+const NOTICE_VERSION = "1.4.0";
 // 配图就绪探针的节奏：HEAD 轮询到新白名单在场（= 后端已重启）才弹；旧后端一直
 // 不在场超过 WAIT 则降级为**无图**弹出（文案信息完整；求星入口另有「关于」页那枚常驻按钮
 // 与它的重看按钮，不靠弹窗这一条命）。探针打在 /about-qr 上是自清洁的：404 响应 no-store、200
@@ -5600,7 +5600,7 @@ function UpdateNotice() {
         weT("：大图上传不再卡死壁纸库；阅读页底色找得回；设置快速改回原值不再漏存。")),
       React.createElement("p", { className: "we-update-notice__hint" },
         weT("升级后建议重启一次 DSH，改动才完整生效；本提示每个新版本只出现一次，点下方按钮关闭后不再弹出。"),
-        weT("本版为源码灰测，尚未发布到 npm。")),
+        weT("本版已发布到 npm，可直接按包名安装。")),
     ),
     React.createElement("button", { className: "we-update-notice__btn we-picker__btn", type: "button", onClick: dismiss }, weT("知道了")),
   );

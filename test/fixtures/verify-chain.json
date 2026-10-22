@@ -249,6 +249,14 @@
         {
           "kind": "guard",
           "npm": null,
+          "file": "test/verify-release-set.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
           "file": "test/verify-contracts.mjs",
           "args": [],
           "tier": "hard",
@@ -1095,6 +1103,14 @@
           "kind": "guard",
           "npm": null,
           "file": "test/verify-deployment.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-release-set.mjs",
           "args": [],
           "tier": "hard",
           "probe": false

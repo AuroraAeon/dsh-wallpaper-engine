@@ -189,7 +189,7 @@ const WE_I18N_EN_EXT = {
   "：分数缩放下右栏不再丢失；开合动画中两侧不再同时消失；第二个会话不再抢走右栏。": ": the right sidebar no longer loses its glass under fractional scaling; both sides no longer vanish together mid-animation; a second session no longer steals it.",
   "另修一批": "Also fixed",
   "：大图上传不再卡死壁纸库；阅读页底色找得回；设置快速改回原值不再漏存。": ": large uploads no longer freeze the wallpaper library; the document-reading background setting is findable again; quickly reverting a setting no longer drops the save.",
-  "本版为源码灰测，尚未发布到 npm。": "This is a source-code grey-test build, not yet published to npm.",
+  "本版已发布到 npm，可直接按包名安装。": "This version is published to npm — install it by package name.",
   // ══ UPDATE NOTICE COPY（end）════════════════════════════════════════════════
   // 配图 caption 与提示行不随公告换血（配图与"知道了"是稳定面），住在区块外。
   "新朋友「星来」登场": "The blue-haired maid mascot says hi",

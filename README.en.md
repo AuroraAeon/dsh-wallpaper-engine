@@ -58,13 +58,13 @@ The installer installs source dependencies, builds clients, registers all eight 
 
 The publisher must build the eight-package set with `npm run pack:release`, publish the seven subpackages first and publish the main package last. The release main manifest declares exact subpackage versions. It does not bundle pet or Electron. A plain root `npm pack` is not a substitute for this complete release set.
 
-Only for an already published complete version:
+**From `1.4.0` on, all eight packages are on npm** — one command installs the whole set (the main package resolves the seven children at exact versions):
 
 ```sh
 dsh plugin --profile web add dsh-plugin-wallpaper-engine
 ```
 
-This command **does not install unpublished branch changes**. Desktop installations still require the desktop carrier CLI and a fully closed host. See the [deployment and publishing guide](https://github.com/Fish-under-sea/dsh-wallpaper-engine/blob/official-pet-bridge-20261020/CONTRIBUTING.md).
+To get **unreleased branch changes** you still need the source deployment; the npm name only ever gives you a published version. Desktop installations still require the desktop carrier CLI and a fully closed host. See the [deployment and publishing guide](https://github.com/Fish-under-sea/dsh-wallpaper-engine/blob/official-pet-bridge-20261020/CONTRIBUTING.md).
 
 ### Rows and platforms
 
