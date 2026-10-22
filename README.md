@@ -36,7 +36,7 @@
 把本机 **Wallpaper Engine** 的场景、网页与视频壁纸带到 DSH 对话界面，再配上液态玻璃、字体、吉祥物与可分享的外观预设。插件不向 agent 注册工具或注入提示文本，**不增加模型 token 开销**。
 
 > [!NOTE]
-> 本页描述 [生鱼 / Fish-under-sea 当前维护源码](https://github.com/Fish-under-sea/dsh-wallpaper-engine)。正式项目由 [elysia395/dsh-wallpaper-engine](https://github.com/elysia395/dsh-wallpaper-engine) 维护；上方 Stars、Forks、贡献者、Release、npm 版本与下载量，以及下方 Star History，均来自正式主仓或同名 npm 包，不是本分支的统计。动态徽章有缓存，不代表本分支改动已经发布。
+> 本页描述 [elysia395/ Fish-under-sea 当前维护源码](https://github.com/Fish-under-sea/dsh-wallpaper-engine)。正式项目由 [elysia395/dsh-wallpaper-engine](https://github.com/elysia395/dsh-wallpaper-engine) 维护；上方 Stars、Forks、贡献者、Release、npm 版本与下载量，以及下方 Star History，均来自正式主仓或同名 npm 包，不是本分支的统计。动态徽章有缓存，不代表本分支改动已经发布。
 
 ### 当前源码与正式发行的区别
 
@@ -336,7 +336,7 @@ macOS 没有 Wallpaper Engine 官方客户端。可以上传图片 / 视频，�
 | 贡献者 | 贡献 |
 |---|---|
 | [elysia395](https://github.com/elysia395) | 项目发起与维护、版本发布、预设策展、公告与社区维护 |
-| [生鱼 / Fish-under-sea](https://github.com/Fish-under-sea) | 当前灰测分支维护与集成；整套预设及资产导入 / 导出、吉祥物 3D 转盘与分节布局；源码部署和发布闭包修复、官方 dsh-pet 桥接、自绘气泡、联动排播与调参，移除内置 pet 并补齐回归和文档（[#173](https://github.com/elysia395/dsh-wallpaper-engine/pull/173)、[#180](https://github.com/elysia395/dsh-wallpaper-engine/pull/180)、[集成 PR #251](https://github.com/elysia395/dsh-wallpaper-engine/pull/251)；部分最新源码尚未提交或发布） |
+| [Fish-under-sea](https://github.com/Fish-under-sea) | 当前灰测分支维护与集成；整套预设及资产导入 / 导出、吉祥物 3D 转盘与分节布局；源码部署和发布闭包修复、官方 dsh-pet 桥接、自绘气泡、联动排播与调参，移除内置 pet 并补齐回归和文档（[#173](https://github.com/elysia395/dsh-wallpaper-engine/pull/173)、[#180](https://github.com/elysia395/dsh-wallpaper-engine/pull/180)、[集成 PR #251](https://github.com/elysia395/dsh-wallpaper-engine/pull/251)；部分最新源码尚未提交或发布） |
 | [YV3507](https://github.com/YV3507) | 早期场景渲染与静态帧修复、液态玻璃令牌、实时帧链路、架构重构、文档与回归守卫；整合社区 PR（含 [#181](https://github.com/elysia395/dsh-wallpaper-engine/pull/181)） |
 | [oneincase](https://github.com/oneincase) | [WebWallGL](https://github.com/oneincase/webwallgl) 与 [media-bridge](https://github.com/oneincase/media-bridge) 作者；实时渲染、三平台媒体链路、壁纸属性及合成 / 性能修复（[#103](https://github.com/elysia395/dsh-wallpaper-engine/pull/103)、[#104](https://github.com/elysia395/dsh-wallpaper-engine/pull/104)、[#165](https://github.com/elysia395/dsh-wallpaper-engine/pull/165)） |
 | [yuxilao](https://github.com/yuxilao) | Linux scene-gl 实时渲染探索、性能优化、轮换交接、GPU 帧回填与官方资源路径（[#65](https://github.com/elysia395/dsh-wallpaper-engine/pull/65)、[#108](https://github.com/elysia395/dsh-wallpaper-engine/pull/108)） |
