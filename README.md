@@ -56,12 +56,17 @@
 
 <table>
   <tr>
-    <td width="64%" valign="middle">
+    <td width="36%" valign="middle">
       <ul>
         <li><a href="#能做什么">能做什么</a> · <a href="#支持哪些壁纸类型">支持哪些壁纸类型</a> · <a href="#安装">安装</a> · <a href="#使用">使用</a></li>
         <li><a href="#可选桌宠联动">可选桌宠联动</a> · <a href="#配置与数据">配置与数据</a> · <a href="#兼容与限制">兼容与限制</a> · <a href="#开发与贡献">开发与贡献</a></li>
         <li><a href="#联系方式">联系方式</a> · <a href="#致谢">致谢</a> · <a href="#支持与赞赏">支持与赞赏</a> · <a href="#star-history">Star History</a></li>
       </ul>
+    </td>
+    <td width="28%" align="center" valign="middle">
+      <a href="assets/readme/mascot-eating-rice-1280x1784.jpg">
+        <img src="assets/readme/mascot-eating-rice-1280x1784.jpg" alt="吉祥物干饭插图">
+      </a>
     </td>
     <td width="36%" align="center" valign="middle">
       <a href="assets/about/sponsor-fish.png">
