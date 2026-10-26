@@ -218,10 +218,17 @@ const CSS_BASE = `
   /* While a wallpaper is active: make the app frame AND sidebar transparent so
      all columns share the same wallpaper+scrim background. 这两条**只**属于壁纸：
      壁纸层挂在 body 的 z-index:-1 上，页面基色 / 侧栏填充必须让开才看得见。
-     无壁纸时它们保持宿主原色 —— 页面因此始终有一层不透明基色（玻璃面压在这层之上）。 */
+     无壁纸时它们保持宿主原色 —— 页面因此始终有一层不透明基色（玻璃面压在这层之上）。
+     ⚠️ !important 是**跨插件契约**，不是防御性写法：DSH 的主题 API 允许插件用
+     ctx.theme.overrideTokens 给宿主上色，而宿主把合成后的令牌以**内联样式**写在
+     <body> 上（DS Bot 的 Bot 模式就是这么做的）。内联声明在普通作者声明里压过一切，
+     本块若按普通声明写就整块失效 ⇒ 页面基色/侧栏填充保持不透明，壁纸层被盖死
+     （现场症状：DS Bot 模式下壁纸完全不可见）。作者 !important 声明按层叠规则
+     压过内联普通声明，因此壁纸在场期间页面背景令牌归本插件；壁纸退场后本块不匹配，
+     内联值原样生效 —— 单向接管，不读不写对方任何状态。 */
   body[data-we-wallpaper] {
-    --dsw-alias-bg-base: transparent;
-    --dsw-specific-sidebar-fill: transparent;
+    --dsw-alias-bg-base: transparent !important;
+    --dsw-specific-sidebar-fill: transparent !important;
   }
 
   /* ── 页面玻璃总锚点（data-we-glass-page）——**与有没有壁纸无关** ───────────────
@@ -344,10 +351,12 @@ const CSS_BASE = `
      with their opaque dark colors — hiding the wallpaper behind them. Repeat
      the transparency + border-emphasis overrides under the higher-specificity
      dark selector (0,2,1) so the wallpaper always wins regardless of stylesheet
-     order. */
+     order.
+     !important 在这里同时承担两件事：压过上面说的调色板级联，以及压过宿主/插件
+     写在 <body> 上的内联令牌（见上面壁纸块的跨插件契约注释）—— 两档都要有。 */
   body[data-ds-dark-theme][data-we-wallpaper] {
-    --dsw-alias-bg-base: transparent;
-    --dsw-specific-sidebar-fill: transparent;
+    --dsw-alias-bg-base: transparent !important;
+    --dsw-specific-sidebar-fill: transparent !important;
   }
   /* 壁纸仅清宿主挂载点的外壳；不得按类名子串清任意插件子树。 */
   body[data-we-wallpaper][data-we-adapter="browser"],

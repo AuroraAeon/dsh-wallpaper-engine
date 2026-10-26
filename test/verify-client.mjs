@@ -270,6 +270,17 @@ assert.ok(!code.includes('body[data-we-glass-page] :where([data-chat-flow])'),
 assert.ok(wallpaperBlock && wallpaperBlock.includes('--dsw-alias-bg-base: transparent')
   && !wallpaperBlock.includes('--dsw-alias-bg-layer-1'),
   'the page-let-the-wallpaper-through block stays wallpaper-only (no glass mapping inside)');
+// ── 跨插件内联令牌：让页面让开的那两条必须带 !important ──────────────────────
+// 全界面插件（如 DS Bot 的 Bot 模式）用 DSH 的 ctx.theme.overrideTokens 给宿主上色，
+// 宿主把合成后的令牌以**内联样式**写在 <body> 上。普通作者声明输给内联声明 ⇒ 页面基色 /
+// 侧栏填充保持不透明，壁纸层被盖死（现场：DS Bot 模式下壁纸完全不可见）。作者
+// !important 声明按层叠规则压过内联普通声明 ⇒ 壁纸在场期间这两枚令牌归本插件。
+const letThrough = (block) => /--dsw-alias-bg-base:\s*transparent\s*!important/.test(block || '')
+  && /--dsw-specific-sidebar-fill:\s*transparent\s*!important/.test(block || '');
+assert.ok(letThrough(wallpaperBlock) && letThrough(blockBodyOf('body[data-ds-dark-theme][data-we-wallpaper] {')),
+  'both wallpaper let-through blocks must beat inline token overrides (DS Bot Bot mode writes theme tokens inline on <body>)');
+assert.ok(!letThrough(wallpaperBlock.replaceAll('!important', '')),
+  'negative control: the inline-override assertion must fail when !important is stripped');
 assert.ok(/setAttribute\("data-we-glass-page", "on"\)/.test(code)
   && /removeAttribute\("data-we-glass-page"\)/.test(code),
   'the page-glass anchor must be mounted by glass.js and removed by clearEffects (paired)');

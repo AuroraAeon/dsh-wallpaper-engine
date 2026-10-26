@@ -350,6 +350,34 @@ try {
     check(tag+' 宿主设置窗控件吃玻璃令牌（不是宿主实底）',
       compat.token !== 'rgb(225, 226, 227)', compat.token);
     check(tag+' 壁纸仅清宿主外壳而非任意root和frame',await evaluate(`getComputedStyle(document.querySelector('#host-frame')).backgroundColor==='rgba(0, 0, 0, 0)' && getComputedStyle(document.querySelector('#host-root')).backgroundColor==='rgba(0, 0, 0, 0)'`));
+    // ── 跨插件内联令牌（DS Bot 的 Bot 模式）────────────────────────────────────────
+    // 全界面插件用 DSH 的 ctx.theme.overrideTokens 给宿主上色时，宿主把令牌以**内联
+    // 样式**写在 <body> 上；普通作者声明输给内联声明 ⇒ 页面基色/侧栏填充保持不透明，
+    // 壁纸层被盖死（现场：DS Bot 模式下壁纸完全不可见）。本插件让页面让开的那两条
+    // 必须用作者 !important 压过内联普通声明。判据两个方向都断言：
+    //   · 壁纸在场 ⇒ 消费这两枚令牌的壳层元素 computed 透明；
+    //   · 摘掉壁纸门 ⇒ 内联值原样生效 —— 证明这是**按门的单向接管**，不是把宿主主题
+    //     永久改掉；否则「!important 换成普通声明」或「门被摘掉」任一漂移都可能假绿。
+    const inlineTokens = await evaluate(`(() => {
+      const probe = document.createElement('div');
+      probe.innerHTML = '<div id="dsb-frame" style="background:var(--dsw-alias-bg-base)"><div id="dsb-sidebar" style="background:var(--dsw-specific-sidebar-fill)"></div></div>';
+      document.body.append(probe);
+      document.body.style.setProperty('--dsw-alias-bg-base', 'rgb(20, 20, 20)');
+      document.body.style.setProperty('--dsw-specific-sidebar-fill', 'rgb(27, 27, 27)');
+      const read = () => [getComputedStyle(document.getElementById('dsb-frame')).backgroundColor, getComputedStyle(document.getElementById('dsb-sidebar')).backgroundColor];
+      const withWallpaper = read();
+      document.body.removeAttribute('data-we-wallpaper');
+      const withoutWallpaper = read();
+      document.body.setAttribute('data-we-wallpaper', 'on');
+      document.body.style.removeProperty('--dsw-alias-bg-base');
+      document.body.style.removeProperty('--dsw-specific-sidebar-fill');
+      probe.remove();
+      return { withWallpaper, withoutWallpaper };
+    })()`);
+    check(tag+' 壁纸在场时页面令牌压过宿主内联主题（DS Bot 的 Bot 模式）',
+      inlineTokens.withWallpaper.every((color) => color === 'rgba(0, 0, 0, 0)'), inlineTokens);
+    check(tag+' 壁纸退场后宿主内联令牌原样生效（单向接管，不改宿主主题）',
+      inlineTokens.withoutWallpaper[0] === 'rgb(20, 20, 20)' && inlineTokens.withoutWallpaper[1] === 'rgb(27, 27, 27)', inlineTokens);
     check(tag+' 已知设置面与显式布局接管且preserve优先',compat.mark==='settings-window' && compat.layout==='rgba(0, 0, 0, 0)' && compat.keep==='rgb(222, 223, 224)' && compat.child==='rgb(222, 223, 224)',compat);
     check(tag+' 编辑内容底板受控且语法选区不改',compat.editor!=='rgb(255, 255, 255)' && compat.syntax==='rgb(197, 104, 228)' && compat.selection==='rgb(60, 80, 160)',compat);
     check(tag+' 本插件页签与上传区不继承宿主黑色实底',compat.ownTab!=='rgb(0, 0, 0)' && compat.ownUploads!=='rgb(0, 0, 0)',compat);
